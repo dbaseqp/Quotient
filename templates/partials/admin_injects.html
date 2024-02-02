@@ -1,0 +1,324 @@
+{{ define "addinject" }}
+<button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addinjectModal">Add new
+    inject</button>
+
+<div class="modal fade" data-bs-backdrop="static" data-bs-keyboard="false" id="addinjectModal" tabindex="-1"
+    aria-labelledby="addinjectModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="addinjectModalLabel">New inject</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addinjectForm">
+                    <div class="mb-3">
+                        <label for="title" class="col-form-label">Title:</label>
+                        <input name="title" type="text" class="form-control" id="title" required aria-required="true">
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="col-form-label">Description:</label>
+                        <input name="description" type="text" class="form-control" id="description" required
+                            aria-required="true">
+                    </div>
+                    <div class="mb-3">
+                        <label for="opentimePickerInput" class="col-form-label">Open Time:</label>
+                        <p class="text-body-secondary">Keep in mind these will be in the event's timezone.</p>
+                        <div class="input-group" id="opentimePicker" data-td-target-input="nearest"
+                            data-td-target-toggle="nearest">
+                            <input name="opentime" id="opentimePickerInput" type="text" class="form-control"
+                                data-td-target="#opentimePicker" required aria-required="true">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="duetimePickerInput" class="col-form-label">Due Time:</label>
+                        <div class="input-group" id="duetimePicker" data-td-target-input="nearest"
+                            data-td-target-toggle="nearest">
+                            <input name="duetime" id="duetimePickerInput" type="text" class="form-control"
+                                data-td-target="#duetimePicker" required aria-required="true">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="closetimePickerInput" class="col-form-label">Close Time:</label>
+                        <div class="input-group" id="closetimePicker" data-td-target-input="nearest"
+                            data-td-target-toggle="nearest">
+                            <input name="closetime" id="closetimePickerInput" type="text" class="form-control"
+                                data-td-target="#closetimePicker" required aria-required="true">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addinjectFiles" class="form-label">Related Inject Files:</label>
+                        <input name="files" class="form-control" type="file" id="addinjectFiles" multiple required aria-required="true">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" form="addinjectForm" class="btn btn-primary">Add inject
+                    <div class="spinner-border text-primary d-none" role="status" id="addinjectSpinner">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        let form = document.getElementById('addinjectForm')
+        let datetimepicker1 = new tempusDominus.TempusDominus(
+            form.querySelector('#opentimePickerInput'),
+            config
+        );
+        let datetimepicker2 = new tempusDominus.TempusDominus(
+            form.querySelector('#duetimePickerInput'),
+            config
+        );
+        let datetimepicker3 = new tempusDominus.TempusDominus(
+            form.querySelector('#closetimePickerInput'),
+            config
+        );
+        // Intercept the form submission
+        document.getElementById('addinjectForm').addEventListener('submit', function (event) {
+            // Prevent the default form submission
+            event.preventDefault();
+
+            let formid = "addinjectForm";
+            let url = "/api/injects/add";
+
+            const form = document.forms[formid]
+            let data = new FormData()
+            for (const file of form.files.files) {
+                data.append("files", file)
+            }
+            data.append("title", form.title.value)
+            data.append("description", form.title.value)
+            data.append("opentime", datetimepicker1.viewDate.toISOString())
+            data.append("duetime", datetimepicker2.viewDate.toISOString())
+            data.append("closetime", datetimepicker3.viewDate.toISOString())
+            let success_function = function (data) {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('addinjectModal'))
+
+                createToast("Inject successfully added", "bg-success")
+                modal.hide()
+            }
+            postAjax(event, formid, data, url, success_function)
+        });
+    });
+</script>
+{{ end }}
+
+{{ define "deleteinject" }}
+<div class="modal fade text-body" data-bs-backdrop="static" data-bs-keyboard="false" id="deleteinjectModal"
+    tabindex="-1" aria-labelledby="deleteinjectModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="deleteinjectModalLabel">Permanently delete inject?</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this inject? This will also delete all files associated with this
+                    inject. Submissions will remain.</p>
+                <pre id="deleteinjectFormTitle">TEMPLATE</pre>
+                <form id="deleteinjectForm">
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" form="deleteinjectForm" class="btn btn-danger">Delete inject
+                    <div class="spinner-border text-primary d-none" role="status" id="deleteinjectSpinner">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    var deleteButtons = document.querySelectorAll('button.deleteinject')
+
+    // this function exists here to be used dynamically by SSE
+    function attachDeleteListener(button) {
+        button.addEventListener('click', function (event) {
+            let inject = button.closest('tr')
+            let myID = inject.getAttribute('data-inject-id')
+            let myTitle = inject.getAttribute('data-inject-title')
+
+            let modal = document.getElementById('deleteinjectModal')
+            modal.querySelector('form').setAttribute('data-inject-id', myID)
+            modal.querySelector('pre').textContent = myTitle
+        })
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        deleteButtons.forEach((button) => attachDeleteListener(button))
+
+        // Intercept the form submission
+        document.getElementById('deleteinjectForm').addEventListener('submit', function (event) {
+            // Prevent the default form submission
+            event.preventDefault();
+
+            let injectid = event.target.getAttribute("data-inject-id")
+            let formid = "deleteinjectForm";
+            let url = "/api/injects/" + injectid;
+            let success_function = function (data) {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('deleteinjectModal'))
+
+                createToast("Inject successfully deleted", "bg-success")
+                modal.hide()
+            }
+            fetch(url, {
+                method: "delete",
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        Promise.reject(response);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status == "success") {
+                        success_function(data)
+                    } else {
+                        createToast(data.error, "bg-danger")
+                    }
+                })
+                .catch(error => {
+                    createToast(error, "bg-danger")
+                })
+        });
+    });
+</script>
+{{ end }}
+
+{{ define "editinject" }}
+<div class="modal fade text-body" data-bs-backdrop="static" data-bs-keyboard="false" id="editinjectModal" tabindex="-1"
+    aria-labelledby="editinjectModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="editinjectModalLabel">Edit inject</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editinjectForm">
+                    <div class="mb-3">
+                        <label for="title" class="col-form-label">Title:</label>
+                        <input name="title" type="text" class="form-control" id="title" required aria-required="true">
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="col-form-label">Description:</label>
+                        <input name="description" type="text" class="form-control" id="description" required
+                            aria-required="true">
+                    </div>
+                    <div class="mb-3">
+                        <label for="opentimePickerEditInput" class="col-form-label">Open Time:</label>
+                        <p class="text-body-secondary">Keep in mind these will be in the event's timezone.</p>
+                        <div class="input-group" id="opentimePickerEdit" data-td-target-input="nearest"
+                            data-td-target-toggle="nearest">
+                            <input name="opentime" id="opentimePickerEditInput" type="text" class="form-control"
+                                data-td-target="#opentimePickerEdit" required aria-required="true">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="duetimePickerEditInput" class="col-form-label">Due Time:</label>
+                        <div class="input-group" id="duetimePickerEdit" data-td-target-input="nearest"
+                            data-td-target-toggle="nearest">
+                            <input name="duetime" id="duetimePickerEditInput" type="text" class="form-control"
+                                data-td-target="#duetimePickerEdit" required aria-required="true">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="closetimePickerEditInput" class="col-form-label">Close Time:</label>
+                        <div class="input-group" id="closetimePickerEdit" data-td-target-input="nearest"
+                            data-td-target-toggle="nearest">
+                            <input name="closetime" id="closetimePickerEditInput" type="text" class="form-control"
+                                data-td-target="#closetimePickerEdit" required aria-required="true">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editinjectFiles" class="form-label">Related Inject Files:</label>
+                        <p class="text-body-secondary">This will remove all existing related inject files. Reattach
+                            files you wish to keep.</p>
+                        <input name="files" class="form-control" type="file" id="editinjectFiles" multiple>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" form="editinjectForm" class="btn btn-primary">Save changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    var editButtons = document.querySelectorAll('button.editinject')
+
+    // this function exists here to be used dynamically by SSE
+    document.addEventListener('DOMContentLoaded', function () {
+        let form = document.getElementById('editinjectForm')
+        let datetimepicker1 = new tempusDominus.TempusDominus(
+            form.querySelector('#opentimePickerEditInput'),
+            config
+        );
+        let datetimepicker2 = new tempusDominus.TempusDominus(
+            form.querySelector('#duetimePickerEditInput'),
+            config
+        );
+        let datetimepicker3 = new tempusDominus.TempusDominus(
+            form.querySelector('#closetimePickerEditInput'),
+            config
+        );
+        function attachEditListener(button) {
+            button.addEventListener('click', function (event) {
+                let inject = button.closest('tr')
+                let myID = inject.getAttribute('data-inject-id')
+                let myTitle = inject.getAttribute('data-inject-title')
+                let myDescription = inject.getAttribute('data-inject-description')
+                let myOpentime = new Date(inject.getAttribute('data-inject-opentime'))
+                let myDuetime = new Date(inject.getAttribute('data-inject-duetime'))
+                let myClosetime = new Date(inject.getAttribute('data-inject-closetime'))
+
+                let modal = document.getElementById('editinjectModal')
+                modal.querySelector('form').setAttribute('data-inject-id', myID)
+                modal.querySelector('[name="title"]').value = myTitle
+                modal.querySelector('[name="description"]').value = myDescription
+                datetimepicker1.dates.setFromInput(myOpentime)
+                datetimepicker2.dates.setFromInput(myDuetime)
+                datetimepicker3.dates.setFromInput(myClosetime)
+            })
+        }
+
+        editButtons.forEach((button) => attachEditListener(button))
+
+        document.getElementById('editinjectForm').addEventListener('submit', function (event) {
+            // Prevent the default form submission
+            event.preventDefault();
+
+            let injectid = event.target.getAttribute("data-inject-id")
+            let formid = "editinjectForm";
+            let url = "/api/injects/" + injectid + "/edit";
+
+            const form = document.forms[formid]
+            let data = new FormData()
+            if (form.files.files.length > 0) {
+                for (const file of form.files.files) {
+                    data.append("files", file)
+                }
+            }
+            data.append("title", form.title.value)
+            data.append("description", form.description.value)
+            data.append("opentime", datetimepicker1.viewDate.toISOString())
+            data.append("duetime", datetimepicker2.viewDate.toISOString())
+            data.append("closetime", datetimepicker3.viewDate.toISOString())
+            let success_function = function (data) {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editinjectModal'))
+
+                createToast("Inject successfully updated", "bg-success")
+                modal.hide()
+            }
+            postAjax(event, formid, data, url, success_function)
+        });
+    })
+</script>
+{{ end }}

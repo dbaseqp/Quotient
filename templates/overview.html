@@ -1,0 +1,16 @@
+{{ define "content"}}
+{{ $user := .user }}
+<div class="d-flex flex-column flex-grow-1">
+    <div class="m-4 p-4">
+        <h2>{{ if $user.UserInfo.Admin }}Admin {{ end }}Overview</h2>
+        <div class="d-flex flex-column h-auto justify-content-center align-items-center">
+            {{ if $user.UserInfo.Admin }}
+            {{ template "dashboard" . }}
+            {{ else }}
+            {{ template "portal" . }}
+            {{ end }}
+        </div>
+    </div>
+</div>
+{{ end }}
+{{ template "base" .}}

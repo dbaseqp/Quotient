@@ -1,0 +1,79 @@
+{{ define "content" }}
+<div class="d-flex h-100">
+  <div class="d-none d-md-flex w-50 justify-content-center align-items-center" style="background-color: #6d2480;">
+    <div>
+      <header>
+        <div class="t text-white">
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+        </div>
+      </header>
+      <header>
+        <div class="t text-white">
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+        </div>
+      </header>
+      <header>
+        <div class="t text-white">
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+        </div>
+      </header>
+      <header>
+        <div class="t text-white">
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+          <div>{{ .config.Event }}</div>
+        </div>
+      </header>
+    </div>
+  </div>
+  <div class="d-flex flex-grow-1 bg-contrast justify-content-center align-items-center">
+    <div>
+      <h1 class="h1 mb-4">Sign into {{.name}}</h1>
+      <form class="form" id="loginForm">
+        <input name="username" class="form-control py-2 my-2" type="text" placeholder="Username" aria-label="username" autocomplete="username">
+        <input name="password" class="form-control py-2 my-2" type="password" placeholder="Password" aria-label="password" autocomplete="current-password">
+        <button class="form-control btn btn-primary" type="submit">Sign In</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+      let form = document.getElementById('loginForm')
+      // Intercept the form submission
+      document.getElementById('loginForm').addEventListener('submit', function (event) {
+          // Prevent the default form submission
+          event.preventDefault();
+
+          let formid = "loginForm";
+          let url = "/api/login";
+
+          const form = document.forms[formid]
+          let data = JSON.stringify({
+              "username": form.username.value,
+              "password": form.password.value,
+          })
+          console.log(data)
+          let success_function = function (data) {
+            window.location.href = data.redirect
+          }
+          postAjax(event, formid, data, url, success_function)
+      });
+  });
+</script>
+{{ end }}
+{{ template "base" .}}

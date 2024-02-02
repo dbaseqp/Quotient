@@ -1,0 +1,15 @@
+submissions/*
+scoredfiles/*
+checkfiles/*
+temporary/*
+scripts/*
+injects/*
+config/*
+plots/*
+*.bak
+*.swp
+*.conf
+!.gitkeep
+go.mod
+go.sum
+sugmaase

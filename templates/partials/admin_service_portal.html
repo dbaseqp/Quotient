@@ -1,0 +1,140 @@
+{{ define "dashboard" }}
+<div class="container-fluid">
+    <div class="d-flex flex-column gap-3">
+        <div class="row">
+            <div class="col col-lg-8">
+                <ul class="nav nav-pills nav-pills-tray p-1 rounded-2" id="pills-tab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active py-1" id="pills-scoresOverTime-tab" data-bs-toggle="pill"
+                            data-bs-target="#plotCarousel" data-bs-slide-to="0" type="button" role="tab"
+                            aria-controls="plotCarousel" aria-selected="true">Scores Over Time</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link py-1" id="pills-currentStatus-tab" data-bs-toggle="pill"
+                            data-bs-target="#plotCarousel" data-bs-slide-to="1" type="button" role="tab"
+                            aria-controls="plotCarousel" aria-selected="false">Current Service Status</button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        <div class="row gap-2 gap-lg-0">
+            <div class="col col-lg-8">
+                <div class="border bg-body rounded-4 p-4 overflow-y-auto">
+                    <div class="d-flex flex-row justify-content-end">
+                        <button id="plotFullscreen" type="button" class="btn">
+                            <i class="bi bi-arrows-fullscreen"></i>
+                        </button>
+                    </div>
+                    <div id="plotCarousel" class="carousel slide">
+                        <div class="carousel-inner">
+                            <div data-carousel-id="pills-scoresOverTime-tab" class="carousel-item active">
+                                <h4 class="pb-4">Scores Over Time</h2>
+                                    <img data-plot-name="points-over-time" src="" class="d-block w-100" alt="Image has not been generated">
+                            </div>
+                            <div data-carousel-id="pills-currentStatus-tab" class="carousel-item">
+                                <h4 class="pb-4">Current Service Status</h2>
+                                    <img data-plot-name="current-status" src="" class="d-block w-100" alt="Image has not been generated">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <p style="text-align: center">
+                    📈 Scores calculated at <b>{{ (.now.In .loc).Format "03:04:05 PM" }}</b>.
+                </p>
+            </div>
+            <div class="w-100 m-0 d-lg-none d-block"></div>
+            <div class="col">
+                <div class="border rounded-4 p-4">
+                    <div class="pb-2">
+                        <h4>Team Overviews</h4>
+                        <div>View the teams' overview pages</div>
+                    </div>
+                    {{ range $team := .teams}}
+                    <div class="d-flex flex-row align-items-center justify-content-between my-4">
+                        <div class="d-flex flex-column">
+                            <h5>{{ $team.Name}}</h5>
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary overview" data-bs-toggle="modal"
+                            data-bs-target="#teamOverviewModal" data-team-id="{{ $team.ID }}"
+                            data-team-name="{{ $team.Name }}"><i class="bi bi-zoom-in"></i></button>
+                    </div>
+                    {{ end }}
+                </div>
+                <div class="modal fade" id="teamOverviewModal" tabindex="-1" aria-labelledby="teamOverviewModalLabel"
+                    aria-hidden="true">
+                    <div class="modal-dialog modal-xl">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h1 class="modal-title fs-5" id="teamOverviewModalLabel">Overview</h1>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                    aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                {{ template "portal" . }}
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+<script>
+    function setPlotTheme(theme) {
+        if (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            theme = "dark"
+        } else if (theme === 'auto') {
+            theme = "light"
+        }
+
+        let carousel = document.getElementById("plotCarousel")
+        let plots = carousel.querySelectorAll(".carousel-item img")
+        plots.forEach((plot) => {
+            plot.src = "plots/" + plot.getAttribute("data-plot-name") + "-" + theme + ".png"
+        })
+    }
+    window.addEventListener('DOMContentLoaded', () => {
+        setPlotTheme(getPreferredTheme())
+        document.querySelectorAll('[data-bs-theme-value]')
+            .forEach(toggle => {
+                toggle.addEventListener('click', () => {
+                    setPlotTheme(toggle.getAttribute('data-bs-theme-value'))
+                })
+            })
+    })
+    const carousel = document.getElementById("plotCarousel").closest(".border")
+    const bscarousel = new bootstrap.Carousel('#plotCarousel', { pause: false, interval: 10000 })
+
+    carousel.addEventListener('slide.bs.carousel', (event) => {
+        let currentTab = document.getElementById(event.relatedTarget.getAttribute("data-carousel-id"))
+        let tab = new bootstrap.Tab(currentTab)
+        tab.show()
+    })
+    document.getElementById("plotFullscreen").addEventListener("click", (event) => {
+        bscarousel.cycle()
+        if (carousel.requestFullscreen) {
+            carousel.requestFullscreen();
+        }
+        else if (elem.mozRequestFullScreen) {
+            carousel.mozRequestFullScreen();
+        }
+        else if (elem.webkitRequestFullscreen) {
+            carousel.webkitRequestFullscreen();
+        }
+        else if (elem.msRequestFullscreen) {
+            carousel.msRequestFullscreen();
+        }
+    })
+    document.addEventListener("fullscreenchange", (event) => {
+        // pause on exit
+        if (!document.fullscreenElement) {
+            bscarousel.pause()
+        }
+    });
+
+</script>
+{{ end }}

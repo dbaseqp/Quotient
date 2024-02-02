@@ -1,0 +1,279 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"os"
+	"time"
+
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
+)
+
+type MyJWTClaims struct {
+	*jwt.RegisteredClaims
+	UserInfo interface{}
+}
+
+type UserJWTData struct {
+	Username string
+	ID       uint
+	Admin    bool
+}
+
+var (
+	privateKey []byte
+	publicKey  []byte
+)
+
+func create(sub string, userInfo interface{}) (string, error) {
+	key, err := jwt.ParseRSAPrivateKeyFromPEM(privateKey)
+	if err != nil {
+		return "", fmt.Errorf("create: parse key: %w", err)
+	}
+
+	exp := time.Now().Add(time.Hour * 24)
+
+	claims := &MyJWTClaims{
+		&jwt.RegisteredClaims{
+			Subject:   sub,
+			ExpiresAt: jwt.NewNumericDate(exp),
+		},
+		userInfo,
+	}
+
+	token, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
+	if err != nil {
+		return "", fmt.Errorf("create: sign token: %w", err)
+	}
+
+	return token, nil
+}
+
+func getClaimsFromToken(tokenString string) (jwt.MapClaims, error) {
+	key, err := jwt.ParseRSAPublicKeyFromPEM(publicKey)
+	if err != nil {
+		return nil, fmt.Errorf("get claims: parse key: %w", err)
+	}
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return key, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		return claims, nil
+	}
+	return nil, err
+}
+
+func readKeyFiles() ([]byte, []byte, error) {
+	prvKey, err := os.ReadFile(eventConf.JWTPrivateKey)
+	if err != nil {
+		fmt.Println(err)
+		return nil, nil, err
+	}
+
+	pubKey, err := os.ReadFile(eventConf.JWTPublicKey)
+	if err != nil {
+		fmt.Println(err)
+		return nil, nil, err
+	}
+
+	return prvKey, pubKey, nil
+}
+
+func initCookies(router *gin.Engine) {
+	router.Use(sessions.Sessions("sugmaase", cookie.NewStore([]byte("sugmaase"))))
+}
+
+func logout(c *gin.Context) {
+	session := sessions.Default(c)
+	id := session.Get("id")
+
+	cookie, err := c.Request.Cookie("auth_token")
+
+	if cookie != nil && err == nil {
+		c.SetCookie("auth_token", "", -1, "/", "*", false, true)
+	}
+
+	err = session.Save()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save session"})
+		return
+	}
+
+	if id == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "No session."})
+		return
+	}
+	session.Delete("id")
+	if err := session.Save(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save session"})
+		return
+	}
+
+	c.Redirect(http.StatusSeeOther, "/")
+}
+
+func login(c *gin.Context) {
+	var err error
+	session := sessions.Default(c)
+	var jsonData map[string]interface{}
+	if err := c.ShouldBindJSON(&jsonData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing fields"})
+		return
+	}
+
+	username := jsonData["username"].(string)
+	password := jsonData["password"].(string)
+
+	// Validate form input
+	if strings.Trim(username, " ") == "" || strings.Trim(password, " ") == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username or password can't be empty."})
+		return
+	}
+
+	// Authenticate user
+	var isAdmin bool
+	for _, admin := range eventConf.Admin {
+		if username == admin.Name && password == admin.Pw {
+			isAdmin = true
+		}
+	}
+	var teamid uint
+	if !isAdmin {
+		teamid, err = dbLogin(username, password)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
+			return
+		}
+	}
+
+	session.Set("id", username)
+
+	jwtContent := UserJWTData{
+		Username: username,
+		Admin:    isAdmin,
+	}
+	if isAdmin == false {
+		jwtContent.ID = teamid
+	}
+
+	tok, err := create(username, jwtContent)
+	if err != nil {
+		fmt.Println(err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate JWT"})
+		return
+	}
+
+	c.SetCookie("auth_token", tok, 86400, "/", "172.16.6.10", false, false)
+
+	if err := session.Save(); err != nil {
+		fmt.Println(err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to save session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "redirect": "/"})
+}
+
+func isLoggedIn(c *gin.Context) (bool, error) {
+	tok, err := c.Cookie("auth_token")
+	if err != nil {
+		return false, nil
+	}
+	_, err = getClaimsFromToken(tok)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func authRequired(c *gin.Context) {
+	status, err := isLoggedIn(c)
+	if status == false || err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	c.Next()
+}
+
+func authFromToken(c *gin.Context) {
+	tok := c.Param("token")
+
+	claims, err := getClaimsFromToken(tok)
+
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Token."})
+		return
+	}
+
+	if claims == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Token."})
+		return
+	}
+
+	if val, ok := claims["UserInfo"]; ok {
+		userInfo := val.(map[string]interface{})
+		c.JSON(http.StatusOK, gin.H{"Username": userInfo["Username"], "Groups": userInfo["Groups"], "Admin": userInfo["Admin"]})
+	} else {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Token."})
+	}
+}
+
+func isAdmin(c *gin.Context) (bool, error) {
+
+	isLoggedIn, err := isLoggedIn(c)
+	if err != nil {
+		return false, err
+	}
+
+	if isLoggedIn == false {
+		return false, errors.New("Not logged in")
+	}
+
+	tokenString, err := c.Cookie("auth_token")
+	if err != nil {
+		return false, err
+	}
+
+	claims, err := getClaimsFromToken(tokenString)
+	if err != nil {
+		return false, err
+	}
+
+	if val, ok := claims["UserInfo"]; ok {
+		userInfo := val.(map[string]interface{})
+		if userInfo["Admin"] != true {
+			return false, errors.New("Not admin")
+		}
+	} else {
+		return false, errors.New("No user info")
+	}
+	return true, nil
+}
+
+func adminAuthRequired(c *gin.Context) {
+	isAdmin, err := isAdmin(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	if isAdmin == false {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	c.Next()
+}

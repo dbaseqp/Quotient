@@ -1,0 +1,215 @@
+{{ define "portal" }}
+<div class="team-portal-container w-100">
+    <h3>Service Uptime</h3>
+    <div class="table-container">
+        <table id="teamUptime" class="table table-bordered">
+            <thead>
+                <tr>
+                    <th></th>
+                    <!-- need to implement -->
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+    <h3>Service Status</h3>
+    <div class="table-container">
+        <table id="teamLast10" class="table table-bordered">
+            <thead>
+                <tr>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+    <h3>SLAs</h3>
+    <div class="table-container">
+        <table id="teamSLAs" class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Round #</th>
+                    <th>Service Name</th>
+                    <th>Penalty</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="offcanvas offcanvas-bottom" tabindex="-1" id="serviceOffcanvas" aria-labelledby="serviceOffcanvasLabel">
+    <div class="offcanvas-header">
+        <h5 class="offcanvas-title" id="serviceOffcanvasLabel">Service Drilldown</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body">
+        <table class="table table-bordered" id="serviceDrilldown">
+            <thead>
+                <th>Round</th>
+                <th>Time</th>
+                <th>Status</th>
+                {{ if (or .user.UserInfo.Admin .config.Verbose) }}
+                <th>Debug</th>
+                <th>Error</th>
+                {{ end }}
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const teamLast10 = document.getElementById("teamLast10")
+    const teamSLAs = document.getElementById("teamSLAs")
+    const serviceDrilldown = document.getElementById("serviceDrilldown")
+    const serviceDrilldownLabel = document.getElementById("serviceOffcanvasLabel")
+
+    function loadOverview(teamid) {
+        teamLast10.querySelector("thead tr").innerHTML = "<th></th>"
+        teamLast10.querySelector("tbody").innerHTML = ""
+        teamSLAs.querySelector("tbody").innerHTML = ""
+        
+        fetch("/api/teams/" + teamid + "/scores").then((response) => {
+            if (!response.ok) {
+                Promise.reject(response)
+            }
+            return response.json()
+        }).then((data) => {
+            if (data.error) {
+                createToast(data.error, "bg-danger")
+            } else {
+                console.log(data)
+                let thead = teamLast10.querySelector("thead tr")
+                let tbody = teamLast10.querySelector("tbody")
+                let records = {}
+                let rounds = {}
+                for (const check of data.Checks) {
+                    if (!(check.ServiceName in records)) {
+                        records[check.ServiceName] = {}
+                    }
+                    if (!(check.Round.ID in rounds)) {
+                        rounds[check.Round.ID] = check.Round.StartTime
+                    }
+                    records[check.ServiceName][check.Round.ID] = check.Result
+                }
+                Object.keys(rounds).reverse().forEach((roundid) => {
+                    const th = document.createElement("th")
+                    let time = new Date(rounds[roundid])
+                    th.textContent = time.toLocaleTimeString()
+                    thead.appendChild(th)
+                });
+                Object.keys(records).forEach((servicename) => {
+                    const tr = document.createElement("tr")
+                    const th = document.createElement("th")
+                    const button = document.createElement("button")
+                    button.textContent = servicename
+                    button.className = "btn btn-link"
+                    button.type = "button"
+                    button.setAttribute("data-service-name", servicename)
+                    button.setAttribute("data-bs-toggle", "offcanvas")
+                    button.setAttribute("data-bs-target", "#serviceOffcanvas")
+                    button.setAttribute("aria-controls", "#serviceOffcanvas")
+                    button.addEventListener('click', (event) => {
+                        const tbody = serviceDrilldown.querySelector("tbody")
+                        const servicename = event.target.getAttribute("data-service-name")
+                        tbody.innerHTML = ""
+                        serviceDrilldownLabel.textContent = "Service Drilldown: "+servicename
+                        fetch("/api/teams/" + teamid + "/scores/" + servicename).then((response) => {
+                            if (!response.ok) {
+                                Promise.reject(response)
+                            }
+                            return response.json()
+                        }).then((data) => {
+                            if (data.error) {
+                                createToast(data.error, "bg-danger")
+                            } else {
+                                console.log(data)
+                                data.forEach((round) => {
+                                    const tr = document.createElement("tr")
+                                    const roundid = document.createElement("td")
+                                    const time = document.createElement("td")
+                                    const status = document.createElement("td")
+                                    roundid.textContent = round.RoundID
+                                    time.textContent = round.Round.StartTime
+                                    status.textContent = round.Result
+                                    tr.appendChild(roundid)
+                                    tr.appendChild(time)
+                                    tr.appendChild(status)
+                                    {{ if (or .user.UserInfo.Admin .config.Verbose) }}
+                                    const debug = document.createElement("td")
+                                    const error = document.createElement("td")
+                                    debug.textContent = round.Debug
+                                    error.textContent = round.Error
+                                    tr.appendChild(debug)
+                                    tr.appendChild(error)
+                                    {{ end }}
+                                    tbody.appendChild(tr)
+                                })
+                            }
+                        }).catch((error) => {
+                            createToast(error, "bg-danger")
+                        })
+                    })
+                    th.style.width = "10rem;"
+                    th.appendChild(button)
+                    tr.appendChild(th)
+                    Object.keys(rounds).reverse().forEach((roundid) => {
+                        const td = document.createElement("td")
+                        if (roundid in records[servicename]) {
+                            const img = document.createElement("img")
+                            if (records[servicename][roundid]) {
+                                img.src = "/assets/services/up.png"
+                            } else {
+                                img.src = "/assets/services/down.png"
+                            }
+                            img.style.maxWidth = "25px"
+                            td.appendChild(img)
+                        }
+                        tr.appendChild(td)
+                    })
+                    tbody.appendChild(tr)
+                });
+                tbody = teamSLAs.querySelector("tbody")
+                data.SLAs.forEach((sla) => {
+                    const tr = document.createElement("tr")
+                    const round = document.createElement("td")
+                    const servicename = document.createElement("td")
+                    const penalty = document.createElement("td")
+
+                    round.textContent = sla.RoundID
+                    servicename.textContent = sla.ServiceName
+                    penalty.textContent = sla.Penalty
+                    tr.appendChild(round)
+                    tr.appendChild(servicename)
+                    tr.appendChild(penalty)
+                    tbody.appendChild(tr)
+                })
+            }
+        }).catch((error) => {
+            createToast(error, "bg-danger")
+        })
+    }
+</script>
+{{ if .user.UserInfo.Admin }}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        let overviewButtons = document.querySelectorAll("button.overview")
+        overviewButtons.forEach((button) => {
+            button.addEventListener('click', function (event) {
+                document.getElementById("teamOverviewModalLabel").textContent = "Overview for " + button.getAttribute("data-team-name")
+                loadOverview(button.getAttribute("data-team-id"))
+            })
+        })
+    })
+</script>
+{{ else }}
+<script>
+    document.addEventListener('DOMContentLoaded', loadOverview("{{ .user.UserInfo.ID }}"))
+</script>
+{{ end }}
+{{ end }}

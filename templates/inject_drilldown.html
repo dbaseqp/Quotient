@@ -1,0 +1,48 @@
+{{ define "content"}}
+{{ $user := .user }}
+{{ $now := .now }}
+{{ $inject := .inject }}
+<div class="d-flex flex-column flex-grow-1">
+    <div class="m-4 p-4">
+        <h2>Inject: {{ .inject.Title }}</h2>
+        <div class="d-flex flex-column h-auto justify-content-center align-items-center">
+            <div class="container-fluid submission-portal-container mb-4">
+                <div class="row">
+                    <div class="col">
+                        <div class="border rounded-4 p-4">
+                            <h3>Inject Description</h3>
+                            <div class="d-flex flex-column">
+                                <p>{{ .inject.Description }}</p>
+                                <ul>
+                                    {{ range $file := .inject.InjectFileNames }}
+                                    <li>
+                                        <a href="/api/injects/{{ $inject.ID }}/file/{{ $file }}" download="{{ $file }}">{{ $file }}</a>
+                                    </li>
+                                    {{ end }}
+                                </ul>
+                                <div class="container-fluid">
+                                    <div class="row">
+                                        <div class="col">
+                                            <p class="text-center">Due Time: {{ format .inject.DueTime}}</p>
+                                        </div>
+                                        <div class="w-100 m-0 d-md-none d-block "></div>
+                                        <div class="col">
+                                            <p class="text-center">Close Time: {{ format .inject.CloseTime}}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {{ if $user.UserInfo.Admin }}
+            {{ template "admininjectportal" . }}
+            {{ else }}
+            {{ template "submissionportal" . }}
+            {{ end }}
+        </div>
+    </div>
+</div>
+{{ end }}
+{{ template "base" .}}

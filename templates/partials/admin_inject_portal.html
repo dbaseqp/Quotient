@@ -1,0 +1,44 @@
+{{ define "admininjectportal" }}
+<div class="container-fluid">
+    <div class="d-flex flex-column gap-3">
+        <div class="row">
+            <div class="col">
+                <div class="border rounded-4 p-4">
+                    <div class="pb-2">
+                        <h4>Team Submissions</h4>
+                        <div>View the teams' inject submissions</div>
+                    </div>
+                    {{ range $team := .teams}}
+                    <div class="d-flex flex-row align-items-center justify-content-between my-4">
+                        <div class="d-flex flex-column">
+                            <h5>{{ $team.Name}}</h5>
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary submission" data-bs-toggle="modal"
+                            data-bs-target="#submissionModal" data-team-id="{{ $team.ID }}"
+                            data-team-name="{{ $team.Name }}"><i class="bi bi-zoom-in"></i>
+                        </button>
+                    </div>
+                    {{ end }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade text-body" data-bs-backdrop="static" data-bs-keyboard="false" id="submissionModal" tabindex="-1"
+    aria-labelledby="submissionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="submissionModalLabel">Grade inject</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                {{ template "submissionportal" . }}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{{ end }}

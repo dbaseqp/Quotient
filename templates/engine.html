@@ -1,0 +1,98 @@
+{{ define "content"}}
+{{ $admin := true }}
+{{ $now := .now }}
+<div class="d-flex flex-column flex-grow-1">
+    <div class="m-4 p-4">
+        <h2>Engine</h2>
+        <div class="d-flex h-auto justify-content-center align-items-center">
+            <div class="container-fluid my-2">
+                <div class="row">
+                    <div class="col-lg-3 col-xl-2">
+                        <div class="nav flex-lg-column nav-pills me-3" id="v-pills-tab" role="tablist"
+                            aria-orientation="vertical">
+                            <button class="nav-link text-start active" id="v-pills-controls-tab" data-tab-id="controls"
+                                data-bs-toggle="pill" data-bs-target="#v-pills-controls" type="button" role="tab"
+                                aria-controls="v-pills-controls" aria-selected="true">Controls</button>
+                            <button class="nav-link text-start" id="v-pills-adjustments-tab" data-tab-id="adjustments"
+                                data-bs-toggle="pill" data-bs-target="#v-pills-adjustments" type="button" role="tab"
+                                aria-controls="v-pills-adjustments" aria-selected="false">Point Adjustments</button>
+                            <button class="nav-link text-start" id="v-pills-teams-tab" data-tab-id="teams"
+                                data-bs-toggle="pill" data-bs-target="#v-pills-teams" type="button" role="tab"
+                                aria-controls="v-pills-teams" aria-selected="false">Team Configuration</button>
+                            <button class="nav-link text-start" id="v-pills-environment-tab" data-tab-id="environment"
+                                data-bs-toggle="pill" data-bs-target="#v-pills-environment" type="button" role="tab"
+                                aria-controls="v-pills-environment" aria-selected="false">Environment</button>
+                        </div>
+                        <hr class="d-block d-lg-none">
+                    </div>
+                    <div class="col">
+                        <div class="d-flex align-items-start h-100">
+                            <div class="tab-content h-100 w-100" id="v-pills-tabContent">
+                                <div class="tab-pane show active" id="v-pills-controls" role="tabpanel"
+                                    aria-labelledby="v-pills-controls-tab" tabindex="0">
+                                    <div>
+                                        <h3>Controls</h3>
+                                        <div class="text-secondary">Control the scoring engine</div>
+                                    </div>
+                                    <hr class="my-4">
+                                    {{ template "controller" .}}
+                                    {{ template "export" .}}
+                                    {{ template "reset" .}}
+                                </div>
+                                <div class="tab-pane " id="v-pills-adjustments" role="tabpanel"
+                                    aria-labelledby="v-pills-adjustments-tab" tabindex="0">
+                                    <div>
+                                        <h3>Point Adjustments</h3>
+                                        <div class="text-secondary">Manually adjust points for teams</div>
+                                    </div>
+                                    <hr class="my-4">
+                                    {{ template "adjustments" . }}
+                                </div>
+                                <div class="tab-pane" id="v-pills-teams" role="tabpanel"
+                                    aria-labelledby="v-pills-teams-tab" tabindex="0">
+                                    <div>
+                                        <h3>Team Configuration</h3>
+                                        <div class="text-secondary">Manage teams playing in this event</div>
+                                    </div>
+                                    <hr class="my-4">
+                                    {{ template "teams" . }}
+                                </div>
+                                <div class="tab-pane" id="v-pills-environment" role="tabpanel"
+                                    aria-labelledby="v-pills-environment-tab" tabindex="0">
+                                    <div>
+                                        <h3>Environment Configuration</h3>
+                                        <div class="text-secondary">Configure the environment and scored checks</div>
+                                    </div>
+                                    <hr class="my-4">
+                                    {{ template "environment" . }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <p style="text-align: center">🕒 Current time is <b>{{ format .now }}</b>.</p>
+    </div>
+</div>
+<script>
+    if (location.hash != "") {
+        let savedTab = document.querySelector('[data-tab-id="#"]'.replace("#", location.hash.replace("#", "")))
+        if (savedTab != null) {
+            let tab = new bootstrap.Tab(savedTab)
+            tab.show()
+        }
+    }
+    const tabs = document.querySelectorAll('button[data-bs-toggle="pill"]')
+    tabs.forEach((tab) => {
+        tab.addEventListener('click', (event) => {
+            let currentTab = event.target
+            location.hash = currentTab.getAttribute("data-tab-id")
+        })
+    })
+    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
+    const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
+</script>
+
+{{ end }}
+{{ template "base" .}}

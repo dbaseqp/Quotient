@@ -1,0 +1,99 @@
+{{ define "content"}}
+{{ $user := .user }}
+{{ $now := .now }}
+<div class="d-flex flex-column flex-grow-1">
+    <div class="m-4 p-4">
+        <h2>Injects</h2>
+        {{ if $user.UserInfo.Admin }}
+        {{ template "addinject" . }}
+        {{ end }}
+        <div class="d-flex h-auto justify-content-center align-items-center">
+            <table class="table table-hover table-bordered my-2">
+                <thead class="">
+                    <th style="width:3rem">ID</th>
+                    <th style="width:auto">Inject Title</th>
+                    <th style="width:10rem">Opens</th>
+                    <th style="width:10rem">Due</th>
+                    <th style="width:10rem">Closes</th>
+                    {{ if not $user.UserInfo.Admin }}
+                    <th style="width:10rem">Status</th>
+                    {{ else }}
+                    <th style="width:3rem">Edit</th>
+                    <th style="width:3rem">Delete</th>
+                    {{ end }}
+                </thead>
+                <tbody>
+                    {{ range $inject := .injects }}
+                    {{ if (or ($user.UserInfo.Admin) ($now.After $inject.OpenTime)) }}
+                    <!-- bootstrap table colors are limited until bs-v6 -->
+                    <tr class="{{ if ($now.After $inject.CloseTime) }}table-dark{{ else if ($now.After $inject.DueTime) }}table-danger{{ else if ($now.After $inject.OpenTime) }}table-success{{ else }}table-secondary{{ end }}"
+                        data-inject-id="{{ $inject.ID }}" data-inject-title="{{ $inject.Title }}"
+                        data-inject-description="{{ $inject.Description }}"
+                        data-inject-opentime="{{ $inject.OpenTime }}" data-inject-duetime="{{ $inject.DueTime }}"
+                        data-inject-closetime="{{ $inject.CloseTime }}">
+                        <td>
+                            {{ $inject.ID }}
+                        </td>
+                        <td>
+                            <a href="/injects/{{ $inject.ID }}">{{ $inject.Title }}</a>
+                        </td>
+                        <td>
+                            {{ format $inject.OpenTime }}
+                        </td>
+                        <td>
+                            {{ format $inject.DueTime }}
+                        </td>
+                        <td>
+                            {{ format $inject.CloseTime }}
+                        </td>
+                        {{ if not $user.UserInfo.Admin }}
+                        <td>
+                            False
+                        </td>
+                        {{ else }}
+                        <td>
+                            <button type="button" class="btn btn-primary editinject" data-bs-toggle="modal"
+                                data-bs-target="#editinjectModal">Edit</button>
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-danger deleteinject" data-bs-toggle="modal"
+                                data-bs-target="#deleteinjectModal">Delete</button>
+                        </td>
+                        {{ end }}
+                    </tr>
+                    {{ end }}
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+        <p style="text-align: center">🕒 Current time is <b>{{ format .now }}</b>.</p>
+    </div>
+</div>
+{{ if $user.UserInfo.Admin }}
+<script>
+    const config = {
+        display: {
+            icons: {
+                type: 'icons',
+                time: 'bi bi-clock',
+                date: 'bi bi-calendar',
+                up: 'bi bi-arrow-up',
+                down: 'bi bi-arrow-down',
+                previous: 'bi bi-chevron-left',
+                next: 'bi bi-chevron-right',
+                today: 'bi bi-calendar-check',
+                clear: 'bi bi-trash',
+                close: 'bi bi-x'
+            }
+        },
+        localization: {
+            format: 'yyyy/MM/dd HH:mm T',
+        }
+    }
+</script>
+{{ template "editinject" . }}
+{{ template "deleteinject" . }}
+{{ end }}
+
+{{ end }}
+{{ template "base" .}}
