@@ -176,7 +176,7 @@ func login(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("auth_token", tok, 86400, "/", "172.16.6.10", false, false)
+	c.SetCookie("auth_token", tok, 86400, "/", "*", false, false)
 
 	if err := session.Save(); err != nil {
 		fmt.Println(err)
