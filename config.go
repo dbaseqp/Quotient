@@ -274,7 +274,7 @@ func validateChecks(boxes []Box) error {
 
 		boxes[i].CheckList = getBoxChecks(box)
 		if len(boxes[i].CheckList) == 0 {
-			return nil
+			continue
 		}
 		earliestCheck := boxes[i].CheckList[0].StopTime
 		for j, check := range boxes[i].CheckList {
