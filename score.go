@@ -165,6 +165,11 @@ func detectSLAs(roundData map[uint][]checks.Result) error {
 						break
 					}
 				}
+				checkUptime, exists := uptime[team.ID][check.Name]
+				if !exists {
+					uptime[team.ID][check.Name] = Uptime{}
+				}
+				checkUptime.Total++
 				if result.Status == false {
 					if _, exists := slaCount[team.ID]; !exists {
 						slaCount[team.ID] = make(map[string]int)
@@ -177,7 +182,10 @@ func detectSLAs(roundData map[uint][]checks.Result) error {
 						}
 						slaCount[team.ID][check.Name] = 0
 					}
+				} else {
+					checkUptime.Ups++
 				}
+				uptime[team.ID][check.Name] = checkUptime
 			}
 		}
 	}
