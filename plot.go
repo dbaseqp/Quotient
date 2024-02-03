@@ -205,7 +205,7 @@ func graphScoresOverTime(data map[uint][]RoundPointsData, path string, config Gr
 	}
 
 	for _, team := range teams {
-		line, _ := plotter.NewLine(getTeamPlotPoints(team.ID, data[team.ID]))
+		line, _ := plotter.NewLine(getTeamPlotPoints(data[team.ID]))
 		line.LineStyle.Width = vg.Points(2)
 		line.LineStyle.Color = color.RGBA{
 			R: uint8(float64(0xff) * colors[team.ID].R),
@@ -238,7 +238,7 @@ func graphScoresOverTime(data map[uint][]RoundPointsData, path string, config Gr
 	return nil
 }
 
-func getTeamPlotPoints(teamID uint, records []RoundPointsData) plotter.XYs {
+func getTeamPlotPoints(records []RoundPointsData) plotter.XYs {
 	plotPoints := make(plotter.XYs, len(records))
 	var sum int
 	for i := range plotPoints {
