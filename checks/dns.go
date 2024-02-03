@@ -43,7 +43,7 @@ func (c Dns) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	defer cancel()
 
 	// Send the query
-	in, err := dns.ExchangeContext(deadctx, &msg, fmt.Sprintf("%s:%d", boxIp, c.Port))
+	in, err := dns.ExchangeContext(deadctx, &msg, fmt.Sprintf("%s:%d", boxIp, service.Port))
 	if err != nil {
 		res <- Result{
 			Error: "error sending query",

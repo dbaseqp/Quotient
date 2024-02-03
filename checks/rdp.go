@@ -10,7 +10,7 @@ type Rdp struct {
 }
 
 func (c Rdp) Run(teamID uint, boxIp string, res chan Result, service Service) {
-	err := tcpCheck(boxIp + ":" + strconv.Itoa(c.Port))
+	err := tcpCheck(boxIp + ":" + strconv.Itoa(service.Port))
 	if err != nil {
 		res <- Result{
 			Error: "connection error",
