@@ -273,6 +273,9 @@ func validateChecks(boxes []Box) error {
 		boxes[i].IP = box.IP
 
 		boxes[i].CheckList = getBoxChecks(box)
+		if len(boxes[i].CheckList) == 0 {
+			return nil
+		}
 		earliestCheck := boxes[i].CheckList[0].StopTime
 		for j, check := range boxes[i].CheckList {
 			if check.Points == 0 {
