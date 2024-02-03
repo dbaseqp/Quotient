@@ -36,7 +36,8 @@ var (
 	loc         *time.Location
 	// ct          CredentialTable
 
-	slaCount = make(map[uint]map[string]int) // slaCount[teamid][servicename] = slacount
+	slaCount = make(map[uint]map[string]int)    // slaCount[teamid][servicename] = slacount
+	uptime   = make(map[uint]map[string]Uptime) // slaCount[teamid][servicename] = uptime
 	/*
 		Track submission counts in memory because counting in DB after every submission is expensive
 
@@ -56,12 +57,12 @@ var (
 	enginePauseWg = &sync.WaitGroup{}
 	enginePause   bool
 	pauseTime     time.Time
-
-	teamMutex       = &sync.Mutex{}
-	persistMutex    = &sync.Mutex{}
-	agentMutex      = &sync.Mutex{}
-	adjustmentMutex = &sync.Mutex{}
 )
+
+type Uptime struct {
+	Ups   int
+	Total int
+}
 
 func init() {
 	flag.Parse()
@@ -121,11 +122,8 @@ func bootstrap() {
 		log.Fatalln("Failed to load previous round data:", err)
 	}
 	roundNumber++
-	//
-	// // Initialize manual adjustments map
-	// manualAdjustments = make(map[uint]int)
-	//
-	// // Load timezone
+
+	// Load timezone
 	loc, err = time.LoadLocation(eventConf.Timezone)
 	if err != nil {
 		log.Fatalln(errors.Wrap(err, "invalid timezone"))
@@ -167,6 +165,32 @@ func bootstrap() {
 		}
 	}
 	debugPrint("Loaded SLA states into memory")
+
+	for _, team := range teams {
+		uptime[team.ID] = make(map[string]Uptime)
+		results, err := dbGetTeamServices(int(team.ID), -1, "")
+		if err != nil {
+			log.Fatalln("Failed to load team all score data:", err)
+		}
+		for _, box := range eventConf.Box {
+			for _, check := range box.CheckList {
+				for _, result := range results {
+					if result.ServiceName == check.Name {
+						service, ok := uptime[team.ID][check.Name]
+						if !ok {
+							uptime[team.ID][check.Name] = Uptime{}
+						}
+						if result.Result == true {
+							service.Ups++
+						}
+						service.Total++
+						uptime[team.ID][check.Name] = service
+					}
+				}
+			}
+		}
+	}
+	debugPrint("Loaded uptime states into memory")
 
 	credlistFiles, err := os.ReadDir("config")
 	if err != nil {

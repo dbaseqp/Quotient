@@ -62,6 +62,7 @@ func addAuthRoutes(router *gin.RouterGroup) {
 	router.GET("/logout", logout)
 
 	// team portal
+	router.GET("/teams/:teamid/uptime", getTeamUptime)
 	router.GET("/teams/:teamid/scores", getTeamScore)
 	router.GET("/teams/:teamid/scores/:servicename", getTeamService)
 
@@ -196,6 +197,11 @@ func resetEngine(c *gin.Context) {
 
 func getConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, eventConf)
+}
+
+func getTeamUptime(c *gin.Context) {
+	teamid, _ := strconv.Atoi(c.Param("teamid"))
+	c.JSON(http.StatusOK, uptime[uint(teamid)])
 }
 
 func getTeamScore(c *gin.Context) {
