@@ -259,6 +259,10 @@ func bootstrap() {
 	checks.Creds = credentials
 	debugPrint("Loaded credential states into memory", credentials)
 
+	err = makeGraphs()
+	if err != nil {
+		errorPrint("FAILED TO MAKE GRAPHS FOR ROUND", roundNumber, ":", err.Error())
+	}
 }
 
 func startEvent(beginTime time.Time) {

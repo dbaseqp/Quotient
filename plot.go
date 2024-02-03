@@ -41,7 +41,7 @@ func makeGraphs() error {
 		return err
 	}
 
-	dataThisRound, err := dbGetChecksThisRound(roundNumber)
+	dataThisRound, err := dbGetChecksThisRound(roundNumber - 1)
 	if err != nil {
 		return err
 	}
@@ -79,6 +79,11 @@ func graphCurrentChecks(data map[uint][]ServiceData, path string, config GraphCo
 		return err
 	}
 
+	xoffset := iconWidth * 2
+	yoffset := iconHeight
+	scaleX := iconWidth / float64(uiw)
+	scaleY := iconHeight / float64(uih)
+
 	dc := gg.NewContext(W, H)
 	font, err := truetype.Parse(goregular.TTF)
 	if err != nil {
@@ -110,19 +115,14 @@ func graphCurrentChecks(data map[uint][]ServiceData, path string, config GraphCo
 		}
 	}
 
-	if int(maxServiceNameHeight)+(len(teams)*iconHeight) > H {
-		H = int(maxServiceNameHeight) + (len(teams) * iconHeight) + fontSize
+	if int(maxServiceNameHeight)+(len(teams)*yoffset) > H {
+		H = int(maxServiceNameHeight) + (len(teams) * yoffset) + fontSize
 	}
-	if int(maxTeamNameLength)+(len(services)*iconWidth) > W {
-		W = int(maxTeamNameLength) + (len(services) * iconWidth)
+	if int(maxTeamNameLength)+(len(services)*xoffset) > W {
+		W = int(maxTeamNameLength) + (len(services) * xoffset)
 	}
 	dc = gg.NewContext(W, H)
 	dc.SetFontFace(face)
-
-	xoffset := iconWidth
-	yoffset := iconHeight
-	scaleX := iconWidth / float64(uiw)
-	scaleY := iconHeight / float64(uih)
 
 	dc.SetColor(config.Color)
 
@@ -148,11 +148,12 @@ func graphCurrentChecks(data map[uint][]ServiceData, path string, config GraphCo
 			dc.Push()
 			dc.DrawRectangle(0, 0, float64(xoffset), float64(yoffset))
 			dc.Stroke()
+			dc.Translate(float64(xoffset/2), 0)
 			dc.Scale(scaleX, scaleY)
 			if check.Result == true {
-				dc.DrawImageAnchored(upIcon, 0, 0, 0, 0)
+				dc.DrawImageAnchored(upIcon, 0, 0, 0.5, 0)
 			} else {
-				dc.DrawImageAnchored(downIcon, 0, 0, 0, 0)
+				dc.DrawImageAnchored(downIcon, 0, 0, 0.5, 0)
 			}
 			dc.Pop()
 			dc.Translate(float64(xoffset), 0)

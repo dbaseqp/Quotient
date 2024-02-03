@@ -52,10 +52,7 @@ func Score() {
 		if err != nil {
 			errorPrint("FAILED TO GENERATE SLA DATA FOR ROUND", roundNumber, ":", err.Error())
 		}
-		err = makeGraphs()
-		if err != nil {
-			errorPrint("FAILED TO MAKE GRAPHS FOR ROUND", roundNumber, ":", err.Error())
-		}
+
 		log.Println("[SCORE] ===== Ending for round", roundNumber)
 		debugPrint("Round", roundNumber, "took", time.Now().Sub(startTime).String(), "to finish")
 
@@ -64,6 +61,10 @@ func Score() {
 		log.Println("[SCORE] Sleeping for", sleepDuration, "seconds until next round")
 		time.Sleep(sleepDuration)
 		roundNumber++
+		err = makeGraphs()
+		if err != nil {
+			errorPrint("FAILED TO MAKE GRAPHS FOR ROUND", roundNumber, ":", err.Error())
+		}
 	}
 }
 
