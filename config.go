@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,42 +24,38 @@ var (
 )
 
 type Config struct {
-	DBConnectURL  string
+	// General engine settings
 	Event         string
 	EventType     string
-	Verbose       bool
-	EasyPCR       bool
-	Port          int
-	Https         bool
-	Cert          string `toml:"cert,omitempty" json:"cert,omitempty"`
-	Key           string `toml:"key,omitempty" json:"key,omitempty"`
+	DBConnectURL  string
 	Timezone      string
-	StartPaused   bool
 	JWTPrivateKey string
 	JWTPublicKey  string
-
-	// Uptime    bool // Score agent callback uptime (like CCS uptime)
-	// UptimeSLA int  // Number in minutes
-
-	Delay  int
-	Jitter int
-
-	// Some check defaults
-	Timeout       int
-	SlaThreshold  int
-	ServicePoints int
-	SlaPoints     int
-
+	// Optional settings
+	EasyPCR     bool
+	Verbose     bool
+	Port        int
+	Https       bool
+	Cert        string `toml:"cert,omitempty" json:"cert,omitempty"`
+	Key         string `toml:"key,omitempty" json:"key,omitempty"`
+	StartPaused bool
 	// Restrict information
 	DisableInfoPage      bool
 	DisableHeadToHead    bool
 	DisableExternalPorts bool
 
-	Admin []Admin
+	// Round settings
+	Delay  int
+	Jitter int
 
-	// Inject API key
-	InjectAPIKey string
-	Box          []Box
+	// Defaults for checks
+	Timeout       int
+	SlaThreshold  int
+	ServicePoints int
+	SlaPoints     int
+
+	Admin []Admin
+	Box   []Box
 }
 
 // mostly used for Form and NOT FOR DATABASE... maybe change later
@@ -78,7 +73,7 @@ type Box struct {
 	Time time.Time `gorm:"-" toml:"-"`
 
 	CheckList []checks.ServiceHandler `toml:"check,omitempty" json:"-"`
-	Cmd       []checks.Cmd            `toml:"cmd,omitempty" json:"cmd,omitempty"`
+	Cmd       []checks.Custom         `toml:"cmd,omitempty" json:"cmd,omitempty"`
 	Dns       []checks.Dns            `toml:"dns,omitempty" json:"dns,omitempty"`
 	Ftp       []checks.Ftp            `toml:"ftp,omitempty" json:"ftp,omitempty"`
 	Imap      []checks.Imap           `toml:"imap,omitempty" json:"imap,omitempty"`
@@ -116,6 +111,7 @@ func readConfig(path string) Config {
 // general error checking
 func checkConfig(conf *Config) error {
 	// check top level configs
+	// required settings
 	var errResult error
 	if conf.Event == "" {
 		errResult = errors.Join(errResult, errors.New("event title blank or not specified"))
@@ -125,12 +121,35 @@ func checkConfig(conf *Config) error {
 		errResult = errors.Join(errResult, errors.New("not a valid event type"))
 	}
 
+	if conf.DBConnectURL == "" {
+		errResult = errors.Join(errResult, errors.New("no db connect url specified"))
+	}
+
+	if conf.JWTPrivateKey == "" || conf.JWTPublicKey == "" {
+		errResult = errors.Join(errResult, errors.New("missing JWT private/public key pair"))
+	}
+
+	if len(conf.Admin) == 0 {
+		errResult = errors.Join(errResult, errors.New("missing at least 1 defined admin user"))
+	} else {
+		for _, admin := range conf.Admin {
+			if admin.Name == "" || admin.Pw == "" {
+				errResult = errors.Join(errResult, errors.New("admin "+admin.Name+" missing required property"))
+			}
+		}
+	}
+
+	if conf.Timezone == "" {
+		errResult = errors.Join(errResult, errors.New("no timezone specified"))
+	}
+
+	// optional settings
 	if conf.Delay == 0 {
-		errResult = errors.Join(errResult, errors.New("delay not specified"))
+		conf.Delay = 60
 	}
 
 	if conf.Jitter == 0 {
-		errResult = errors.Join(errResult, errors.New("jitter not specified"))
+		conf.Jitter = 5
 	}
 
 	if conf.Https == true {
@@ -147,56 +166,18 @@ func checkConfig(conf *Config) error {
 		}
 	}
 
-	if conf.DBConnectURL == "" {
-		errResult = errors.Join(errResult, errors.New(""))
-	}
-
-	if conf.InjectAPIKey == "" {
-		log.Println("[WARN] No Inject API Key specified, setting to random UUID")
-		// conf.InjectAPIKey = getUUID()
-	}
-
 	if conf.Jitter >= conf.Delay {
-		errResult = errors.Join(errResult, errors.New("jitter not smaller than delay"))
-	}
-
-	if conf.Timeout >= conf.Delay-conf.Jitter {
-		errResult = errors.Join(errResult, errors.New("timeout not smaller than delay minus jitter"))
+		errResult = errors.Join(errResult, errors.New("jitter must be smaller than delay"))
 	}
 
 	if conf.Timeout != 0 {
-		dur, err := time.ParseDuration(strconv.Itoa(conf.Timeout) + "s")
-		if err != nil {
-			errResult = errors.Join(errResult, errors.New("invalid value for timeout: "+err.Error()))
-		}
+		dur := time.Duration(conf.Timeout) * time.Second
 		checks.GlobalTimeout = dur
 	} else {
 		checks.GlobalTimeout = time.Second * 30
 	}
-
-	// if conf.UptimeSLA != 0 {
-	// 	dur, err := time.ParseDuration(strconv.Itoa(conf.UptimeSLA) + "m")
-	// 	if err != nil {
-	// 		errResult = errors.Join(errResult, errors.New("invalid value for uptime SLA: "+err.Error()))
-	// 	}
-	// 	uptimeSLA = dur
-	// } else {
-	// 	uptimeSLA = time.Minute * 10
-	// }
-
-	if conf.JWTPrivateKey == "" || conf.JWTPublicKey == "" {
-		errResult = errors.Join(errResult, errors.New("missing JWT private/public key"))
-	}
-
-	for _, admin := range conf.Admin {
-		if admin.Name == "" || admin.Pw == "" {
-			errResult = errors.Join(errResult, errors.New("admin "+admin.Name+" missing required property"))
-		}
-	}
-
-	// setting defaults
-	if conf.Timezone == "" {
-		conf.Timezone = "America/Rainy_River"
+	if conf.Timeout >= conf.Delay-conf.Jitter {
+		errResult = errors.Join(errResult, errors.New("timeout must be smaller than delay minus jitter"))
 	}
 
 	if conf.ServicePoints == 0 {
@@ -253,10 +234,6 @@ func checkConfig(conf *Config) error {
 	return errResult
 }
 
-func validateBaseAttributes(ck checks.Runner) {
-
-}
-
 func validateChecks(boxes []Box) error {
 	// check validators
 	// please overlook this transgression
@@ -295,8 +272,8 @@ func validateChecks(boxes []Box) error {
 			}
 			check.Type = reflect.TypeOf(check.Runner).String()
 			switch check.Runner.(type) {
-			case checks.Cmd:
-				ck := check.Runner.(checks.Cmd)
+			case checks.Custom:
+				ck := check.Runner.(checks.Custom)
 				if check.Display == "" {
 					check.Display = "cmd"
 				}
@@ -620,14 +597,4 @@ func getBoxChecks(b Box) []checks.ServiceHandler {
 		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
 	}
 	return checkList
-}
-
-func getCheckName(check checks.Service) string {
-	name := strings.Split(reflect.TypeOf(check).String(), ".")[1]
-	fmt.Println("name is ", name)
-	return name
-}
-
-func (m *Config) GetFullIP(boxIP, teamIP string) string {
-	return strings.Replace(boxIP, "x", teamIP, 1)
 }
