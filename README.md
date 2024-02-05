@@ -74,9 +74,11 @@ ip = "10.20.x.1"
 
     # If you want to keep something default, just don't specify it
     # For this box, we're running a default SSH login check
+
     [[box.ssh]]
 
     # There are also some configurations you can use on all types of checks
+
     [[box.smb]]
     stoptime = 2024-01-05T06:00:00-08:00
     [[box.smb]]
@@ -91,6 +93,7 @@ ip = "10.20.x.2"
 
     # A custom check that runs command (like shell or python scripts) with sh. Compares output against regex.
     # Command must return exit code 0 to pass.
+
     [[box.custom]]
     # BOXIP and USERNAME and PASSWORD are replaced with their values when run
     command = "python3 ./test.py BOXIP USERNAME PASSWORD" # Keywords not required
@@ -99,8 +102,10 @@ ip = "10.20.x.2"
     # If you omit a value, it is set to the default
     # For example, if I removed the line port = 4000,
     # the check port would be 53
+
     [[box.dns]]
     port = 4000 # default 53
+
         [[box.dns.record]]
         kind = "A" # DNS record type
         domain = "townsquare.sherwood.lan" # Domain query
@@ -121,6 +126,7 @@ ip = "10.20.x.2"
 
         # When multiple files are passed, one is randomly chosen
         # This pattern persists for any multi-item check
+
         [[box.ftp.file]]
         name = "workfiles.txt" # file to retrieve
         regex = "work.*work" # regex to test against file
@@ -140,6 +146,7 @@ ip = "10.20.x.2"
     percent = 50 # max percent packet loss
 
     # Note: RDP is nonfunctional until a good go RDP library is written, or I write one
+    
     [[box.rdp]]
     port = 3389
 
