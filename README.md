@@ -61,6 +61,7 @@ jwtpublickey = "config/pubkey.pem"      # Public key used for JWT
 ##### Admins #####
 # Admins have access to all records and information.
 # You need at least one admin.
+
 [[admin]]
 name = "admin"
 pw = "admin"
