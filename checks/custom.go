@@ -8,7 +8,7 @@ import (
 	"github.com/alessio/shellescape"
 )
 
-type Cmd struct {
+type Custom struct {
 	Service
 	Command string
 	Regex   string
@@ -23,7 +23,7 @@ func commandOutput(cmd string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func (c Cmd) Run(teamID uint, boxIp string, res chan Result, service Service) {
+func (c Custom) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	re, err := regexp.Compile(c.Regex)
 	if err != nil {
 		res <- Result{

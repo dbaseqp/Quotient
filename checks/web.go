@@ -16,21 +16,16 @@ type Web struct {
 }
 
 type urlData struct {
-	Path string
-	// use creds list for check for login
-	UsernameParam string
-	PasswordParam string
-	Status        int
-	Diff          int
-	Regex         string
-	CompareFile   string // TODO implement
+	Path        string
+	Status      int
+	Diff        int
+	Regex       string
+	CompareFile string // TODO implement
 }
 
 func (c Web) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	u := c.Url[rand.Intn(len(c.Url))]
-	// if usernameParam == nil
-	// post with username/pw as creds
-	// else
+
 	tr := &http.Transport{
 		MaxIdleConns:      1,
 		IdleConnTimeout:   GlobalTimeout, // address this

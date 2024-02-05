@@ -1,7 +1,7 @@
 package checks
 
 import (
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net"
 	"regexp"
@@ -100,7 +100,7 @@ func (c Smb) Run(teamID uint, boxIp string, res chan Result, service Service) {
 		}
 		defer f.Close()
 
-		buf, err := ioutil.ReadAll(f)
+		buf, err := io.ReadAll(f)
 		if err != nil {
 			res <- Result{
 				Error: "failed to read file",

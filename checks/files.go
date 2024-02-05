@@ -3,7 +3,7 @@ package checks
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"io/ioutil"
+	"os"
 
 	"github.com/pmezard/go-difflib/difflib"
 )
@@ -44,7 +44,7 @@ func GetFile(fileName string) (string, error) {
 	// this isn't really an issue since if you can
 	// edit the config, you already have as shell,
 	// but whatever. and it's only reading/hashing
-	fileContent, err := ioutil.ReadFile("./scoredfiles/" + fileName)
+	fileContent, err := os.ReadFile("./scoredfiles/" + fileName)
 	if err != nil {
 		return "", err
 	}

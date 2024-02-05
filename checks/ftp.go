@@ -1,7 +1,7 @@
 package checks
 
 import (
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"regexp"
 	"strconv"
@@ -58,7 +58,7 @@ func (c Ftp) Run(teamID uint, boxIp string, res chan Result, service Service) {
 			return
 		}
 		defer r.Close()
-		buf, err := ioutil.ReadAll(r)
+		buf, err := io.ReadAll(r)
 		if err != nil {
 			res <- Result{
 				Error: "failed to read ftp file",
