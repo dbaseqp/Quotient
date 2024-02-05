@@ -10,7 +10,6 @@
         <div class="d-flex h-auto justify-content-center align-items-center">
             <table class="table table-hover table-bordered my-2">
                 <thead class="">
-                    <th style="width:3rem">ID</th>
                     <th style="width:auto">Inject Title</th>
                     <th style="width:10rem">Opens</th>
                     <th style="width:10rem">Due</th>
@@ -31,9 +30,6 @@
                         data-inject-description="{{ $inject.Description }}"
                         data-inject-opentime="{{ $inject.OpenTime }}" data-inject-duetime="{{ $inject.DueTime }}"
                         data-inject-closetime="{{ $inject.CloseTime }}">
-                        <td>
-                            {{ $inject.ID }}
-                        </td>
                         <td>
                             <a href="/injects/{{ $inject.ID }}">{{ $inject.Title }}</a>
                         </td>
