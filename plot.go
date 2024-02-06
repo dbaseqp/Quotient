@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"math"
 	"os"
 	"path/filepath"
+	"time"
 
 	"git.sr.ht/~sbinet/gg"
 	"github.com/golang/freetype/truetype"
@@ -116,32 +118,40 @@ func graphCurrentChecks(data map[uint][]ServiceData, path string, config GraphCo
 	}
 
 	if int(maxServiceNameHeight)+(len(teams)*yoffset) > H {
-		H = int(maxServiceNameHeight) + (len(teams) * yoffset) + fontSize
+		H = int(maxServiceNameHeight) + (len(teams) * yoffset) + fontSize + (yoffset * 2)
 	}
 	if int(maxTeamNameLength)+(len(services)*xoffset) > W {
 		W = int(maxTeamNameLength) + (len(services) * xoffset)
 	}
 	dc = gg.NewContext(W, H)
+
 	dc.SetFontFace(face)
-
 	dc.SetColor(config.Color)
-
 	dc.Translate(maxTeamNameLength, maxServiceNameHeight)
 
-	for i, team := range teams {
-		if i == 0 {
-			dc.Push()
-			dc.Translate(float64(xoffset/2), 0)
-			for _, serviceName := range services {
-				dc.Push()
-				dc.Rotate(gg.Radians(30))
-				dc.DrawStringAnchored(serviceName, 0, 0, 1, 0.5)
-				dc.Pop()
-				dc.Translate(float64(xoffset), 0)
-			}
-			dc.Pop()
-			dc.Translate(0, fontSize/2)
-		}
+	dc.Push()
+	dc.Translate(float64(xoffset), 0)
+	face = truetype.NewFace(font, &truetype.Options{
+		Size: fontSize * 2,
+	})
+	dc.SetFontFace(face)
+	dc.DrawStringAnchored(fmt.Sprint("Service Status: ", time.Now().In(loc).Format("2006-01-02 15:04:05")), 0, 0, 0, 0)
+	dc.Pop()
+	dc.Translate(0, float64(yoffset*2))
+
+	dc.Push()
+	dc.Translate(float64(xoffset/2), 0)
+	for _, serviceName := range services {
+		dc.Push()
+		dc.Rotate(gg.Radians(30))
+		dc.DrawStringAnchored(serviceName, 0, 0, 1, 0.5)
+		dc.Pop()
+		dc.Translate(float64(xoffset), 0)
+	}
+	dc.Pop()
+	dc.Translate(0, fontSize/2)
+
+	for _, team := range teams {
 		dc.Push()
 		dc.DrawStringAnchored(team.Name, 0, float64(yoffset/2), 1, 0.5)
 		for _, check := range data[team.ID] {
