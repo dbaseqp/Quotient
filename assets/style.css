@@ -156,3 +156,15 @@ table#teamLast10 td {
 #plotCarousel .carousel-inner {
     max-width: 100%;
 }
+
+.dropdown-menu {
+    padding: 4px;
+}
+
+.dropdown-item {
+    border-radius: var(--bs-border-radius-sm);
+}
+
+.dropdown-menu li:not(:last-child) {
+    margin-bottom: 2px;
+}
