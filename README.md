@@ -16,7 +16,7 @@ Configuration
 -------------
 
 ## Cred Lists
-Cred lists need to be CSVs specified in the `./config` directory with a `.credlist` extension. The name of the file will be used as the name of the credlist. When password change requests (PCRs) get processed, credlists will only be mutated by changing the password column of an existing user in the defined list. Below is an example.
+Cred lists need to be CSVs specified in the `./config` directory with a `.credlist` extension. The name of the file will be used as the name of the credlist. When password change requests (PCRs) get processed, credlists will only be mutated by changing the password column of an existing user in the defined list. Below is an example. See the below configuration examples to specify credlists for checks.
 
 ```csv
 joe,s3cret
@@ -151,7 +151,7 @@ ip = "10.20.x.2"
     port = 3389
 
     [[box.smb]]
-    credlists = ["admins",] # for any check using credentials, you can specify the list
+    credlists = ["admins.credlist",] # for any check using credentials, you can specify the list
     port = 55 # default 21
     anonymous = true # default false
 
