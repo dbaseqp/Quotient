@@ -73,7 +73,7 @@ type Box struct {
 	Time time.Time `gorm:"-" toml:"-"`
 
 	CheckList []checks.ServiceHandler `toml:"check,omitempty" json:"-"`
-	Cmd       []checks.Custom         `toml:"cmd,omitempty" json:"cmd,omitempty"`
+	Custom    []checks.Custom         `toml:"custom,omitempty" json:"custom,omitempty"`
 	Dns       []checks.Dns            `toml:"dns,omitempty" json:"dns,omitempty"`
 	Ftp       []checks.Ftp            `toml:"ftp,omitempty" json:"ftp,omitempty"`
 	Imap      []checks.Imap           `toml:"imap,omitempty" json:"imap,omitempty"`
@@ -275,7 +275,7 @@ func validateChecks(boxes []Box) error {
 			case checks.Custom:
 				ck := check.Runner.(checks.Custom)
 				if check.Display == "" {
-					check.Display = "cmd"
+					check.Display = "custom"
 				}
 				if check.Name == "" {
 					check.Name = box.Name + "-" + check.Display
@@ -551,7 +551,7 @@ func validateChecks(boxes []Box) error {
 func getBoxChecks(b Box) []checks.ServiceHandler {
 	// Please forgive me
 	checkList := []checks.ServiceHandler{}
-	for _, c := range b.Cmd {
+	for _, c := range b.Custom {
 		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
 	}
 	for _, c := range b.Dns {
