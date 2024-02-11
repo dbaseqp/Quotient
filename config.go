@@ -270,6 +270,11 @@ func validateChecks(boxes []Box) error {
 			if check.StopTime.IsZero() {
 				check.StopTime = time.Now().AddDate(1, 0, 0) // one year ahead should be far enough
 			}
+			for _, list := range check.CredLists {
+				if !strings.HasSuffix(list, ".credlist") {
+					return errors.New("check " + check.Name + " has invalid credlist names")
+				}
+			}
 			check.Type = reflect.TypeOf(check.Runner).String()
 			switch check.Runner.(type) {
 			case checks.Custom:
