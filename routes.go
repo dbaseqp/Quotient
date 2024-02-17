@@ -328,7 +328,7 @@ func submitPCR(c *gin.Context) {
 	defer file.Close()
 
 	for username, password := range credentials[teamid][pcrForm.CredList] {
-		_, err = file.WriteString(fmt.Sprintf("%s,%s", username, password))
+		_, err = file.WriteString(fmt.Sprintf("%s,%s\n", username, password))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
