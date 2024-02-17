@@ -76,7 +76,7 @@ func RunCheck(teamID uint, teamIP int, boxIP string, boxName string, check Servi
 	res := make(chan Result)
 	result := Result{}
 	teamNumber := fmt.Sprint(teamIP)
-	if strings.Count(boxIP, "y")+1-len(teamNumber) < 0 {
+	if strings.Count(boxIP, "y")+1-len(teamNumber) > 0 {
 		boxIP = strings.Replace(boxIP, "y", "0", strings.Count(boxIP, "y")+1-len(teamNumber))
 	}
 	fullIP := strings.Replace(boxIP, "x", teamNumber, 1)
