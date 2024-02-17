@@ -78,6 +78,8 @@ func RunCheck(teamID uint, teamIP int, boxIP string, boxName string, check Servi
 	teamNumber := fmt.Sprint(teamIP)
 	if strings.Count(boxIP, "Y")+1-len(teamNumber) > 0 {
 		boxIP = strings.Replace(boxIP, "Y", "0", strings.Count(boxIP, "Y")+1-len(teamNumber))
+	} else {
+		boxIP = strings.ReplaceAll(boxIP, "Y", "")
 	}
 	fullIP := strings.Replace(boxIP, "X", teamNumber, 1)
 	// go fake(teamID, fullIP, res, check.Service)
