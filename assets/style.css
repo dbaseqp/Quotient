@@ -125,7 +125,7 @@ header {
     margin-right: 8px;
 }
 
-table#teamLast10 th {
+table#teamLast10 th:not(:first-child) {
     max-width: 10rem;
     white-space: nowrap;
     text-align: right
