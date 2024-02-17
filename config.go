@@ -247,8 +247,8 @@ func validateChecks(boxes []Box) error {
 			return errors.New("no ip found for box " + box.Name)
 		}
 		// Ensure IP replacement chars are lowercase
-		box.IP = strings.ToLower(box.IP)
-		boxes[i].IP = box.IP
+		// box.IP = strings.ToLower(box.IP)
+		// boxes[i].IP = box.IP
 
 		boxes[i].CheckList = getBoxChecks(box)
 		if len(boxes[i].CheckList) == 0 {
