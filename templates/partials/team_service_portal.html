@@ -141,7 +141,7 @@
                         th.textContent = time.toLocaleTimeString()
                         thead.appendChild(th)
                     });
-                    Object.keys(records).forEach((servicename) => {
+                    Object.keys(records).sort().forEach((servicename) => {
                         const tr = document.createElement("tr")
                         const th = document.createElement("th")
                         const button = document.createElement("button")
