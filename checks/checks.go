@@ -25,6 +25,7 @@ type ServiceHandler struct {
 // services will inherit Service so that config can be read from file, but will not be used after initial read
 type Service struct {
 	Name         string    `toml:",omitempty"` // Name is the box name plus the service (ex. lunar-dns)
+	FQDN         string    `toml:",omitempty"`
 	Display      string    `toml:",omitempty"` // Display is the name of the service (ex. dns)
 	IP           string    `toml:",omitempty"`
 	CredLists    []string  `toml:",omitzero"`
