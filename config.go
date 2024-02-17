@@ -79,6 +79,7 @@ type Box struct {
 	Imap      []checks.Imap           `toml:"imap,omitempty" json:"imap,omitempty"`
 	Ldap      []checks.Ldap           `toml:"ldap,omitempty" json:"ldap,omitempty"`
 	Ping      []checks.Ping           `toml:"ping,omitempty" json:"ping,omitempty"`
+	Pop3      []checks.Pop3           `toml:"pop3,omitempty" json:"pop3,omitempty"`
 	Rdp       []checks.Rdp            `toml:"rdp,omitempty" json:"rdp,omitempty"`
 	Smb       []checks.Smb            `toml:"smb,omitempty" json:"smb,omitempty"`
 	Smtp      []checks.Smtp           `toml:"smtp,omitempty" json:"smtp,omitempty"`
@@ -367,6 +368,19 @@ func validateChecks(boxes []Box) error {
 					check.Name = box.Name + "-" + check.Display
 				}
 				check.Runner = ck
+			case checks.Pop3:
+				ck := check.Runner.(checks.Pop3)
+				check.IP = box.IP
+				if check.Display == "" {
+					check.Display = "pop3"
+				}
+				if check.Name == "" {
+					check.Name = box.Name + "-" + check.Display
+				}
+				if check.Port == 0 {
+					check.Port = 110
+				}
+				check.Runner = ck
 			case checks.Rdp:
 				ck := check.Runner.(checks.Rdp)
 				check.IP = box.IP
@@ -569,6 +583,9 @@ func getBoxChecks(b Box) []checks.ServiceHandler {
 		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
 	}
 	for _, c := range b.Ping {
+		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
+	}
+	for _, c := range b.Pop3 {
 		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
 	}
 	for _, c := range b.Ldap {
