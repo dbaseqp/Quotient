@@ -144,9 +144,10 @@
                     Object.keys(records).sort().forEach((servicename) => {
                         const tr = document.createElement("tr")
                         const th = document.createElement("th")
+                        th.classList = "text-end"
                         const button = document.createElement("button")
                         button.textContent = servicename
-                        button.className = "btn btn-link text-end text-nowrap"
+                        button.className = "btn btn-link text-nowrap"
                         button.type = "button"
                         button.setAttribute("data-service-name", servicename)
                         button.setAttribute("data-bs-toggle", "offcanvas")
