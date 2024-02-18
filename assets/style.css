@@ -3,6 +3,10 @@
         background-color: rgba(240, 240, 240);
     }
 
+    .navbar .nav-link.active {
+        /* opacity: 0.5; */
+    }
+
     .nav .nav-link.active {
         background-color: var(--bs-secondary);
     }
@@ -19,6 +23,10 @@
 
     .bg-contrast {
         background-color: black;
+    }
+
+    .navbar .nav-link.active {
+        /* opacity: 0.5; */
     }
 
     .nav .nav-link.active {
