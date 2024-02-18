@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"log"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -42,7 +43,7 @@ func (c Custom) Run(teamID uint, boxIp string, res chan Result, service Service)
 	// We shell escape username and password, who knows what format they are
 	formedCommand = strings.Replace(formedCommand, "USERNAME", shellescape.Quote(username), -1)
 	formedCommand = strings.Replace(formedCommand, "PASSWORD", shellescape.Quote(password), -1)
-
+	log.Println("CUSTOM CHECK COMMAND:", formedCommand)
 	out, err := commandOutput(formedCommand)
 	if err != nil {
 		res <- Result{
