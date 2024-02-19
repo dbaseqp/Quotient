@@ -12,7 +12,7 @@
                 <button class="btn btn-link nav-link py-2 px-0 px-lg-2 dropdown-toggle d-flex align-items-center"
                     id="bd-theme" type="button" aria-expanded="false" data-bs-toggle="dropdown" data-bs-display="static"
                     aria-label="Toggle theme">
-                    <i class="bi bi my-1 theme-icon-active" style="width:16px;"></i>
+                    <i class="bi bi my-1 theme-icon-active"></i>
                     <span class="d-lg-none ms-2" id="bd-theme-text"></span>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end position-absolute" aria-labelledby="bd-theme-text">
@@ -55,6 +55,14 @@
             </div>
             <div class="offcanvas-body p-0">
                 <ul class="navbar-nav flex-column justify-content-end flex-grow-1 p-0">
+                    <li class="nav-item">
+                        <a class='nav-link p-3 {{ if eq .title "Announcements"}}active{{end}}' aria-current="page" href="/announcements">
+                            <div class="d-flex flex-column justify-content-center align-items-center">
+                                <i class="bi bi-speedometer2"></i>
+                                Announcements
+                            </div>
+                        </a>
+                    </li>
                     <li class="nav-item">
                         <a class='nav-link p-3 {{ if eq .title "Overview"}}active{{end}}' aria-current="page" href="/overview">
                             <div class="d-flex flex-column justify-content-center align-items-center">

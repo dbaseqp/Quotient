@@ -4,7 +4,8 @@
     }
 
     .navbar .nav-link.active {
-        /* opacity: 0.5; */
+        background-color: var(--bs-primary);
+        color: var(--bs-light)
     }
 
     .nav .nav-link.active {
@@ -26,7 +27,7 @@
     }
 
     .navbar .nav-link.active {
-        /* opacity: 0.5; */
+        background-color: var(--bs-primary);
     }
 
     .nav .nav-link.active {
@@ -122,6 +123,11 @@ header {
     color: var(--bs-body-color)
 }
 
+.nav-link .bi {
+    height: 16px;
+    width: 16px;
+}
+
 .graph {
     margin: 0 auto;
     max-width: 100%;
@@ -153,7 +159,7 @@ table#teamLast10 td {
     max-width: 100%;
 }
 
-.team-portal-container h3:not(:first-child){
+.team-portal-container h3:not(:first-child) {
     margin-top: 1.5rem;
 }
 
