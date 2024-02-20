@@ -48,13 +48,13 @@
 {{ if .user }}
 <div class="d-flex h-100 overflow-auto">
     <div class="navbar sticky-top navbar-expand-lg bg-contrast align-items-start">
-        <div class="offcanvas offcanvas-start" data-bs-backdrop="false" tabindex="-1" id="offcanvasNavbar" aria-labelledby="offcanvasNavbarLabel">
+        <div class="offcanvas offcanvas-start" style="height: 100% !important;" data-bs-backdrop="false" tabindex="-1" id="offcanvasNavbar" aria-labelledby="offcanvasNavbarLabel">
             <div class="offcanvas-header">
                 <h5 class="offcanvas-title" id="offcanvasNavbarLabel">{{ .name }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
             </div>
-            <div class="offcanvas-body p-0">
-                <ul class="navbar-nav flex-column justify-content-end flex-grow-1 p-0">
+            <div class="offcanvas-body flex-grow-1 p-0">
+                <ul class="navbar-nav flex-column justify-content-end flex-grow-1 h-100 p-0">
                     <li class="nav-item">
                         <a class='nav-link p-3 {{ if eq .title "Announcements"}}active{{end}}' aria-current="page" href="/announcements">
                             <div class="d-flex flex-column justify-content-center align-items-center">
@@ -98,7 +98,7 @@
                     </li>
                     {{ end }}
                     {{ if .user }}
-                    <li class="nav-item">
+                    <li class="nav-item mt-auto">
                         <a class='nav-link p-3' aria-current="page" href="/api/logout">
                             <div class="d-flex flex-column justify-content-center align-items-center">
                                 <i class="bi bi-box-arrow-left"></i>
