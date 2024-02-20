@@ -4,7 +4,7 @@
     }
 
     .navbar .nav-link.active {
-        background-color: var(--bs-primary);
+        background: linear-gradient(90deg, rgba(0,212,255,1) 0%, rgba(10,105,218,1) 100%);
         color: var(--bs-light)
     }
 
@@ -27,7 +27,7 @@
     }
 
     .navbar .nav-link.active {
-        background-color: var(--bs-primary);
+        background: linear-gradient(90deg, rgba(0,212,255,1) 0%, rgba(10,105,218,1) 100%);
     }
 
     .nav .nav-link.active {
