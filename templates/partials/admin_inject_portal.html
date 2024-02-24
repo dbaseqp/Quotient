@@ -8,10 +8,10 @@
                         <h4>Team Submissions</h4>
                         <div>View the teams' inject submissions</div>
                     </div>
-                    {{ range $team := .teams}}
+                    {{ range $team := .teams }}
                     <div class="d-flex flex-row align-items-center justify-content-between my-4">
                         <div class="d-flex flex-column">
-                            <h5>{{ $team.Name}}</h5>
+                            <h5>{{ $team.Name }}</h5>
                         </div>
                         <button type="button" class="btn btn-outline-secondary submission" data-bs-toggle="modal"
                             data-bs-target="#submissionModal" data-team-id="{{ $team.ID }}"
@@ -33,7 +33,210 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                {{ template "submissionportal" . }}
+                <div class="submission-portal-container">
+                    {{ if .user.UserInfo.Admin }}
+                    <h3>Grade Submission</h3>
+                    <form id="gradeinjectForm">
+                        <div class="mb-3">
+                            <label for="submissionid" class="col-form-label">Submission #:</label>
+                            <input name="submissionid" min="1" type="number" class="form-control" id="submissionid" required
+                                aria-required="true">
+                        </div>
+                        <div class="mb-3">
+                            <label for="grader" class="col-form-label">Grader:</label>
+                            <input name="grader" type="text" class="form-control" id="grader" required aria-required="true">
+                        </div>
+                        <div class="mb-3">
+                            <label for="feedback" class="col-form-label">Feedback:</label>
+                            <input name="feedback" type="text" class="form-control" id="feedback" required aria-required="true">
+                        </div>
+                        <div class="mb-3">
+                            <label for="score" class="col-form-label">Score:</label>
+                            <input name="score" type="number" min="0" class="form-control" id="score" required aria-required="true">
+                        </div>
+                        <div class="mb-3">
+                            <button type="submit" form="gradeinjectForm" class="btn btn-primary">Grade inject
+                            </button>
+                        </div>
+                    </form>
+                    {{ else }}
+                    <h3>Submit</h3>
+                    <form id="submitinjectForm">
+                        <div class="mb-3">
+                            <label for="editinjectFiles" class="form-label">Submit Inject Files:</label>
+                            <p class="text-body-secondary">Please upload either a PDF or ZIP file.</p>
+                            <input name="files" class="form-control" type="file" id="editinjectFiles" accept=".pdf,.zip" multiple>
+                        </div>
+                        <div class="mb-3">
+                            <button type="submit" form="submitinjectForm" class="btn btn-primary">Submit inject
+                            </button>
+                        </div>
+                    </form>
+                    {{ end }}
+                    <h3>Submissions</h3>
+                    <div class="table-container">
+                        <table id="submissionTable" class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th style="max-width:fit-content">Submission #</th>
+                                    <th>Submission Time</th>
+                                    <th>Submission File</th>
+                                    {{ if .user.UserInfo.Admin }}
+                                    <th>Grader</th>
+                                    <th>Score</th>
+                                    <th>Feedback</th>
+                                    {{ end }}
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {{ if .user.UserInfo.Admin }}
+                <script>
+                    document.addEventListener('DOMContentLoaded', function () {
+                        // Intercept the form submission
+                        document.getElementById('gradeinjectForm').addEventListener('submit', function (event) {
+                            // Prevent the default form submission
+                            event.preventDefault();
+                
+                            let formid = "gradeinjectForm";
+                            const form = document.forms[formid]
+                            let teamid = event.target.closest("form").getAttribute("data-team-id")
+                            let url = "/api/injects/{{ .inject.ID }}/" + teamid + "/submissions/" + form.submissionid.value + "/grade";
+                
+                            let data = JSON.stringify({
+                                "grader": form.grader.value,
+                                "score": parseInt(form.score.value),
+                                "feedback": form.feedback.value,
+                            })
+                            let success_function = function (data) {
+                                createToast("Submission successfully graded", "bg-success")
+                            }
+                            postAjax(event, formid, data, url, success_function)
+                        });
+                    })
+                </script>
+                {{ else }}
+                <script>
+                    document.addEventListener('DOMContentLoaded', function () {
+                        let form = document.getElementById('submitinjectForm')
+                
+                        // Intercept the form submission
+                        document.getElementById('submitinjectForm').addEventListener('submit', function (event) {
+                            // Prevent the default form submission
+                            event.preventDefault();
+                
+                            let formid = "submitinjectForm";
+                            let url = "/api/injects/{{ .inject.ID }}/submit";
+                
+                            const form = document.forms[formid]
+                            let data = new FormData()
+                            for (const file of form.files.files) {
+                                data.append("files", file)
+                            }
+                            data.append("title", form.title.value)
+                            let success_function = function (data) {
+                                createToast("Inject successfully submitted", "bg-success")
+                            }
+                            postAjax(event, formid, data, url, success_function)
+                        });
+                    })
+                </script>
+                {{ end }}
+                
+                <script>
+                    const submissionTable = document.getElementById("submissionTable")
+                
+                    function loadSubmissions(teamid) {
+                        submissionTable.querySelector("tbody").innerHTML = ""
+                        fetch("/api/injects/{{ .inject.ID }}/" + teamid).then((response) => {
+                            if (!response.ok) {
+                                Promise.reject(response)
+                            }
+                            return response.json()
+                        }).then((data) => {
+                            if (data.error) {
+                                createToast(data.error, "bg-danger")
+                            } else {
+                                let tbody = submissionTable.querySelector("tbody")
+                                if (data.length > 0) {
+                                    {{ if .user.UserInfo.Admin }}
+                                    const submissionidField = document.getElementById("submissionid")
+                                    submissionidField.value = data[0].AttemptNumber
+                                    submissionidField.max = data[0].AttemptNumber
+                                    {{ end }}
+                                    data.forEach((submission) => {
+                                        const tr = document.createElement("tr")
+                                        const submissionid = document.createElement("td")
+                                        const submissiontime = document.createElement("td")
+                                        const submissionfile = document.createElement("td")
+                                        submissionid.textContent = submission.AttemptNumber
+                                        let time = new Date(submission.SubmissionTime)
+                                        submissiontime.textContent = time.toLocaleString()
+                                        const ul = document.createElement("ul")
+                                        submission.SubmissionFileNames.forEach((name) => {
+                                            const li = document.createElement("li")
+                                            const a = document.createElement("a")
+                                            a.textContent = name
+                                            a.download = "Team-" + teamid + "-Inject-{{ .inject.ID }}-Submission-" + submission.AttemptNumber + "-" + name
+                                            a.href = "/api/injects/{{ .inject.ID }}/" + teamid + "/submissions/" + submission.AttemptNumber + "/" + name
+                                            li.appendChild(a)
+                                            ul.appendChild(li)
+                                        })
+                                        submissionfile.appendChild(ul)
+                                        tr.appendChild(submissionid)
+                                        tr.appendChild(submissiontime)
+                                        tr.appendChild(submissionfile)
+                                        {{ if .user.UserInfo.Admin }}
+                                        const grader = document.createElement("td")
+                                        const score = document.createElement("td")
+                                        const feedback = document.createElement("td")
+                                        grader.textContent = submission.Grader
+                                        score.textContent = submission.Score
+                                        feedback.textContent = submission.Feedback
+                                        tr.appendChild(grader)
+                                        tr.appendChild(score)
+                                        tr.appendChild(feedback)
+                                        {{ end }}
+                
+                                        tbody.appendChild(tr)
+                                    });
+                                } else {
+                                    const thead = document.querySelectorAll("thead th")
+                                    const tr = document.createElement("tr")
+                                    thead.forEach((th) => {
+                                        const td = document.createElement("td")
+                                        td.textContent = "No submissions yet"
+                                        tr.appendChild(td)
+                                    })
+                                    tbody.appendChild(tr)
+                                }
+                            }
+                        }).catch((error) => {
+                            createToast(error, "bg-danger")
+                        })
+                    }
+                </script>
+                {{ if .user.UserInfo.Admin }}
+                <script>
+                    document.addEventListener('DOMContentLoaded', function () {
+                        let submissionButtons = document.querySelectorAll("button.submission")
+                        submissionButtons.forEach((button) => {
+                            button.addEventListener('click', function (event) {
+                                document.getElementById("submissionModalLabel").textContent = "Submissions for " + button.getAttribute("data-team-name")
+                                document.getElementById("gradeinjectForm").setAttribute("data-team-id", button.getAttribute("data-team-id"))
+                                loadSubmissions(button.getAttribute("data-team-id"))
+                            })
+                        })
+                    })
+                </script>
+                {{ else }}
+                <script>
+                    document.addEventListener('DOMContentLoaded', loadSubmissions("{{ .user.UserInfo.ID }}"))
+                </script>
+                {{ end }}
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>

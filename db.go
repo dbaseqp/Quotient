@@ -86,7 +86,8 @@ type InjectData struct {
 	OpenTime        time.Time
 	DueTime         time.Time
 	CloseTime       time.Time
-	InjectFileNames pq.StringArray `gorm:"type:text[]"`
+	InjectFileNames pq.StringArray   `gorm:"type:text[]"`
+	Submissions     []SubmissionData `gorm:"foreignKey:InjectID"`
 }
 
 type SubmissionData struct {

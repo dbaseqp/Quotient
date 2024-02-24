@@ -1,6 +1,7 @@
 {{ define "addinject" }}
-<button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addinjectModal">Add new
-    inject</button>
+<button type="button" class="btn btn-primary rounded-0" data-bs-toggle="modal" data-bs-target="#addinjectModal">
+    <i class="bi bi-plus-lg"></i> Add new inject 
+</button>
 
 <div class="modal fade" data-bs-backdrop="static" data-bs-keyboard="false" id="addinjectModal" tabindex="-1"
     aria-labelledby="addinjectModalLabel" aria-hidden="true">
@@ -48,7 +49,8 @@
                     </div>
                     <div class="mb-3">
                         <label for="addinjectFiles" class="form-label">Related Inject Files:</label>
-                        <input name="files" class="form-control" type="file" id="addinjectFiles" multiple required aria-required="true">
+                        <input name="files" class="form-control" type="file" id="addinjectFiles" multiple required
+                            aria-required="true">
                     </div>
                 </form>
             </div>
@@ -141,7 +143,7 @@
     // this function exists here to be used dynamically by SSE
     function attachDeleteListener(button) {
         button.addEventListener('click', function (event) {
-            let inject = button.closest('tr')
+            let inject = button.closest('.tab-pane')
             let myID = inject.getAttribute('data-inject-id')
             let myTitle = inject.getAttribute('data-inject-title')
 
@@ -271,7 +273,7 @@
         );
         function attachEditListener(button) {
             button.addEventListener('click', function (event) {
-                let inject = button.closest('tr')
+                let inject = button.closest('.tab-pane')
                 let myID = inject.getAttribute('data-inject-id')
                 let myTitle = inject.getAttribute('data-inject-title')
                 let myDescription = inject.getAttribute('data-inject-description')

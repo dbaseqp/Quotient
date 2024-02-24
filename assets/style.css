@@ -4,7 +4,7 @@
     }
 
     .navbar .nav-link.active {
-        background: linear-gradient(90deg, rgba(0,212,255,1) 0%, rgba(10,105,218,1) 100%);
+        background: linear-gradient(90deg, rgba(0, 212, 255, 1) 0%, rgba(10, 105, 218, 1) 100%);
         color: var(--bs-light)
     }
 
@@ -27,7 +27,7 @@
     }
 
     .navbar .nav-link.active {
-        background: linear-gradient(90deg, rgba(0,212,255,1) 0%, rgba(10,105,218,1) 100%);
+        background: linear-gradient(90deg, rgba(0, 212, 255, 1) 0%, rgba(10, 105, 218, 1) 100%);
     }
 
     .nav .nav-link.active {
@@ -163,6 +163,8 @@ table#teamLast10 td {
     margin-top: 1.5rem;
 }
 
+.team-portal-container {}
+
 .offcanvas {
     --bs-offcanvas-height: 100vh;
 }
@@ -181,4 +183,31 @@ table#teamLast10 td {
 
 .dropdown-menu li:not(:last-child) {
     margin-bottom: 2px;
+}
+
+#v-pills-inject-tab {
+    min-width: 300px;
+    background-color: var(--bs-secondary-bg-subtle);
+
+    .nav-link {
+        min-height: 5rem;
+    }
+
+    .nav-link:hover:not(.active) {
+        background-color: rgba(0, 0, 0, 0.1);
+    }
+
+    .nav-link.active {
+        background: linear-gradient(90deg, rgba(0, 212, 255, 1) 0%, rgba(10, 105, 218, 1) 100%);
+    }
+}
+
+div.dt-container .dt-input option {
+    background-color: var(--bs-table-bg);
+}
+
+div.dt-container .dt-paging .dt-paging-button.disabled,
+div.dt-container .dt-paging .dt-paging-button.disabled:hover,
+div.dt-container .dt-paging .dt-paging-button.disabled:active {
+    color: #88888888 !important;
 }

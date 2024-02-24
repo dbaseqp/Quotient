@@ -1,78 +1,226 @@
 {{ define "content"}}
 {{ $user := .user }}
+{{ $config := .config }}
+{{ $team := .team }}
 {{ $now := .now }}
-<div class="d-flex flex-column flex-grow-1">
-    <div class="m-4 p-4">
-        <h2>Injects</h2>
-        {{ if $user.UserInfo.Admin }}
+<div class="d-flex flex-grow-1">
+    <div class="nav flex-column flex-nowrap nav-pills h-100 overflow-auto" id="v-pills-inject-tab" role="tablist"
+        aria-orientation="vertical">
+        {{ if .user.UserInfo.Admin }}
         {{ template "addinject" . }}
         {{ end }}
-        <div class="d-flex h-auto justify-content-center align-items-center">
-            <table class="table table-hover table-bordered my-2">
-                <thead class="">
-                    <th style="width:auto">Inject Title</th>
-                    <th style="width:10rem">Opens</th>
-                    <th style="width:10rem">Due</th>
-                    <th style="width:10rem">Closes</th>
-                    {{ if not $user.UserInfo.Admin }}
-                    <th style="width:10rem">Status</th>
-                    {{ else }}
-                    <th style="width:3rem">Actions</th>
-                    {{ end }}
-                </thead>
-                <tbody>
-                    {{ range $inject := .injects }}
-                    {{ if (or ($user.UserInfo.Admin) ($now.After $inject.OpenTime)) }}
-                    <!-- bootstrap table colors are limited until bs-v6 -->
-                    <tr data-inject-id="{{ $inject.ID }}" data-inject-title="{{ $inject.Title }}"
-                        data-inject-description="{{ $inject.Description }}"
-                        data-inject-opentime="{{ $inject.OpenTime }}" data-inject-duetime="{{ $inject.DueTime }}"
-                        data-inject-closetime="{{ $inject.CloseTime }}">
-                        <td class="{{ if ($now.After $inject.CloseTime) }}table-dark{{ else if ($now.After $inject.DueTime) }}table-danger{{ else if ($now.After $inject.OpenTime) }}table-success{{ else }}table-secondary{{ end }}">
-                            <a href="/injects/{{ $inject.ID }}">{{ $inject.Title }}</a>
-                        </td>
-                        <td>
-                            {{ format $inject.OpenTime }}
-                        </td>
-                        <td>
-                            {{ format $inject.DueTime }}
-                        </td>
-                        <td>
-                            {{ format $inject.CloseTime }}
-                        </td>
-                        {{ if not $user.UserInfo.Admin }}
-                        <td>
-                            False
-                        </td>
-                        {{ else }}
-                        <td class="bg-body">
-                            <div class="dropdown">
-                                <button class="btn btn-link dropdown-toggle" type="button" data-bs-toggle="dropdown"
-                                    aria-expanded="false">
-                                    Edit...
-                                </button>
-                                <ul class="dropdown-menu">
-                                    <li>
-                                        <button type="button" class="dropdown-item editinject" data-bs-toggle="modal"
-                                            data-bs-target="#editinjectModal">Edit</button>
-                                    </li>
-                                    <li>
-                                        <button type="button" class="dropdown-item deleteinject" data-bs-toggle="modal"
-                                            data-bs-target="#deleteinjectModal">Delete</button>
-                                    </li>
-                                </ul>
-                            </div>
-                        </td>
+        <button class="visually-hidden active" id="v-pills-default-tab" data-bs-toggle="pill"
+            data-bs-target="#v-pills-default" type="button" role="tab" aria-hidden="true" disabled aria-disabled="true">
+        </button>
+        {{ range $inject := .injects }}
+        <button class="nav-link text-start bg-contrast rounded-0 border" id="v-pills-{{ $inject.ID }}-tab"
+            data-tab-id="{{ $inject.ID }}" data-bs-toggle="pill" data-bs-target="#v-pills-{{ $inject.ID }}"
+            type="button" role="tab" aria-controls="v-pills-{{ $inject.ID }}" aria-selected="true">
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-10">
+                        <div class="d-flex flex-column">
+                            <span>{{ $config.Event }}</span>
+                            <span>{{ $inject.Title }}</span>
+                        </div>
+                    </div>
+                    <div class="col">
+                        {{ if $now.After $inject.CloseTime }}
+                        <i class="bi bi-lock text-danger-emphasis" data-bs-toggle="tooltip"
+                            data-bs-title="Closed from submissions"></i>
+                        {{ else if $now.After $inject.DueTime }}
+                        <i class="bi bi-alarm text-warning" data-bs-toggle="tooltip"
+                            data-bs-title="Accepting late submissions"></i>
                         {{ end }}
-                    </tr>
-                    {{ end }}
-                    {{ end }}
-                </tbody>
-            </table>
+                        {{ if $user.UserInfo.Admin }}
+                        <!-- consider badge with total submission count -->
+                        {{ else }}
+                        {{ $break := false }}
+                        {{ range $submission := (index $team 0).SubmissionData }}
+                        {{ if and (not $break) (eq $inject.ID $submission.InjectID) }}
+                        {{ $break = true }}
+                        <i class="bi bi-check2-circle text-success-emphasis" data-bs-toggle="tooltip"
+                            data-bs-title="Submitted"></i>
+                        {{ end }}
+                        {{ end }}
+                        {{ end }}
+                    </div>
+                </div>
+                <div class="row justify-content-center align-items-center" style="font-size: 10px;">
+                    {{ format $inject.OpenTime }}
+                </div>
+            </div>
+        </button>
+        {{ end }}
+    </div>
+    <div class="d-flex align-items-start flex-grow-1 h-100">
+        <div class="tab-content w-100 h-100" id="v-pills-inject-tabContent">
+            <div class="tab-pane show h-100 active" tabindex="0" role="tabpanel" data-bs-toggle="pill"
+                id="v-pills-default">
+                <div class="d-flex h-100 justify-content-center align-items-center">
+                    No inject selected yet.
+                </div>
+            </div>
+            {{ range $inject := .injects }}
+            <div class="tab-pane p-4 show position-relative h-100" id="v-pills-{{ $inject.ID }}" role="tabpanel"
+                aria-labelledby="v-pills-{{ $inject.ID }}-tab" tabindex="0" data-inject-id="{{ $inject.ID }}"
+                data-inject-title="{{ $inject.Title }}" data-inject-description="{{ $inject.Description }}"
+                data-inject-opentime="{{ $inject.OpenTime }}" data-inject-duetime="{{ $inject.DueTime }}"
+                data-inject-closetime="{{ $inject.CloseTime }}">
+                <div class="d-flex flex-column h-100">
+                    <div class="d-flex flex-column">
+                        <span>From: {{ $config.Event }}</span>
+                        <span>Subject: {{ $inject.Title }}</span>
+                        {{ if $user.UserInfo.Admin }}
+                        <div class="dropdown">
+                            <button class="btn btn-link dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                                aria-expanded="false">
+                                Edit...
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <button type="button" class="dropdown-item editinject" data-bs-toggle="modal"
+                                        data-bs-target="#editinjectModal">Edit</button>
+                                </li>
+                                <li>
+                                    <button type="button" class="dropdown-item deleteinject" data-bs-toggle="modal"
+                                        data-bs-target="#deleteinjectModal">Delete</button>
+                                </li>
+                            </ul>
+                        </div>
+                        {{ end }}
+                    </div>
+                    <hr class="my-4">
+                    <div class="h-100 p-4 overflow-auto">
+                        <div>
+                            {{ $inject.Description }}
+                        </div>
+                        <div class="d-flex justify-content-around my-4">
+                            <p class="text-center">Due Time: {{ format $inject.DueTime}}</p>
+                            <div class="w-100 m-0 d-md-none d-block "></div>
+                            <p class="text-center">Close Time: {{ format $inject.CloseTime}}</p>
+                        </div>
+                        <div>
+                            Attachments
+                            <ul>
+                                {{ range $file := $inject.InjectFileNames }}
+                                <li>
+                                    <a href="/api/injects/{{ $inject.ID }}/file/{{ $file }}" download="{{ $file }}">
+                                        {{ $file }}
+                                    </a>
+                                </li>
+                                {{ end }}
+                            </ul>
+                        </div>
+                        <hr class="my-4">
+                        {{ if $user.UserInfo.Admin }}
+                        <div>
+                            <div>Submissions</div>
+                            <table class="table table-bordered w-100 display submission-table">
+                                <thead>
+                                    <tr>
+                                        <th>
+                                            Team
+                                        </th>
+                                        <th>
+                                            Submisssion
+                                        </th>
+                                        <th>
+                                            Submission Time
+                                        </th>
+                                        <th>
+                                            Attachments
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{ range $t := $team }}
+                                    {{ range $submission := $t.SubmissionData }}
+                                    {{ if (eq $inject.ID $submission.InjectID) }}
+                                    <tr>
+                                        <td>
+                                            {{ $t.Name }}
+                                        </td>
+                                        <td>
+                                            {{ $submission.AttemptNumber }}
+                                        </td>
+                                        <td>
+                                            {{ $submission.SubmissionTime }}
+                                        </td>
+                                        <td>
+                                            <ul>
+                                                {{ range $file := $submission.SubmissionFileNames }}
+                                                <li>
+                                                    <a href="/api/injects/{{ $inject.ID }}/{{ $t.ID }}/submissions/{{ $submission.AttemptNumber }}/{{ $file }}"
+                                                        download="Team-{{ $t.ID }}-Inject-{{ $inject.ID }}-Submission-{{ $submission.AttemptNumber }}-{{ $file }}">
+                                                        {{ $file }}
+                                                    </a>
+                                                </li>
+                                                {{ end }}
+                                            </ul>
+                                        </td>
+                                    </tr>
+                                    {{ end }}
+                                    {{ end }}
+                                    {{ end }}
+                                </tbody>
+                            </table>
+                        </div>
+                        {{ else }}
+                        <div>
+                            <div>Submit</div>
+                            <form class="submitinjectForm" id="submitinjectForm-{{ $inject.ID }}">
+                                <div class="mb-3">
+                                    <label for="submitinjectFiles-{{ $inject.ID }}" class="form-label">Submit Inject
+                                        Files:</label>
+                                    <p class="text-body-secondary">Please upload either a PDF or ZIP file.</p>
+                                    <input name="files" class="form-control" type="file"
+                                        id="submitinjectFiles-{{ $inject.ID }}" accept=".pdf,.zip" multiple>
+                                </div>
+                                <div class="mb-3">
+                                    <button type="submit" form="submitinjectForm-{{ $inject.ID }}"
+                                        class="btn btn-primary">Submit inject
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                        <hr class="my-4">
+                        <div>
+                            <div>Submissions</div>
+                            <table class="table table-bordered w-100 display submission-table">
+                                <thead>
+                                    <tr>
+                                        <th>
+                                            Submisssion
+                                        </th>
+                                        <th>
+                                            Submission Time
+                                        </th>
+                                        <th>
+                                            Attachments
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                </tbody>
+                            </table>
+                        </div>
+                        {{ end }}
+                    </div>
+                </div>
+            </div>
+            {{ end }}
         </div>
-        <p style="text-align: center">🕒 Current time is <b>{{ format .now }}</b>.</p>
     </div>
 </div>
+<script>
+    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
+    const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
+
+    let table = new DataTable('.submission-table', {
+        // options
+    });
+</script>
 {{ if $user.UserInfo.Admin }}
 <script>
     const config = {
@@ -97,6 +245,94 @@
 </script>
 {{ template "editinject" . }}
 {{ template "deleteinject" . }}
+{{ end }}
+
+{{ if $user.UserInfo.Admin }}
+{{ else }}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Intercept the form submission
+        document.querySelectorAll('.submitinjectForm').forEach((form) => {
+            form.addEventListener('submit', function (event) {
+                // Prevent the default form submission
+                event.preventDefault();
+                let injectid = event.target.closest('.tab-pane').getAttribute('data-inject-id')
+                let formid = "submitinjectForm-" + injectid;
+                let url = "/api/injects/" + injectid + "/submit";
+
+                const form = document.forms[formid]
+                let data = new FormData()
+                for (const file of form.files.files) {
+                    data.append("files", file)
+                }
+                console.log(form.files.files)
+                let success_function = function (data) {
+                    createToast("Inject successfully submitted", "bg-success")
+                }
+                postAjax(event, formid, data, url, success_function)
+            });
+        })
+        document.querySelectorAll('button[data-bs-toggle="pill"]').forEach((injectPane) => {
+            injectPane.addEventListener('show.bs.tab', function (event) {
+                let teamid = "{{ $user.UserInfo.ID }}"
+                let injectid = event.target.getAttribute('data-tab-id')
+                let url = "/api/injects/" + injectid + "/" + teamid;
+                fetch(url)
+                    .then((response) => {
+                        if (!response.ok) {
+                            Promise.reject(response);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.status == "success") { // typeof data.error === 'undefined'
+                            const table = document.querySelector("#v-pills-" + injectid + " .submission-table")
+                            const tbody = table.querySelector("tbody")
+                            tbody.innerHTML = ""
+                            if (data.submissions.length == 0) {
+                                const tr = document.createElement("tr")
+                                const row = document.createElement("td")
+                                row.textContent = "No submissions for this inject yet"
+                                row.colSpan = 3
+                                tr.appendChild(row)
+                                tbody.appendChild(tr)
+                                return
+                            }
+                            data.submissions.forEach((submission) => {
+                                const tr = document.createElement("tr")
+                                const submissionid = document.createElement("td")
+                                const submissiontime = document.createElement("td")
+                                const submissionfile = document.createElement("td")
+                                submissionid.textContent = submission.AttemptNumber
+                                let time = new Date(submission.SubmissionTime)
+                                submissiontime.textContent = time.toLocaleString()
+                                const ul = document.createElement("ul")
+                                submission.SubmissionFileNames.forEach((name) => {
+                                    const li = document.createElement("li")
+                                    const a = document.createElement("a")
+                                    a.textContent = name
+                                    a.download = "Team-" + teamid + "-Inject-" + injectid + "-Submission-" + submission.AttemptNumber + "-" + name
+                                    a.href = "/api/injects/" + injectid + "/" + teamid + "/submissions/" + submission.AttemptNumber + "/" + name
+                                    li.appendChild(a)
+                                    ul.appendChild(li)
+                                })
+                                submissionfile.appendChild(ul)
+                                tr.appendChild(submissionid)
+                                tr.appendChild(submissiontime)
+                                tr.appendChild(submissionfile)
+                                tbody.appendChild(tr)
+                            })
+                        } else {
+                            createToast(data.error, "bg-danger")
+                        }
+                    })
+                    .catch(error => {
+                        createToast(error, "bg-danger")
+                    })
+            })
+        });
+    })
+</script>
 {{ end }}
 
 {{ end }}

@@ -128,7 +128,43 @@ func viewInjects(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, err.Error())
 		return
 	}
-	err = tmpl.Execute(c.Writer, pageData(c, gin.H{"title": "Injects", "injects": injects}))
+
+	tok, err := c.Cookie("auth_token")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	claims, err := getClaimsFromToken(tok)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	isAdmin := claims["UserInfo"].(map[string]any)["Admin"].(bool)
+	var team []TeamData
+	if isAdmin {
+		teams, err := dbGetTeams()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		team = make([]TeamData, len(teams))
+		for i, t := range teams {
+			team[i], err = dbGetTeamScore(int(t.ID))
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+	} else {
+		team = make([]TeamData, 1)
+		team[0], err = dbGetTeamScore(int(claims["UserInfo"].(map[string]any)["ID"].(float64)))
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+	err = tmpl.Execute(c.Writer, pageData(c, gin.H{"title": "Injects", "injects": injects, "team": team}))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, err.Error())
 		return
