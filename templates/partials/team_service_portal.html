@@ -76,41 +76,6 @@
         teamLast10.querySelector("tbody").innerHTML = ""
         teamSLAs.querySelector("tbody").innerHTML = ""
 
-        fetch("/api/teams/" + teamid + "/uptime")
-            .then((response) => {
-                if (!response.ok) {
-                    Promise.reject(response)
-                }
-                return response.json()
-            })
-            .then((data) => {
-                if (data.error) {
-                    createToast(data.error, "bg-danger")
-                } else {
-                    let thead = teamUptime.querySelector("thead tr")
-                    let tbody = teamUptime.querySelector("tbody tr")
-                    Object.keys(data).forEach((service) => {
-                        const name = document.createElement("td")
-                        const uptime = document.createElement("td")
-                        name.textContent = service
-                        let percent = Math.round(100 * data[service].Ups / data[service].Total)
-                        if (percent > 80) {
-                            uptime.className = "bg-success"
-                        } else if (percent > 60) {
-                            uptime.className = "bg-warning"
-                        } else {
-                            uptime.className = "bg-danger"
-                        }
-                        uptime.textContent = percent+"%"
-                        thead.appendChild(name)
-                        tbody.appendChild(uptime)
-                    })
-                }
-            })
-            .catch((error) => {
-                createToast(error, "bg-danger")
-            })
-
         fetch("/api/teams/" + teamid + "/scores")
             .then((response) => {
                 if (!response.ok) {
@@ -122,11 +87,31 @@
                 if (data.error) {
                     createToast(data.error, "bg-danger")
                 } else {
-                    let thead = teamLast10.querySelector("thead tr")
-                    let tbody = teamLast10.querySelector("tbody")
+                    console.log(data)
+                    let thead = teamUptime.querySelector("thead tr")
+                    let tbody = teamUptime.querySelector("tbody tr")
+                    Object.keys(data.uptime).forEach((service) => {
+                        const name = document.createElement("td")
+                        const uptime = document.createElement("td")
+                        name.textContent = service
+                        let percent = Math.round(100 * data.uptime[service].Ups / data.uptime[service].Total)
+                        if (percent > 80) {
+                            uptime.className = "bg-success"
+                        } else if (percent > 60) {
+                            uptime.className = "bg-warning"
+                        } else {
+                            uptime.className = "bg-danger"
+                        }
+                        uptime.textContent = percent+"%"
+                        thead.appendChild(name)
+                        tbody.appendChild(uptime)
+                    })
+
+                    thead = teamLast10.querySelector("thead tr")
+                    tbody = teamLast10.querySelector("tbody")
                     let records = {}
                     let rounds = {}
-                    for (const check of data.Checks) {
+                    for (const check of data.scores.Checks) {
                         if (!(check.ServiceName in records)) {
                             records[check.ServiceName] = {}
                         }
@@ -213,7 +198,7 @@
                         tbody.appendChild(tr)
                     });
                     tbody = teamSLAs.querySelector("tbody")
-                    data.SLAs.forEach((sla) => {
+                    data.scores.SLAs.forEach((sla) => {
                         const tr = document.createElement("tr")
                         const round = document.createElement("td")
                         const servicename = document.createElement("td")
