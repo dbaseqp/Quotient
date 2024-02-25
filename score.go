@@ -8,6 +8,10 @@ import (
 	"time"
 )
 
+var (
+	roundStartTime time.Time
+)
+
 func Score() {
 	// wait until engine is not paused
 	for {
@@ -16,13 +20,13 @@ func Score() {
 
 		// run this round
 		log.Println("[SCORE] ===== Starting round", roundNumber)
-		startTime := time.Now()
+		roundStartTime := time.Now()
 
 		jitter := time.Duration(0)
 		if eventConf.Jitter != 0 {
 			jitter = time.Duration(time.Duration(rand.Intn(eventConf.Jitter+1)) * time.Second)
 		}
-		nextRoundTime := startTime.Add((time.Duration(eventConf.Delay) * time.Second) + jitter)
+		nextRoundTime := roundStartTime.Add((time.Duration(eventConf.Delay) * time.Second) + jitter)
 		log.Println("[SCORE] ===== Next round scheduled after", eventConf.Delay, "seconds with jitter", jitter)
 
 		// pass current state of eventConf so it is stable for duration of this round
@@ -33,7 +37,7 @@ func Score() {
 		case "koth":
 			roundData = scoreKoTH(eventConf)
 		}
-		err := dbCreateRound(roundNumber, startTime)
+		err := dbCreateRound(roundNumber, roundStartTime)
 		if err != nil {
 			errorPrint(err.Error())
 		}
@@ -54,7 +58,7 @@ func Score() {
 		}
 
 		log.Println("[SCORE] ===== Ending for round", roundNumber)
-		debugPrint("Round", roundNumber, "took", time.Now().Sub(startTime).String(), "to finish")
+		debugPrint("Round", roundNumber, "took", time.Now().Sub(roundStartTime).String(), "to finish")
 
 		// prepare for next round
 		sleepDuration := nextRoundTime.Sub(time.Now())
@@ -99,7 +103,7 @@ func scoreRvB(m Config) map[uint][]checks.Result {
 
 			for _, box := range m.Box {
 				for _, check := range box.CheckList {
-					if time.Now().Before(check.LaunchTime) || time.Now().After(check.StopTime) {
+					if roundStartTime.Before(check.LaunchTime) || roundStartTime.After(check.StopTime) {
 						continue
 					}
 					thisTeamWg.Add(1)
@@ -158,6 +162,9 @@ func detectSLAs(roundData map[uint][]checks.Result) error {
 	}
 	for _, box := range eventConf.Box {
 		for _, check := range box.CheckList {
+			if roundStartTime.Before(check.LaunchTime) {
+				continue
+			}
 			for _, team := range teams {
 				var result checks.Result
 				for _, checkResult := range roundData[team.ID] {
