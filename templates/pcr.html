@@ -96,7 +96,7 @@
                                             {{ $usernames := keys (index $credentials $team.ID $credlist) }}
                                             {{ range $username := $usernames }}
                                             <li>
-                                                <pre>{{ $username }}:{{ index $credentials $team.ID $credlist $username }}</pre>
+                                                <pre>{{ $username }},{{ index $credentials $team.ID $credlist $username }}</pre>
                                             </li>
                                             {{ end }}
                                         </ul>
