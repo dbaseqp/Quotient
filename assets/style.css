@@ -163,8 +163,6 @@ table#teamLast10 td {
     margin-top: 1.5rem;
 }
 
-.team-portal-container {}
-
 .offcanvas {
     --bs-offcanvas-height: 100vh;
 }
