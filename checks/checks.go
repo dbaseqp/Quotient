@@ -25,7 +25,6 @@ type ServiceHandler struct {
 // services will inherit Service so that config can be read from file, but will not be used after initial read
 type Service struct {
 	Name         string    `toml:",omitempty"` // Name is the box name plus the service (ex. lunar-dns)
-	FQDN         string    `toml:",omitempty"`
 	Display      string    `toml:",omitempty"` // Display is the name of the service (ex. dns)
 	IP           string    `toml:",omitempty"`
 	CredLists    []string  `toml:",omitzero"`
@@ -76,13 +75,7 @@ func RunCheck(teamID uint, teamIP int, boxIP string, boxName string, check Servi
 	// make temporary channel to race against timeout
 	res := make(chan Result)
 	result := Result{}
-	teamNumber := fmt.Sprint(teamIP)
-	if strings.Count(boxIP, "Y")+1-len(teamNumber) > 0 {
-		boxIP = strings.Replace(boxIP, "Y", "0", strings.Count(boxIP, "Y")+1-len(teamNumber))
-	} else {
-		boxIP = strings.ReplaceAll(boxIP, "Y", "")
-	}
-	fullIP := strings.Replace(boxIP, "X", teamNumber, 1)
+	fullIP := strings.Replace(boxIP, "x", fmt.Sprint(teamIP), 1)
 	// go fake(teamID, fullIP, res, check.Service)
 	go check.Run(teamID, fullIP, res, check.Service)
 	select {
