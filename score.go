@@ -20,7 +20,7 @@ func Score() {
 
 		// run this round
 		log.Println("[SCORE] ===== Starting round", roundNumber)
-		roundStartTime := time.Now()
+		roundStartTime = time.Now()
 
 		jitter := time.Duration(0)
 		if eventConf.Jitter != 0 {
