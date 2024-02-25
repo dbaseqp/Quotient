@@ -13,6 +13,7 @@
             data-bs-target="#v-pills-default" type="button" role="tab" aria-hidden="true" disabled aria-disabled="true">
         </button>
         {{ range $inject := .injects }}
+        {{ if or ($user.UserInfo.Admin) ($now.After $inject.OpenTime)}}
         <button class="nav-link text-start bg-contrast rounded-0 border" id="v-pills-{{ $inject.ID }}-tab"
             data-tab-id="{{ $inject.ID }}" data-bs-toggle="pill" data-bs-target="#v-pills-{{ $inject.ID }}"
             type="button" role="tab" aria-controls="v-pills-{{ $inject.ID }}" aria-selected="true">
@@ -52,6 +53,7 @@
             </div>
         </button>
         {{ end }}
+        {{ end }}
     </div>
     <div class="d-flex align-items-start flex-grow-1 h-100">
         <div class="tab-content w-100 h-100" id="v-pills-inject-tabContent">
@@ -62,6 +64,7 @@
                 </div>
             </div>
             {{ range $inject := .injects }}
+            {{ if or ($user.UserInfo.Admin) ($now.After $inject.OpenTime)}}
             <div class="tab-pane p-4 show position-relative h-100" id="v-pills-{{ $inject.ID }}" role="tabpanel"
                 aria-labelledby="v-pills-{{ $inject.ID }}-tab" tabindex="0" data-inject-id="{{ $inject.ID }}"
                 data-inject-title="{{ $inject.Title }}" data-inject-description="{{ $inject.Description }}"
@@ -209,6 +212,7 @@
                     </div>
                 </div>
             </div>
+            {{ end }}
             {{ end }}
         </div>
     </div>
