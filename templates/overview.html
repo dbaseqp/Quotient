@@ -1,9 +1,9 @@
 {{ define "content"}}
 {{ $user := .user }}
-<div class="d-flex flex-column flex-grow-1">
-    <div class="m-4 p-4">
+<div class="d-flex align-items-start flex-grow-1">
+    <div class="w-100 m-4 p-4">
         <h2>{{ if $user.UserInfo.Admin }}Admin {{ end }}Overview</h2>
-        <div class="d-flex flex-column h-auto justify-content-center align-items-center">
+        <div class="d-flex flex-grow-1">
             {{ if $user.UserInfo.Admin }}
             {{ template "dashboard" . }}
             {{ else }}

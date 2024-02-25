@@ -1,5 +1,5 @@
 {{ define "portal" }}
-<div class="team-portal-container w-100">
+<div class="team-portal-container d-flex flex-column flex-grow-1" {{ if not .user.UserInfo.Admin }}style="width:0"{{ end }}>
     <h3>Service Uptime</h3>
     <div class="table-container">
         <table id="teamUptime" class="table table-bordered text-nowrap">
