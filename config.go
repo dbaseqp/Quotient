@@ -68,6 +68,7 @@ type Admin struct {
 type Box struct {
 	Name string
 	IP   string
+	FQDN string
 
 	// Only used for delayed check
 	Time time.Time `gorm:"-" toml:"-"`
@@ -246,9 +247,11 @@ func validateChecks(boxes []Box) error {
 		if box.IP == "" {
 			return errors.New("no ip found for box " + box.Name)
 		}
-		// Ensure IP replacement chars are lowercase
+		// Ensure TeamID replacement chars are lowercase
 		box.IP = strings.ToLower(box.IP)
 		boxes[i].IP = box.IP
+		box.FQDN = strings.ToLower(box.FQDN)
+		boxes[i].FQDN = box.FQDN
 
 		boxes[i].CheckList = getBoxChecks(box)
 		if len(boxes[i].CheckList) == 0 {
@@ -256,6 +259,9 @@ func validateChecks(boxes []Box) error {
 		}
 		earliestCheck := boxes[i].CheckList[0].StopTime
 		for j, check := range boxes[i].CheckList {
+			// general check attributes
+			check.FQDN = box.FQDN
+
 			if check.Points == 0 {
 				check.Points = eventConf.ServicePoints
 			}
@@ -276,6 +282,7 @@ func validateChecks(boxes []Box) error {
 					return errors.New("check " + check.Name + " has invalid credlist names")
 				}
 			}
+			// type-specific check attribute
 			check.Type = reflect.TypeOf(check.Runner).String()
 			switch check.Runner.(type) {
 			case checks.Custom:

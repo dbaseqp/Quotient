@@ -37,7 +37,9 @@ func (c Custom) Run(teamID uint, boxIp string, res chan Result, service Service)
 	username, password := getCreds(teamID, service.CredLists)
 
 	// Replace command input keywords
-	formedCommand := strings.Replace(c.Command, "BOXIP", boxIp, -1)
+	formedCommand := c.Command
+	formedCommand = strings.Replace(formedCommand, "BOXIP", boxIp, -1)
+	formedCommand = strings.Replace(formedCommand, "FQDN", service.FQDN, -1)
 
 	// We shell escape username and password, who knows what format they are
 	formedCommand = strings.Replace(formedCommand, "USERNAME", shellescape.Quote(username), -1)

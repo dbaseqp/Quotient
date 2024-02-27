@@ -164,7 +164,7 @@ func (c Ssh) Run(teamID uint, boxIp string, res chan Result, service Service) {
 			}
 		} else if r.UseRegex {
 			re := regexp.MustCompile(r.Output)
-			if !re.Match([]byte(stdoutBytes.String())) {
+			if !re.Match(stdoutBytes.Bytes()) {
 				res <- Result{
 					Error: "command output didn't match regex",
 					Debug: "command output'" + r.Command + "' didn't match regex '" + r.Output,

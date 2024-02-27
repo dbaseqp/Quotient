@@ -57,7 +57,7 @@ func (c Sql) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	// TODO: This is SQL injectable. Figure out Paramerterized queries. not that it really matters...
 	var rows *sql.Rows
 	if q.DatabaseExists {
-		rows, err = db.QueryContext(context.TODO(), fmt.Sprint("SHOW DATABASES;"))
+		rows, err = db.QueryContext(context.TODO(), "SHOW DATABASES;")
 		if err != nil {
 			res <- Result{
 				Error: "could not query db for database " + q.Database,

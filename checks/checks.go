@@ -26,6 +26,7 @@ type ServiceHandler struct {
 type Service struct {
 	Name         string    `toml:",omitempty"` // Name is the box name plus the service (ex. lunar-dns)
 	Display      string    `toml:",omitempty"` // Display is the name of the service (ex. dns)
+	FQDN         string    `toml:"-"`
 	IP           string    `toml:",omitempty"`
 	CredLists    []string  `toml:",omitzero"`
 	Port         int       `toml:",omitzero"`
