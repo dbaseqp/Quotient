@@ -139,19 +139,21 @@ header {
     margin-right: 8px;
 }
 
-table#teamLast10 th:not(:first-child) {
-    max-width: 10rem;
-    white-space: nowrap;
-    text-align: right
+table#teamLast10 th {
+    text-align: center;
 }
 
-table#teamLast10 thead th {
-    text-align: center;
+table#teamLast10 th:not(:first-child) {
+    white-space: nowrap;
 }
 
 table#teamLast10 td {
     text-align: center;
     vertical-align: middle;
+}
+
+table#teamLast10 th:first-child {
+    width: 1px;
 }
 
 .table-container {
