@@ -1,8 +1,6 @@
 package checks
 
 import (
-	"fmt"
-
 	"github.com/knadh/go-pop3"
 )
 
@@ -42,9 +40,7 @@ func (c Pop3) Run(teamID uint, boxIp string, res chan Result, service Service) {
 			return
 		}
 
-		// Print the total number of messages and their size.
-		count, size, _ := conn.Stat()
-		fmt.Println("total messages=", count, "size=", size)
+		_, _, err := conn.Stat()
 		if err != nil {
 			res <- Result{
 				Error: "listing mailboxes failed",
