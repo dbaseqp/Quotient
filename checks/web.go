@@ -39,11 +39,11 @@ func (c Web) Run(teamID uint, boxIp string, res chan Result, service Service) {
 		},
 	}
 	client := &http.Client{Transport: tr}
-	req, err := client.NewRequest("GET", c.Scheme + "://" + boxIp + ":" + strconv.Itoa(service.Port) + u.Path)
+	req, err := http.NewRequest("GET", c.Scheme + "://" + boxIp + ":" + strconv.Itoa(service.Port) + u.Path, nil)
 	if err != nil {
 		res <- Result{
 			Error: "failed to create request",
-			Debug: err.Error()
+			Debug: err.Error(),
 		}
 		return
 	}
