@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"quotient/checks"
 	"strings"
-	"sugmaase/checks"
 	"sync"
 	"time"
 

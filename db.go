@@ -2,7 +2,7 @@ package main
 
 import (
 	"log"
-	"sugmaase/checks"
+	"quotient/checks"
 	"time"
 
 	"github.com/lib/pq"

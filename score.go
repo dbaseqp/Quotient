@@ -5,8 +5,8 @@ import (
 	"log"
 	"math/rand"
 	"os/exec"
+	"quotient/checks"
 	"strings"
-	"sugmaase/checks"
 	"sync"
 	"time"
 )

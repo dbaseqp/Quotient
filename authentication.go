@@ -93,7 +93,7 @@ func readKeyFiles() ([]byte, []byte, error) {
 }
 
 func initCookies(router *gin.Engine) {
-	router.Use(sessions.Sessions("sugmaase", cookie.NewStore([]byte("sugmaase"))))
+	router.Use(sessions.Sessions("quotient", cookie.NewStore([]byte("quotient"))))
 }
 
 func logout(c *gin.Context) {

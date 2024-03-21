@@ -1,4 +1,4 @@
-module sugmaase
+module quotient
 
 go 1.20
 

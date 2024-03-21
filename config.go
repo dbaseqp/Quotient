@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"sugmaase/checks"
+	"quotient/checks"
 
 	"golang.org/x/exp/slices"
 

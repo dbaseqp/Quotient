@@ -10,5 +10,5 @@ plots/*
 *.swp
 *.conf
 !.gitkeep
-sugmaase
+quotient
 .vscode

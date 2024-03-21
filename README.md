@@ -1,4 +1,4 @@
-Some Unhinged Guy Made Another All-in-one Scoring Engine (SUGMAASE)
+Some Unhinged Guy Made Another All-in-one Scoring Engine (QUOTIENT)
 =================================
 
 The successor of [DWAYNE-INATOR-5000](https://github.com/DSU-DefSec/DWAYNE-INATOR-5000).
@@ -6,12 +6,12 @@ The successor of [DWAYNE-INATOR-5000](https://github.com/DSU-DefSec/DWAYNE-INATO
 Usage
 -----
 
-1. Download this repository (`git clone https://github.com/dbaseqp/SUGMAASE`).
+1. Download this repository (`git clone https://github.com/dbaseqp/QUOTIENT`).
 2. Bring up the Postgres database (`docker-compose up --detach`)
    1. You can also change the DB url string in your config to connect to another Postgres instance
-3. Compile the code (`cd SUGMAASE; go build`).
+3. Compile the code (`cd QUOTIENT; go build`).
 4. Save your configuration as `./config/event.conf`.
-5. Run the engine (`./sugmaase`).
+5. Run the engine (`./quotient`).
 
 Configuration
 -------------

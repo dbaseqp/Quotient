@@ -3,11 +3,11 @@ package main
 import (
 	"html/template"
 	"net/http"
+	"quotient/checks"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
-	"sugmaase/checks"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -58,7 +58,7 @@ func pageData(c *gin.Context, ginMap gin.H) gin.H {
 	data["user"] = claims
 	data["title"] = ""
 	data["now"] = time.Now()
-	data["name"] = "SUGMAASE"
+	data["name"] = "QUOTIENT"
 	data["config"] = eventConf
 	data["error"] = ""
 	data["loc"] = loc
