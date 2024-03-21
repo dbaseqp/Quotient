@@ -3,6 +3,7 @@ scoredfiles/*
 checkfiles/*
 temporary/*
 scripts/*
+!scripts/rotate.sh
 injects/*
 config/*
 plots/*
