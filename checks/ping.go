@@ -14,7 +14,7 @@ type Ping struct {
 	Percent         int
 }
 
-func (c Ping) Run(teamID uint, boxIp string, res chan Result, service Service) {
+func (c Ping) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	// Create pinger
 	pinger, err := ping.NewPinger(boxIp)
 	if err != nil {
@@ -59,5 +59,10 @@ func (c Ping) Run(teamID uint, boxIp string, res chan Result, service Service) {
 
 	res <- Result{
 		Status: true,
+		Points: c.Points,
 	}
+}
+
+func (c Ping) GetService() Service {
+	return c.Service
 }

@@ -1,7 +1,9 @@
 package checks
 
 import (
+	"net"
 	"strconv"
+	"time"
 	// why are there no good rdp libraries?
 )
 
@@ -9,8 +11,8 @@ type Rdp struct {
 	Service
 }
 
-func (c Rdp) Run(teamID uint, boxIp string, res chan Result, service Service) {
-	err := tcpCheck(boxIp + ":" + strconv.Itoa(service.Port))
+func (c Rdp) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+	_, err := net.DialTimeout("tcp", boxIp+":"+strconv.Itoa(c.Port), time.Duration(c.Timeout)*time.Second)
 	if err != nil {
 		res <- Result{
 			Error: "connection error",
@@ -20,6 +22,11 @@ func (c Rdp) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	}
 	res <- Result{
 		Status: true,
+		Points: c.Points,
 		Debug:  "responded",
 	}
+}
+
+func (c Rdp) GetService() Service {
+	return c.Service
 }

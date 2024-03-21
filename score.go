@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
+	"os/exec"
+	"strings"
 	"sugmaase/checks"
 	"sync"
 	"time"
@@ -30,18 +33,21 @@ func Score() {
 		log.Println("[SCORE] ===== Next round scheduled after", eventConf.Delay, "seconds with jitter", jitter)
 
 		// pass current state of eventConf so it is stable for duration of this round
+		roundConf := eventConf
 		var roundData map[uint][]checks.Result
 		switch eventConf.EventType {
 		case "rvb":
-			roundData = scoreRvB(eventConf)
+			roundData = scoreRvB(roundConf)
 		case "koth":
-			roundData = scoreKoTH(eventConf)
+			roundData = scoreKoTH(roundConf)
 		}
 		err := dbCreateRound(roundNumber, roundStartTime)
 		if err != nil {
 			errorPrint(err.Error())
 		}
-		err = dbProcessRound(roundData)
+
+		// award teams for successful scores
+		err = dbProcessRound(roundConf, roundData)
 		if err != nil {
 			// if you see this, that is very bad
 			errorPrint("FAILED TO SAVE ROUND DATA FOR ROUND", roundNumber, ":", err.Error())
@@ -52,16 +58,17 @@ func Score() {
 			errorPrint("FAILED TO UPDATE CUMULATIVE SCORE CACHE DATA FOR ROUND", roundNumber, ":", err.Error())
 		}
 
-		err = detectSLAs(roundData)
+		// detect service downage
+		err = detectSLAs(roundConf, roundData)
 		if err != nil {
 			errorPrint("FAILED TO GENERATE SLA DATA FOR ROUND", roundNumber, ":", err.Error())
 		}
 
 		log.Println("[SCORE] ===== Ending for round", roundNumber)
-		debugPrint("Round", roundNumber, "took", time.Now().Sub(roundStartTime).String(), "to finish")
+		debugPrint("Round", roundNumber, "took", time.Since(roundStartTime).String(), "to finish")
 
 		// prepare for next round
-		sleepDuration := nextRoundTime.Sub(time.Now())
+		sleepDuration := time.Until(nextRoundTime)
 		log.Println("[SCORE] Sleeping for", sleepDuration, "seconds until next round")
 		time.Sleep(sleepDuration)
 		roundNumber++
@@ -80,8 +87,24 @@ func scoreKoTH(m Config) map[uint][]checks.Result {
 	return nil
 }
 
+func rotateIP(m Config) error {
+	command := fmt.Sprintf("./scripts/rotate.sh %s %s %s", m.BindAddress, m.Subnet, m.Interface)
+	out, err := exec.Command("/bin/sh", "-c", command).Output()
+
+	if err != nil {
+		return err
+	}
+	output := strings.TrimSpace(string(out))
+	debugPrint("rotated to", output)
+	return nil
+}
+
 func scoreRvB(m Config) map[uint][]checks.Result {
 	roundData := make(map[uint][]checks.Result)
+	err := rotateIP(m)
+	if err != nil {
+		errorPrint("failed to rotate IPs")
+	}
 
 	teams, err := dbGetTeams()
 	if err != nil {
@@ -97,23 +120,19 @@ func scoreRvB(m Config) map[uint][]checks.Result {
 	for _, team := range teams {
 		allTeamsWg.Add(1)
 		go func(team TeamData) {
-			resultsChan := make(chan checks.Result) // channel to handle checks finishing
+			teamRunners := make(chan checks.Result) // channel to handle checks finishing
 			thisTeamWg := &sync.WaitGroup{}
 			// spawn all the checks for this team then wait to process once all checks finish
 
 			for _, box := range m.Box {
-				for _, check := range box.CheckList {
-					if roundStartTime.Before(check.LaunchTime) || roundStartTime.After(check.StopTime) {
+				for _, runner := range box.Runners {
+					service := runner.GetService()
+					if roundStartTime.Before(service.LaunchTime) || roundStartTime.After(service.StopTime) {
 						continue
 					}
 					thisTeamWg.Add(1)
-					debugPrint("[SCORE] Running", check.Name, "for", team.Name)
-					// go check.Run(team.ID, box.IP, resultsChan)
-					timeout := m.Timeout
-					// if check.Timeout {
-					// create per check timeout handling
-					// }
-					go checks.RunCheck(team.ID, team.IP, box.IP, box.Name, check, time.Duration(timeout)*time.Second, resultsChan)
+					debugPrint("[SCORE] Running", service.Name, "for", team.Name)
+					go checks.Dispatch(team.ID, team.IP, box.Name, box.IP, box.FQDN, runner, teamRunners)
 				}
 			}
 
@@ -122,7 +141,7 @@ func scoreRvB(m Config) map[uint][]checks.Result {
 			go func() {
 				thisTeamWg.Wait()
 				teamCompleteChan <- true
-				close(resultsChan)
+				close(teamRunners)
 			}()
 
 			// everything spawned, so wait until they all finish
@@ -130,9 +149,9 @@ func scoreRvB(m Config) map[uint][]checks.Result {
 			waitForTeam := true
 			for waitForTeam {
 				select {
-				case result, ok := <-resultsChan:
+				case result, ok := <-teamRunners:
 					if !ok {
-						errorPrint("Service check result for", team.Name, result.Name, "received after channel closed")
+						errorPrint("Service check result for", team.Name, result.ServiceName, "received after channel closed")
 						return // break? should this fail?
 					}
 					teamRoundData = append(teamRoundData, result)
@@ -155,45 +174,46 @@ func scoreRvB(m Config) map[uint][]checks.Result {
 	return roundData
 }
 
-func detectSLAs(roundData map[uint][]checks.Result) error {
+// needs to be rewritten
+func detectSLAs(m Config, roundData map[uint][]checks.Result) error {
 	teams, err := dbGetTeams()
 	if err != nil {
 		return err
 	}
-	for _, box := range eventConf.Box {
-		for _, check := range box.CheckList {
-			if roundStartTime.Before(check.LaunchTime) {
+	for _, box := range m.Box {
+		for _, runner := range box.Runners {
+			if roundStartTime.Before(runner.GetService().LaunchTime) {
 				continue
 			}
 			for _, team := range teams {
 				var result checks.Result
 				for _, checkResult := range roundData[team.ID] {
-					if checkResult.Name == check.Name {
+					if checkResult.ServiceName == runner.GetService().Name {
 						result = checkResult
 						break
 					}
 				}
-				checkUptime, exists := uptime[team.ID][check.Name]
+				checkUptime, exists := uptime[team.ID][runner.GetService().Name]
 				if !exists {
-					uptime[team.ID][check.Name] = Uptime{}
+					uptime[team.ID][runner.GetService().Name] = Uptime{}
 				}
 				checkUptime.Total++
 				if result.Status == false {
 					if _, exists := slaCount[team.ID]; !exists {
 						slaCount[team.ID] = make(map[string]int)
 					}
-					slaCount[team.ID][check.Name]++
-					if slaCount[team.ID][check.Name] == check.SlaThreshold {
-						err = dbCreateSLA(team.ID, check.Name, roundNumber, check.SlaPenalty)
+					slaCount[team.ID][runner.GetService().Name]++
+					if slaCount[team.ID][runner.GetService().Name] == runner.GetService().SlaThreshold {
+						err = dbCreateSLA(team.ID, runner.GetService().Name, roundNumber, runner.GetService().SlaPenalty)
 						if err != nil {
-							errorPrint("Failed to create SLA for", team.Name, check.Name)
+							errorPrint("Failed to create SLA for", team.Name, runner.GetService().Name)
 						}
-						slaCount[team.ID][check.Name] = 0
+						slaCount[team.ID][runner.GetService().Name] = 0
 					}
 				} else {
 					checkUptime.Ups++
 				}
-				uptime[team.ID][check.Name] = checkUptime
+				uptime[team.ID][runner.GetService().Name] = checkUptime
 			}
 		}
 	}

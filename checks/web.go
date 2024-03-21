@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 )
 
 type Web struct {
@@ -17,25 +18,25 @@ type Web struct {
 
 type urlData struct {
 	Path        string
-	Status      int
-	Diff        int
-	Regex       string
-	CompareFile string // TODO implement
+	Status      int    `toml:",omitempty"`
+	Diff        int    `toml:",omitempty"`
+	Regex       string `toml:",omitempty"`
+	CompareFile string `toml:",omitempty"` // TODO implement
 }
 
-func (c Web) Run(teamID uint, boxIp string, res chan Result, service Service) {
+func (c Web) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	u := c.Url[rand.Intn(len(c.Url))]
 
 	tr := &http.Transport{
 		MaxIdleConns:      1,
-		IdleConnTimeout:   GlobalTimeout, // address this
+		IdleConnTimeout:   time.Duration(c.Timeout) * time.Second, // address this
 		DisableKeepAlives: true,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
 	}
 	client := &http.Client{Transport: tr}
-	resp, err := client.Get(c.Scheme + "://" + boxIp + ":" + strconv.Itoa(service.Port) + u.Path)
+	resp, err := client.Get(c.Scheme + "://" + boxIp + ":" + strconv.Itoa(c.Port) + u.Path)
 	if err != nil {
 		res <- Result{
 			Error: "web request errored out",
@@ -81,7 +82,7 @@ func (c Web) Run(teamID uint, boxIp string, res chan Result, service Service) {
 		} else {
 			res <- Result{
 				Status: true,
-				Error:  "page matched regex!",
+				Points: c.Points,
 				Debug:  "matched regex \"" + u.Regex + "\" for " + u.Path,
 			}
 			return
@@ -91,5 +92,10 @@ func (c Web) Run(teamID uint, boxIp string, res chan Result, service Service) {
 
 	res <- Result{
 		Status: true,
+		Points: c.Points,
 	}
+}
+
+func (c Web) GetService() Service {
+	return c.Service
 }

@@ -26,13 +26,10 @@ var (
 	eventConf = Config{}
 	db        = &gorm.DB{}
 
-	startTime time.Time
-
 	configPath = flag.String("c", "config/event.conf", "configPath")
 	debug      = flag.Bool("d", false, "debugFlag")
 
 	roundNumber int
-	resetIssued bool
 	loc         *time.Location
 	// ct          CredentialTable
 
@@ -49,14 +46,13 @@ var (
 	/*
 		Map to store state of credential sets
 
-		credentials[teamid][listname][username] = password
+		credentials[listname][teamid][username] = password
 	*/
-	credentials      = make(map[uint]map[string]map[string]string)
-	credentialsMutex = make(map[uint]map[string]*sync.Mutex)
+	credentials      = make(map[string]map[uint]map[string]string)
+	credentialsMutex = make(map[string]map[uint]*sync.Mutex)
 
 	enginePauseWg = &sync.WaitGroup{}
 	enginePause   bool
-	pauseTime     time.Time
 )
 
 type Uptime struct {
@@ -99,11 +95,17 @@ func bootstrap() {
 	}
 	debugPrint("Connected to DB")
 
-	err = db.AutoMigrate(&TeamData{}, &RoundData{}, &ServiceData{}, &SLAData{}, &ManualAdjustmentData{}, &InjectData{}, &SubmissionData{}, &AnnouncementData{}, &RoundPointsData{})
+	err = db.AutoMigrate(&BoxData{}, &ServiceData{}, &TeamData{}, &RoundData{}, &CheckData{}, &SLAData{}, &ManualAdjustmentData{}, &InjectData{}, &SubmissionData{}, &AnnouncementData{}, &RoundPointsData{})
 	if err != nil {
 		log.Fatalln("Failed to auto migrate:", err)
 		return
 	}
+
+	err = dbEnvironmentConfig()
+	if err != nil {
+		log.Fatalln("Failed to update box/service tables:", err)
+	}
+	debugPrint("Updated box/service tables")
 
 	err = dbCalculateCumulativeServiceScore()
 	if err != nil {
@@ -147,17 +149,17 @@ func bootstrap() {
 			log.Fatalln("Failed to load team score data:", err)
 		}
 		for _, box := range eventConf.Box {
-			for _, check := range box.CheckList {
+			for _, runner := range box.Runners {
 				for _, result := range results {
-					if result.ServiceName == check.Name {
+					if result.ServiceName == runner.GetService().Name {
 						if result.Result == false {
-							slaCount[team.ID][check.Name]++
-							if slaCount[team.ID][check.Name] == check.SlaThreshold {
+							slaCount[team.ID][runner.GetService().Name]++
+							if slaCount[team.ID][runner.GetService().Name] == runner.GetService().SlaThreshold {
 								// an SLA was detected but it should already exist in DB, so reset
-								slaCount[team.ID][check.Name] = 0
+								slaCount[team.ID][runner.GetService().Name] = 0
 							}
 						} else {
-							slaCount[team.ID][check.Name] = 0
+							slaCount[team.ID][runner.GetService().Name] = 0
 						}
 					}
 				}
@@ -173,18 +175,18 @@ func bootstrap() {
 			log.Fatalln("Failed to load team all score data:", err)
 		}
 		for _, box := range eventConf.Box {
-			for _, check := range box.CheckList {
+			for _, runner := range box.Runners {
 				for _, result := range results {
-					if result.ServiceName == check.Name {
-						service, ok := uptime[team.ID][check.Name]
+					if result.ServiceName == runner.GetService().Name {
+						service, ok := uptime[team.ID][runner.GetService().Name]
 						if !ok {
-							uptime[team.ID][check.Name] = Uptime{}
+							uptime[team.ID][runner.GetService().Name] = Uptime{}
 						}
 						if result.Result == true {
 							service.Ups++
 						}
 						service.Total++
-						uptime[team.ID][check.Name] = service
+						uptime[team.ID][runner.GetService().Name] = service
 					}
 				}
 			}
@@ -196,15 +198,17 @@ func bootstrap() {
 	if err != nil {
 		log.Fatalln("Failed to load credlist files:", err)
 	}
-	for _, team := range teams {
-		credentials[team.ID] = make(map[string]map[string]string)
-		credentialsMutex[team.ID] = make(map[string]*sync.Mutex)
-		for _, file := range credlistFiles {
-			if file.IsDir() || !strings.HasSuffix(file.Name(), ".credlist") {
-				continue // Skip directories and non .credlist files
-			}
-			credentials[team.ID][file.Name()] = make(map[string]string)
-			credentialsMutex[team.ID][file.Name()] = &sync.Mutex{}
+
+	for _, file := range credlistFiles {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".credlist") {
+			continue // Skip directories and non .credlist files
+		}
+		credentials[file.Name()] = make(map[uint]map[string]string)
+		credentialsMutex[file.Name()] = make(map[uint]*sync.Mutex)
+		for _, team := range teams {
+
+			credentials[file.Name()][team.ID] = make(map[string]string)
+			credentialsMutex[file.Name()][team.ID] = &sync.Mutex{}
 			// flesh out default credlists to teams
 			teamSpecificCredlist := filepath.Join("submissions/pcrs/", fmt.Sprint(team.ID), file.Name())
 			_, err = os.Stat(teamSpecificCredlist)
@@ -252,7 +256,7 @@ func bootstrap() {
 					fmt.Println("Error reading CSV:", err)
 					break
 				}
-				credentials[team.ID][file.Name()][record[0]] = record[1]
+				credentials[file.Name()][team.ID][record[0]] = record[1]
 			}
 		}
 	}
@@ -299,27 +303,27 @@ func startEvent(beginTime time.Time) {
 	addPublicRoutes(publicAPIRoutes)
 
 	authAPIRoutes := router.Group("/api")
+	authAPIRoutes.Use(authRequired)
 	addAuthRoutes(authAPIRoutes)
 
 	adminAPIRoutes := router.Group("/api")
+	adminAPIRoutes.Use(adminAuthRequired)
 	addAdminRoutes(adminAPIRoutes)
 
 	// Start the event
 	if eventConf.StartPaused {
-		pauseTime = time.Now()
 		enginePause = true
 		log.Println("Event started, but scoring will not begin automatically")
-	} else {
 	}
 
 	// Run scoring algorithm
 	go Score()
 
 	// Start the web server
-	log.Println("Startup complete. Took", time.Now().Sub(beginTime))
+	log.Println("Startup complete. Took", time.Since(beginTime))
 	if eventConf.Https {
-		log.Fatal(router.RunTLS(fmt.Sprintf(":%d", eventConf.Port), eventConf.Cert, eventConf.Key))
+		log.Fatal(router.RunTLS(fmt.Sprintf("%s:%d", eventConf.BindAddress, eventConf.Port), eventConf.Cert, eventConf.Key))
 	} else {
-		log.Fatal(router.Run(fmt.Sprintf(":%d", eventConf.Port)))
+		log.Fatal(router.Run(fmt.Sprintf("%s:%d", eventConf.BindAddress, eventConf.Port)))
 	}
 }

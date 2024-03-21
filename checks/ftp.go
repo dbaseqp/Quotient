@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/jlaffaye/ftp"
 )
@@ -20,8 +21,8 @@ type FtpFile struct {
 	Regex string
 }
 
-func (c Ftp) Run(teamID uint, boxIp string, res chan Result, service Service) {
-	conn, err := ftp.Dial(boxIp+":"+strconv.Itoa(service.Port), ftp.DialWithTimeout(GlobalTimeout))
+func (c Ftp) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+	conn, err := ftp.Dial(boxIp+":"+strconv.Itoa(c.Port), ftp.DialWithTimeout(time.Duration(c.Timeout)*time.Second))
 	if err != nil {
 		res <- Result{
 			Error: "ftp connection failed",
@@ -32,11 +33,11 @@ func (c Ftp) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	defer conn.Quit()
 
 	var username, password string
-	if service.Anonymous {
+	if c.Anonymous {
 		username = "anonymous"
 		password = "anonymous"
 	} else {
-		username, password = getCreds(teamID, service.CredLists)
+		username, password = getCreds(teamID, c.CredLists)
 	}
 	err = conn.Login(username, password)
 	if err != nil {
@@ -103,6 +104,11 @@ func (c Ftp) Run(teamID uint, boxIp string, res chan Result, service Service) {
 
 	res <- Result{
 		Status: true,
+		Points: c.Points,
 		Debug:  "creds used were " + username + ":" + password,
 	}
+}
+
+func (c Ftp) GetService() Service {
+	return c.Service
 }

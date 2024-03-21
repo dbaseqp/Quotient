@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -28,6 +27,9 @@ type Config struct {
 	Event         string
 	EventType     string
 	DBConnectURL  string
+	BindAddress   string
+	Interface     string
+	Subnet        string
 	Timezone      string
 	JWTPrivateKey string
 	JWTPublicKey  string
@@ -49,10 +51,10 @@ type Config struct {
 	Jitter int
 
 	// Defaults for checks
-	Timeout       int
-	SlaThreshold  int
-	ServicePoints int
-	SlaPoints     int
+	Points       int
+	Timeout      int
+	SlaThreshold int
+	SlaPenalty   int
 
 	Admin []Admin
 	Box   []Box
@@ -68,28 +70,27 @@ type Admin struct {
 type Box struct {
 	Name string
 	IP   string
-	FQDN string
+	FQDN string `toml:"FQDN,omitempty" json:"fqdn,omitempty"`
 
-	// Only used for delayed check
-	Time time.Time `gorm:"-" toml:"-"`
+	// Internal use but not in config file
+	Runners []checks.Runner `toml:"-"`
 
-	CheckList []checks.ServiceHandler `toml:"check,omitempty" json:"-"`
-	Custom    []checks.Custom         `toml:"custom,omitempty" json:"custom,omitempty"`
-	Dns       []checks.Dns            `toml:"dns,omitempty" json:"dns,omitempty"`
-	Ftp       []checks.Ftp            `toml:"ftp,omitempty" json:"ftp,omitempty"`
-	Imap      []checks.Imap           `toml:"imap,omitempty" json:"imap,omitempty"`
-	Ldap      []checks.Ldap           `toml:"ldap,omitempty" json:"ldap,omitempty"`
-	Ping      []checks.Ping           `toml:"ping,omitempty" json:"ping,omitempty"`
-	Pop3      []checks.Pop3           `toml:"pop3,omitempty" json:"pop3,omitempty"`
-	Rdp       []checks.Rdp            `toml:"rdp,omitempty" json:"rdp,omitempty"`
-	Smb       []checks.Smb            `toml:"smb,omitempty" json:"smb,omitempty"`
-	Smtp      []checks.Smtp           `toml:"smtp,omitempty" json:"smtp,omitempty"`
-	Sql       []checks.Sql            `toml:"sql,omitempty" json:"sql,omitempty"`
-	Ssh       []checks.Ssh            `toml:"ssh,omitempty" json:"ssh,omitempty"`
-	Tcp       []checks.Tcp            `toml:"tcp,omitempty" json:"tcp,omitempty"`
-	Vnc       []checks.Vnc            `toml:"vnc,omitempty" json:"vnc,omitempty"`
-	Web       []checks.Web            `toml:"web,omitempty" json:"web,omitempty"`
-	WinRM     []checks.WinRM          `toml:"winrm,omitempty" json:"winrm,omitempty"`
+	Custom []checks.Custom `toml:"Custom,omitempty" json:"custom,omitempty"`
+	Dns    []checks.Dns    `toml:"Dns,omitempty" json:"dns,omitempty"`
+	Ftp    []checks.Ftp    `toml:"Ftp,omitempty" json:"ftp,omitempty"`
+	Imap   []checks.Imap   `toml:"Imap,omitempty" json:"imap,omitempty"`
+	Ldap   []checks.Ldap   `toml:"Ldap,omitempty" json:"ldap,omitempty"`
+	Ping   []checks.Ping   `toml:"Ping,omitempty" json:"ping,omitempty"`
+	Pop3   []checks.Pop3   `toml:"Pop3,omitempty" json:"pop3,omitempty"`
+	Rdp    []checks.Rdp    `toml:"Rdp,omitempty" json:"rdp,omitempty"`
+	Smb    []checks.Smb    `toml:"Smb,omitempty" json:"smb,omitempty"`
+	Smtp   []checks.Smtp   `toml:"Smtp,omitempty" json:"smtp,omitempty"`
+	Sql    []checks.Sql    `toml:"Sql,omitempty" json:"sql,omitempty"`
+	Ssh    []checks.Ssh    `toml:"Ssh,omitempty" json:"ssh,omitempty"`
+	Tcp    []checks.Tcp    `toml:"Tcp,omitempty" json:"tcp,omitempty"`
+	Vnc    []checks.Vnc    `toml:"Vnc,omitempty" json:"vnc,omitempty"`
+	Web    []checks.Web    `toml:"Web,omitempty" json:"web,omitempty"`
+	WinRM  []checks.WinRM  `toml:"Winrm,omitempty" json:"winrm,omitempty"`
 }
 
 func readConfig(path string) Config {
@@ -113,8 +114,11 @@ func readConfig(path string) Config {
 // general error checking
 func checkConfig(conf *Config) error {
 	// check top level configs
+
 	// required settings
+
 	var errResult error
+
 	if conf.Event == "" {
 		errResult = errors.Join(errResult, errors.New("event title blank or not specified"))
 	}
@@ -125,6 +129,18 @@ func checkConfig(conf *Config) error {
 
 	if conf.DBConnectURL == "" {
 		errResult = errors.Join(errResult, errors.New("no db connect url specified"))
+	}
+
+	if conf.BindAddress == "" {
+		errResult = errors.Join(errResult, errors.New("no bind address specified"))
+	}
+
+	if conf.Interface == "" {
+		errResult = errors.Join(errResult, errors.New("no interface specified"))
+	}
+
+	if conf.Subnet == "" {
+		errResult = errors.Join(errResult, errors.New("no rotation subnet specified"))
 	}
 
 	if conf.JWTPrivateKey == "" || conf.JWTPublicKey == "" {
@@ -146,6 +162,7 @@ func checkConfig(conf *Config) error {
 	}
 
 	// optional settings
+
 	if conf.Delay == 0 {
 		conf.Delay = 60
 	}
@@ -172,26 +189,23 @@ func checkConfig(conf *Config) error {
 		errResult = errors.Join(errResult, errors.New("jitter must be smaller than delay"))
 	}
 
-	if conf.Timeout != 0 {
-		dur := time.Duration(conf.Timeout) * time.Second
-		checks.GlobalTimeout = dur
-	} else {
-		checks.GlobalTimeout = time.Second * 30
+	if conf.Timeout == 0 {
+		conf.Timeout = conf.Delay / 2
 	}
 	if conf.Timeout >= conf.Delay-conf.Jitter {
 		errResult = errors.Join(errResult, errors.New("timeout must be smaller than delay minus jitter"))
 	}
 
-	if conf.ServicePoints == 0 {
-		conf.ServicePoints = 1
+	if conf.Points == 0 {
+		conf.Points = 1
 	}
 
 	if conf.SlaThreshold == 0 {
 		conf.SlaThreshold = 5
 	}
 
-	if conf.SlaPoints == 0 {
-		conf.SlaPoints = conf.SlaThreshold * conf.ServicePoints
+	if conf.SlaPenalty == 0 {
+		conf.SlaPenalty = conf.SlaThreshold * conf.Points
 	}
 
 	if conf.StartPaused {
@@ -210,420 +224,424 @@ func checkConfig(conf *Config) error {
 	dupeBoxMap := make(map[string]bool)
 	for _, b := range conf.Box {
 		if b.Name == "" {
-			return errors.New("a box is missing a name")
+			errResult = errors.Join(errResult, errors.New("a box is missing a name"))
 		}
 		if _, ok := dupeBoxMap[b.Name]; ok {
-			return errors.New("duplicate box name found: " + b.Name)
+			errResult = errors.Join(errResult, errors.New("duplicate box name found: "+b.Name))
 		}
 	}
 
-	// look for duplicate checks
-	for _, b := range conf.Box {
-		for j := 0; j < len(b.CheckList)-1; j++ {
-			if b.CheckList[j].Name == b.CheckList[j+1].Name {
-				return errors.New("duplicate check name '" + b.CheckList[j].Name + "' and '" + b.CheckList[j+1].Name + "' for box " + b.Name)
+	// ACTUALLY DO CHECKS FOR BOX AND SERVICE CONFIGURATION
+	err := parseEnvironment(conf.Box)
+	if err != nil {
+		errResult = errors.Join(errResult, err)
+	}
+
+	// look for duplicate check names
+	for _, box := range conf.Box {
+		for j := 0; j < len(box.Runners)-1; j++ {
+			if box.Runners[j].GetService().Name == box.Runners[j+1].GetService().Name {
+				errResult = errors.Join(errResult, errors.New("duplicate check name '"+box.Runners[j].GetService().Name+"' and '"+box.Runners[j+1].GetService().Name+"' for box "+box.Name))
 			}
 		}
-	}
-
-	// ACTUALLY DO CHECKS FOR BOXES AND SERVICES
-	err := validateChecks(conf.Box)
-	if err != nil {
-		return err
 	}
 
 	// errResult is nil by default if no errors occured
 	return errResult
 }
 
-func validateChecks(boxes []Box) error {
-	// check validators
-	// please overlook this transgression
+func parseEnvironment(boxes []Box) error {
+	var errResult error
+
 	for i, box := range boxes {
+		// Immediately fail if boxes aren't configured properly
 		if box.Name == "" {
-			return errors.New(fmt.Sprintf("no name found for box %d", i))
+			return fmt.Errorf("no name found for box %d", i)
 		}
 
 		if box.IP == "" {
 			return errors.New("no ip found for box " + box.Name)
 		}
+
 		// Ensure TeamID replacement chars are lowercase
 		box.IP = strings.ToLower(box.IP)
 		boxes[i].IP = box.IP
 		box.FQDN = strings.ToLower(box.FQDN)
 		boxes[i].FQDN = box.FQDN
 
-		boxes[i].CheckList = getBoxChecks(box)
-		if len(boxes[i].CheckList) == 0 {
-			continue
-		}
-		earliestCheck := boxes[i].CheckList[0].StopTime
-		for j, check := range boxes[i].CheckList {
-			// general check attributes
-			check.FQDN = box.FQDN
+		for j, c := range box.Custom {
+			if c.Display == "" {
+				c.Display = "custom"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if len(c.CredLists) < 1 && !strings.Contains(c.Command, "USERNAME") && !strings.Contains(c.Command, "PASSWORD") {
+				c.Anonymous = true
+			}
 
-			if check.Points == 0 {
-				check.Points = eventConf.ServicePoints
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
 			}
-			if check.SlaThreshold == 0 {
-				check.SlaThreshold = eventConf.SlaThreshold
+			boxes[i].Custom[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Dns {
+			c.Anonymous = true // call me when you need authed DNS
+			if c.Display == "" {
+				c.Display = "dns"
 			}
-			if check.SlaPenalty == 0 {
-				check.SlaPenalty = eventConf.SlaThreshold
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
 			}
-			if check.LaunchTime.Before(earliestCheck) {
-				earliestCheck = check.LaunchTime
+			if len(c.Record) < 1 {
+				errResult = errors.Join(errResult, errors.New("dns check "+c.Name+" has no records"))
 			}
-			if check.StopTime.IsZero() {
-				check.StopTime = time.Now().AddDate(1, 0, 0) // one year ahead should be far enough
+			if c.Port == 0 {
+				c.Port = 53
 			}
-			for _, list := range check.CredLists {
-				if !strings.HasSuffix(list, ".credlist") {
-					return errors.New("check " + check.Name + " has invalid credlist names")
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Dns[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Ftp {
+			if c.Display == "" {
+				c.Display = "ftp"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				c.Port = 21
+			}
+			for _, f := range c.File {
+				if f.Regex != "" && f.Hash != "" {
+					errResult = errors.Join(errResult, errors.New("can't have both regex and hash for ftp file check"))
 				}
 			}
-			// type-specific check attribute
-			check.Type = reflect.TypeOf(check.Runner).String()
-			switch check.Runner.(type) {
-			case checks.Custom:
-				ck := check.Runner.(checks.Custom)
-				if check.Display == "" {
-					check.Display = "custom"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if len(check.CredLists) < 1 && !strings.Contains(ck.Command, "USERNAME") && !strings.Contains(ck.Command, "PASSWORD") {
-					check.Anonymous = true
-				}
-				check.Runner = ck
-			case checks.Dns:
-				ck := check.Runner.(checks.Dns)
-				check.IP = box.IP
-				check.Anonymous = true // call me when you need authed DNS
-				if check.Display == "" {
-					check.Display = "dns"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if len(ck.Record) < 1 {
-					return errors.New("dns check " + check.Name + " has no records")
-				}
-				if check.Port == 0 {
-					check.Port = 53
-				}
-				check.Runner = ck
-			case checks.Ftp:
-				ck := check.Runner.(checks.Ftp)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "ftp"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					check.Port = 21
-				}
-				for _, f := range ck.File {
-					if f.Regex != "" && f.Hash != "" {
-						return errors.New("can't have both regex and hash for ftp file check")
-					}
-				}
-				check.Runner = ck
-			case checks.Imap:
-				ck := check.Runner.(checks.Imap)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "imap"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					check.Port = 143
-				}
-				check.Runner = ck
-			case checks.Ldap:
-				ck := check.Runner.(checks.Ldap)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "ldap"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					check.Port = 636
-				}
-				if check.Anonymous {
-					return errors.New("anonymous ldap not supported")
-				}
-				check.Runner = ck
-			case checks.Ping:
-				ck := check.Runner.(checks.Ping)
-				check.IP = box.IP
-				check.Anonymous = true
-				if ck.Count == 0 {
-					ck.Count = 1
-				}
-				if check.Display == "" {
-					check.Display = "ping"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				check.Runner = ck
-			case checks.Pop3:
-				ck := check.Runner.(checks.Pop3)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "pop3"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					check.Port = 110
-				}
-				check.Runner = ck
-			case checks.Rdp:
-				ck := check.Runner.(checks.Rdp)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "rdp"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					check.Port = 3389
-				}
-				check.Runner = ck
-			case checks.Smb:
-				ck := check.Runner.(checks.Smb)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "smb"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					check.Port = 445
-				}
-				check.Runner = ck
-			case checks.Smtp:
-				ck := check.Runner.(checks.Smtp)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "smtp"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					check.Port = 25
-				}
-				check.Runner = ck
-			case checks.Sql:
-				ck := check.Runner.(checks.Sql)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "sql"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if ck.Kind == "" {
-					ck.Kind = "mysql"
-				}
-				if check.Port == 0 {
-					check.Port = 3306
-				}
-				for _, q := range ck.Query {
-					if q.DatabaseExists && (q.Column != "" || q.Table != "" || q.Output != "") {
-						return errors.New("cannot use both database exists check and row check")
-					}
-					if q.DatabaseExists && q.Database == "" {
-						return errors.New("must specify database for database exists check")
-					}
-					if q.UseRegex {
-						regexp.MustCompile(q.Output)
-					}
-					if q.UseRegex && q.Contains {
-						return errors.New("cannot use both regex and contains")
-					}
-				}
-				check.Runner = ck
-			case checks.Ssh:
-				ck := check.Runner.(checks.Ssh)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "ssh"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					check.Port = 22
-				}
-				if ck.PrivKey != "" && ck.BadAttempts != 0 {
-					return errors.New("can not have bad attempts with pubkey for ssh")
-				}
-				for _, r := range ck.Command {
-					if r.UseRegex {
-						regexp.MustCompile(r.Output)
-					}
-					if r.UseRegex && r.Contains {
-						return errors.New("cannot use both regex and contains")
-					}
-				}
-				if check.Anonymous {
-					return errors.New("anonymous ssh not supported")
-				}
-				check.Runner = ck
-			case checks.Tcp:
-				ck := check.Runner.(checks.Tcp)
-				check.IP = box.IP
-				check.Anonymous = true
-				if check.Display == "" {
-					check.Display = "tcp"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					return errors.New("tcp port required")
-				}
-				check.Runner = ck
-			case checks.Vnc:
-				ck := check.Runner.(checks.Vnc)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "vnc"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					check.Port = 5900
-				}
-				check.Runner = ck
-			case checks.Web:
-				ck := check.Runner.(checks.Web)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "web"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					check.Port = 80
-				}
-				if len(ck.Url) == 0 {
-					return errors.New("no urls specified for web check " + check.Name)
-				}
-				if len(check.CredLists) < 1 {
-					check.Anonymous = true
-				}
-				if ck.Scheme == "" {
-					ck.Scheme = "http"
-				}
-				for _, u := range ck.Url {
-					if u.Diff != 0 && u.CompareFile == "" {
-						return errors.New("need compare file for diff in web")
-					}
-				}
-				check.Runner = ck
-			case checks.WinRM:
-				ck := check.Runner.(checks.WinRM)
-				check.IP = box.IP
-				if check.Display == "" {
-					check.Display = "winrm"
-				}
-				if check.Name == "" {
-					check.Name = box.Name + "-" + check.Display
-				}
-				if check.Port == 0 {
-					if ck.Encrypted {
-						check.Port = 443
-					} else {
-						check.Port = 80
-					}
-				}
-				if check.Anonymous {
-					return errors.New("anonymous winrm not supported")
-				}
-				for _, r := range ck.Command {
-					if r.UseRegex {
-						regexp.MustCompile(r.Output)
-					}
-					if r.UseRegex && r.Contains {
-						return errors.New("cannot use both regex and contains")
-					}
-				}
-				check.Runner = ck
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
 			}
-			boxes[i].CheckList[j] = check
+			boxes[i].Ftp[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Imap {
+			if c.Display == "" {
+				c.Display = "imap"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				c.Port = 143
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Imap[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Ldap {
+			if c.Display == "" {
+				c.Display = "ldap"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				c.Port = 636
+			}
+			if c.Anonymous {
+				errResult = errors.Join(errResult, errors.New("anonymous ldap not supported"))
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Ldap[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Ping {
+			c.Anonymous = true
+			if c.Count == 0 {
+				c.Count = 1
+			}
+			if c.Display == "" {
+				c.Display = "ping"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Ping[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Pop3 {
+			if c.Display == "" {
+				c.Display = "pop3"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				c.Port = 110
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Pop3[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Rdp {
+			if c.Display == "" {
+				c.Display = "rdp"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				c.Port = 3389
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Rdp[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Smb {
+			if c.Display == "" {
+				c.Display = "smb"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				c.Port = 445
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Smb[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Smtp {
+			if c.Display == "" {
+				c.Display = "smtp"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				c.Port = 25
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Smtp[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Sql {
+			if c.Display == "" {
+				c.Display = "sql"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Kind == "" {
+				c.Kind = "mysql"
+			}
+			if c.Port == 0 {
+				c.Port = 3306
+			}
+			for _, q := range c.Query {
+				if q.UseRegex {
+					regexp.MustCompile(q.Output)
+				}
+				if q.UseRegex && q.Contains {
+					errResult = errors.Join(errResult, errors.New("cannot use both regex and contains"))
+				}
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Sql[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Ssh {
+			if c.Display == "" {
+				c.Display = "ssh"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				c.Port = 22
+			}
+			if c.PrivKey != "" && c.BadAttempts != 0 {
+				errResult = errors.Join(errResult, errors.New("can not have bad attempts with pubkey for ssh"))
+			}
+			for _, r := range c.Command {
+				if r.UseRegex {
+					regexp.MustCompile(r.Output)
+				}
+				if r.UseRegex && r.Contains {
+					errResult = errors.Join(errResult, errors.New("cannot use both regex and contains"))
+				}
+			}
+			if c.Anonymous {
+				errResult = errors.Join(errResult, errors.New("anonymous ssh not supported"))
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Ssh[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Tcp {
+			c.Anonymous = true
+			if c.Display == "" {
+				c.Display = "tcp"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				errResult = errors.Join(errResult, errors.New("tcp port required"))
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Tcp[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Vnc {
+			if c.Display == "" {
+				c.Display = "vnc"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				c.Port = 5900
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Vnc[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.Web {
+			if c.Display == "" {
+				c.Display = "web"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				if c.Scheme == "https" {
+					c.Port = 443
+				} else {
+					c.Port = 80
+				}
+			}
+			if len(c.Url) == 0 {
+				errResult = errors.Join(errResult, errors.New("no urls specified for web check "+c.Name))
+			}
+			if len(c.CredLists) < 1 {
+				c.Anonymous = true
+			}
+			if c.Scheme == "" {
+				c.Scheme = "http"
+			}
+			for _, u := range c.Url {
+				if u.Diff != 0 && u.CompareFile == "" {
+					errResult = errors.Join(errResult, errors.New("need compare file for diff in web"))
+				}
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].Web[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
+		}
+		for j, c := range box.WinRM {
+			if c.Display == "" {
+				c.Display = "winrm"
+			}
+			if c.Name == "" {
+				c.Name = box.Name + "-" + c.Display
+			}
+			if c.Port == 0 {
+				if c.Encrypted {
+					c.Port = 443
+				} else {
+					c.Port = 80
+				}
+			}
+			if c.Anonymous {
+				errResult = errors.Join(errResult, errors.New("anonymous winrm not supported"))
+			}
+			for _, r := range c.Command {
+				if r.UseRegex {
+					regexp.MustCompile(r.Output)
+				}
+				if r.UseRegex && r.Contains {
+					errResult = errors.Join(errResult, errors.New("cannot use both regex and contains"))
+				}
+			}
+
+			if err := configureService(&c.Service, box); err != nil {
+				errResult = errors.Join(errResult, err)
+			}
+			boxes[i].WinRM[j] = c
+			boxes[i].Runners = append(boxes[i].Runners, c)
 		}
 	}
 	return nil
-
 }
 
-func getBoxChecks(b Box) []checks.ServiceHandler {
-	// Please forgive me
-	checkList := []checks.ServiceHandler{}
-	for _, c := range b.Custom {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
+// configure general service attributes
+func configureService(service *checks.Service, box Box) error {
+	service.BoxName = box.Name
+	service.BoxIP = box.IP
+	service.BoxFQDN = box.FQDN
+
+	if service.Points == 0 {
+		service.Points = eventConf.Points
 	}
-	for _, c := range b.Dns {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
+	if service.Timeout == 0 {
+		service.Timeout = eventConf.Timeout
 	}
-	for _, c := range b.Ftp {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
+	if service.SlaPenalty == 0 {
+		service.SlaPenalty = eventConf.SlaPenalty
 	}
-	for _, c := range b.Imap {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
+	if service.SlaThreshold == 0 {
+		service.SlaThreshold = eventConf.SlaThreshold
 	}
-	for _, c := range b.Ping {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
+	if service.StopTime.IsZero() {
+		service.StopTime = time.Now().AddDate(3, 0, 0) // 3 years ahead should be far enough
 	}
-	for _, c := range b.Pop3 {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
+	for _, list := range service.CredLists {
+		if !strings.HasSuffix(list, ".credlist") {
+			return errors.New("check " + service.Name + " has invalid credlist names")
+		}
 	}
-	for _, c := range b.Ldap {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
-	}
-	for _, c := range b.Rdp {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
-	}
-	for _, c := range b.Smb {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
-	}
-	for _, c := range b.Smtp {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
-	}
-	for _, c := range b.Sql {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
-	}
-	for _, c := range b.Ssh {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
-	}
-	for _, c := range b.Tcp {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
-	}
-	for _, c := range b.Vnc {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
-	}
-	for _, c := range b.Web {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
-	}
-	for _, c := range b.WinRM {
-		checkList = append(checkList, checks.ServiceHandler{Service: c.Service, Runner: c})
-	}
-	return checkList
+	return nil
 }

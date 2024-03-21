@@ -10,6 +10,5 @@ plots/*
 *.swp
 *.conf
 !.gitkeep
-go.mod
-go.sum
 sugmaase
+.vscode

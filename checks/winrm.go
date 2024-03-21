@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/masterzen/winrm"
@@ -18,24 +19,24 @@ type WinRM struct {
 }
 
 type winCommandData struct {
-	UseRegex bool
-	Contains bool
+	UseRegex bool `toml:",omitempty"`
+	Contains bool `toml:",omitempty"`
 	Command  string
 	Output   string
 }
 
-func (c WinRM) Run(teamID uint, boxIp string, res chan Result, service Service) {
-	username, password := getCreds(teamID, service.CredLists)
+func (c WinRM) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+	username, password := getCreds(teamID, c.CredLists)
 	params := *winrm.DefaultParameters
 
 	// Run bad attempts if specified
 	for i := 0; i < c.BadAttempts; i++ {
-		endpoint := winrm.NewEndpoint(boxIp, service.Port, c.Encrypted, true, nil, nil, nil, GlobalTimeout)
+		endpoint := winrm.NewEndpoint(boxIp, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
 		winrm.NewClientWithParameters(endpoint, username, uuid.New().String(), &params)
 	}
 
 	// Log in to WinRM
-	endpoint := winrm.NewEndpoint(boxIp, service.Port, c.Encrypted, true, nil, nil, nil, GlobalTimeout)
+	endpoint := winrm.NewEndpoint(boxIp, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
 	client, err := winrm.NewClientWithParameters(endpoint, username, password, &params)
 	if err != nil {
 		res <- Result{
@@ -111,6 +112,11 @@ func (c WinRM) Run(teamID uint, boxIp string, res chan Result, service Service) 
 	}
 	res <- Result{
 		Status: true,
+		Points: c.Points,
 		Debug:  "creds used were " + username + ":" + password,
 	}
+}
+
+func (c WinRM) GetService() Service {
+	return c.Service
 }

@@ -208,69 +208,41 @@ func authRequired(c *gin.Context) {
 	c.Next()
 }
 
-func authFromToken(c *gin.Context) {
-	tok := c.Param("token")
-
-	claims, err := getClaimsFromToken(tok)
-
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Token."})
-		return
-	}
-
-	if claims == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Token."})
-		return
-	}
-
-	if val, ok := claims["UserInfo"]; ok {
-		userInfo := val.(map[string]interface{})
-		c.JSON(http.StatusOK, gin.H{"Username": userInfo["Username"], "Groups": userInfo["Groups"], "Admin": userInfo["Admin"]})
-	} else {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Token."})
-	}
-}
-
-func isAdmin(c *gin.Context) (bool, error) {
-
+func contextGetClaims(c *gin.Context) (UserJWTData, error) {
 	isLoggedIn, err := isLoggedIn(c)
 	if err != nil {
-		return false, err
+		return UserJWTData{}, err
 	}
 
 	if isLoggedIn == false {
-		return false, errors.New("Not logged in")
+		return UserJWTData{}, errors.New("not logged in")
 	}
 
 	tokenString, err := c.Cookie("auth_token")
 	if err != nil {
-		return false, err
+		return UserJWTData{}, err
 	}
 
 	claims, err := getClaimsFromToken(tokenString)
 	if err != nil {
-		return false, err
+		return UserJWTData{}, err
 	}
 
 	if val, ok := claims["UserInfo"]; ok {
 		userInfo := val.(map[string]interface{})
-		if userInfo["Admin"] != true {
-			return false, errors.New("Not admin")
-		}
-	} else {
-		return false, errors.New("No user info")
+		return UserJWTData{ID: uint(userInfo["ID"].(float64)), Username: userInfo["Username"].(string), Admin: userInfo["Admin"].(bool)}, nil
 	}
-	return true, nil
+	return UserJWTData{}, errors.New("no user info")
 }
 
 func adminAuthRequired(c *gin.Context) {
-	isAdmin, err := isAdmin(c)
+	claims, err := contextGetClaims(c)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	if isAdmin == false {
+	if claims.Admin == false {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}

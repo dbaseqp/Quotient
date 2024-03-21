@@ -39,7 +39,7 @@
             event.preventDefault();
 
             let formid = "addannouncementForm";
-            let url = "/api/engine/announcements/add";
+            let url = "/api/announcements/add";
 
             const form = document.forms[formid]
             let data = JSON.stringify({
@@ -105,7 +105,7 @@
 
             let announcementid = event.target.getAttribute("data-announcement-id")
             let formid = "deleteannouncementForm";
-            let url = "/api/engine/announcements/" + announcementid;
+            let url = "/api/announcements/" + announcementid;
             let success_function = function (data) {
                 const modal = bootstrap.Modal.getInstance(document.getElementById('deleteannouncementModal'))
 

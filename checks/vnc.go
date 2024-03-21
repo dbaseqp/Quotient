@@ -12,9 +12,9 @@ type Vnc struct {
 	Service
 }
 
-func (c Vnc) Run(teamID uint, boxIp string, res chan Result, service Service) {
+func (c Vnc) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	// Configure the vnc client
-	username, password := getCreds(teamID, service.CredLists)
+	username, password := getCreds(teamID, c.CredLists)
 	config := vnc.ClientConfig{
 		Auth: []vnc.ClientAuth{
 			&vnc.PasswordAuth{Password: password},
@@ -23,7 +23,7 @@ func (c Vnc) Run(teamID uint, boxIp string, res chan Result, service Service) {
 
 	// Dial the vnc server
 	dialer := net.Dialer{}
-	conn, err := dialer.DialContext(context.TODO(), "tcp", fmt.Sprintf("%s:%d", boxIp, service.Port))
+	conn, err := dialer.DialContext(context.TODO(), "tcp", fmt.Sprintf("%s:%d", boxIp, c.Port))
 	if err != nil {
 		res <- Result{
 			Error: "connection to vnc server failed",
@@ -45,6 +45,11 @@ func (c Vnc) Run(teamID uint, boxIp string, res chan Result, service Service) {
 
 	res <- Result{
 		Status: true,
+		Points: c.Points,
 		Debug:  "creds " + username + ":" + password,
 	}
+}
+
+func (c Vnc) GetService() Service {
+	return c.Service
 }

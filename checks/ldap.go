@@ -3,6 +3,7 @@ package checks
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	ldap "github.com/go-ldap/ldap/v3"
 )
@@ -13,16 +14,16 @@ type Ldap struct {
 	Encrypted bool
 }
 
-func (c Ldap) Run(teamID uint, boxIp string, res chan Result, service Service) {
+func (c Ldap) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	// Set timeout
-	ldap.DefaultTimeout = GlobalTimeout
+	ldap.DefaultTimeout = time.Duration(c.Timeout) * time.Second
 
-	username, password := getCreds(teamID, service.CredLists)
+	username, password := getCreds(teamID, c.CredLists)
 	scheme := "ldap"
 	if c.Encrypted {
 		scheme = "ldaps"
 	}
-	lconn, err := ldap.DialURL(fmt.Sprintf("%s://%s:%d", scheme, boxIp, service.Port))
+	lconn, err := ldap.DialURL(fmt.Sprintf("%s://%s:%d", scheme, boxIp, c.Port))
 	if err != nil {
 		res <- Result{
 			Error: "failed to connect",
@@ -33,7 +34,7 @@ func (c Ldap) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	defer lconn.Close()
 
 	// Set message timeout
-	lconn.SetTimeout(GlobalTimeout)
+	lconn.SetTimeout(time.Duration(c.Timeout) * time.Second)
 
 	// Attempt to login
 	splitDomain := strings.Split(c.Domain, ".")
@@ -57,6 +58,11 @@ func (c Ldap) Run(teamID uint, boxIp string, res chan Result, service Service) {
 
 	res <- Result{
 		Status: true,
+		Points: c.Points,
 		Debug:  "login successful for username " + username + " password " + password,
 	}
+}
+
+func (c Ldap) GetService() Service {
+	return c.Service
 }

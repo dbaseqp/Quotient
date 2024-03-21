@@ -8,7 +8,8 @@ Usage
 
 1. Download this repository (`git clone https://github.com/dbaseqp/SUGMAASE`).
 2. Bring up the Postgres database (`docker-compose up --detach`)
-3. Compile the code (`cd SUGMAASE; go mod init sugmaase; go mod tidy; go build`).
+   1. You can also change the DB url string in your config to connect to another Postgres instance
+3. Compile the code (`cd SUGMAASE; go build`).
 4. Save your configuration as `./config/event.conf`.
 5. Run the engine (`./sugmaase`).
 
@@ -34,6 +35,7 @@ eventtype = "rvb"                   # Scoring algorithm to use
                                         # rvb: score each sevice for each team
                                         # more options will be added later
 dbconnecturl = "postgres://engineuser:password@localhost:5432/engine" # configure these in ./.env  
+bindaddress = "192.168.220.10"      # IP to bind to
 
 timezone = "America/Los_Angeles"        # Timezone you want to use
 jwtprivatekey = "config/privkey.pem"    # Private key used for JWT 
@@ -70,7 +72,7 @@ pw = "admin"
 
 [[box]]
 name="castle"
-ip = "10.20.x.1"
+ip = "10.20._.1"
 
     # If you want to keep something default, just don't specify it
     # For this box, we're running a default SSH login check
@@ -89,7 +91,7 @@ ip = "10.20.x.1"
 
 [[box]]
 name = "village"
-ip = "10.20.x.2"
+ip = "10.20._.2"
 
     # A custom check that runs command (like shell or python scripts) with sh. Compares output against regex.
     # Command must return exit code 0 to pass.

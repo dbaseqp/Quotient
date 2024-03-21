@@ -1,13 +1,15 @@
 package main
 
 import (
-	"bytes"
 	"html/template"
 	"net/http"
+	"reflect"
+	"sort"
 	"strconv"
+	"strings"
+	"sugmaase/checks"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,6 +18,9 @@ var (
 		"format": func(t time.Time) string {
 			return t.In(loc).Format("2006-01-02 15:04:05 PM")
 		},
+		"typeOf": func(v interface{}) string {
+			return strings.Split(reflect.TypeOf(v).String(), ".")[1]
+		},
 		"uint": func(n float64) uint {
 			return uint(n)
 		},
@@ -23,7 +28,7 @@ var (
 			// sorry, i couldn't figure out how to do this...
 			var keys []string
 			switch temp := m.(type) {
-			case map[string]map[string]string:
+			case map[string]map[uint]map[string]string:
 				for key := range temp {
 					keys = append(keys, key)
 				}
@@ -32,6 +37,7 @@ var (
 					keys = append(keys, key)
 				}
 			}
+			sort.Strings(keys)
 			return keys
 		},
 	}
@@ -129,19 +135,14 @@ func viewInjects(c *gin.Context) {
 		return
 	}
 
-	tok, err := c.Cookie("auth_token")
+	claims, err := contextGetClaims(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	claims, err := getClaimsFromToken(tok)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	isAdmin := claims["UserInfo"].(map[string]any)["Admin"].(bool)
+
 	var team []TeamData
-	if isAdmin {
+	if claims.Admin {
 		teams, err := dbGetTeams()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, err.Error())
@@ -157,7 +158,7 @@ func viewInjects(c *gin.Context) {
 		}
 	} else {
 		team = make([]TeamData, 1)
-		team[0], err = dbGetTeamScore(int(claims["UserInfo"].(map[string]any)["ID"].(float64)))
+		team[0], err = dbGetTeamScore(int(claims.ID))
 	}
 
 	if err != nil {
@@ -174,7 +175,6 @@ func viewInjects(c *gin.Context) {
 func viewInject(c *gin.Context) {
 	tmpl, _ := template.Must(template.ParseGlob("templates/layouts/*.html")).ParseGlob("templates/partials/*.html")
 	tmpl.Funcs(templateFuncs)
-	tmpl.ParseFiles("templates/inject_drilldown.html")
 	injectid, _ := strconv.Atoi(c.Param("injectid"))
 	inject, err := dbGetInject(injectid)
 	if err != nil {
@@ -244,25 +244,13 @@ func viewEngine(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, err.Error())
 		return
 	}
-	buf := new(bytes.Buffer)
-	encoder := toml.NewEncoder(buf)
-	encoder.Indent = "    "
-	prettyconfig := eventConf // copy over primitives https://stackoverflow.com/questions/51635766/how-do-i-copy-a-struct
-	var boxes []Box
+
+	var services []checks.Runner
 	for _, box := range eventConf.Box {
-		boxes = append(boxes, Box{
-			Name:      box.Name,
-			IP:        box.IP,
-			CheckList: box.CheckList,
-		})
-	}
-	prettyconfig.Box = boxes // swap for pretty formatted boxes
-	if err := encoder.Encode(prettyconfig); err != nil {
-		c.JSON(http.StatusInternalServerError, err.Error())
-		return
+		services = append(services, box.Runners...)
 	}
 
-	err = tmpl.Execute(c.Writer, pageData(c, gin.H{"title": "Engine", "status": !enginePause, "teams": teams, "prettyconfig": buf, "adjustments": adjustments})) // intuitively easier to pass in a true value for running
+	err = tmpl.Execute(c.Writer, pageData(c, gin.H{"title": "Engine", "status": !enginePause, "teams": teams, "adjustments": adjustments, "services": services, "credentials": credentials}))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, err.Error())
 		return

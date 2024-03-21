@@ -23,13 +23,13 @@ type smbFile struct {
 	Regex string
 }
 
-func (c Smb) Run(teamID uint, boxIp string, res chan Result, service Service) {
+func (c Smb) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	// create smb object outside of if statement scope
 
 	// Authenticated SMB
-	username, password := getCreds(teamID, service.CredLists)
+	username, password := getCreds(teamID, c.CredLists)
 
-	conn, err := net.Dial("tcp", boxIp+":"+strconv.Itoa(service.Port))
+	conn, err := net.Dial("tcp", boxIp+":"+strconv.Itoa(c.Port))
 	if err != nil {
 		res <- Result{
 			Error: "connection failed",
@@ -40,7 +40,7 @@ func (c Smb) Run(teamID uint, boxIp string, res chan Result, service Service) {
 
 	d := &smb2.Dialer{}
 
-	if service.Anonymous {
+	if c.Anonymous {
 		d = &smb2.Dialer{
 			Initiator: &smb2.NTLMInitiator{
 				User: "Guest",
@@ -59,7 +59,7 @@ func (c Smb) Run(teamID uint, boxIp string, res chan Result, service Service) {
 
 	s, err := d.Dial(conn)
 	if err != nil {
-		if service.Anonymous {
+		if c.Anonymous {
 			res <- Result{
 				Error: "smb anonymous login failed",
 				Debug: err.Error(),
@@ -128,8 +128,8 @@ func (c Smb) Run(teamID uint, boxIp string, res chan Result, service Service) {
 			}
 			res <- Result{
 				Status: true,
-				Error:  "smb file matched regex",
-				Debug:  "file " + file.Name + ", creds " + username + ":" + password,
+				Points: c.Points,
+				Debug:  "smb file " + file.Name + " matched regex, creds " + username + ":" + password,
 			}
 			return
 		} else if file.Hash != "" {
@@ -150,26 +150,30 @@ func (c Smb) Run(teamID uint, boxIp string, res chan Result, service Service) {
 
 			res <- Result{
 				Status: true,
-				Error:  "smb file matched hash",
-				Debug:  "file " + file.Name + ", creds " + username + ":" + password,
+				Points: c.Points,
+				Debug:  "smb file " + file.Name + " matched hash file, creds " + username + ":" + password,
 			}
 			return
 		} else {
 
 			res <- Result{
 				Status: true,
-				Error:  "smb file retrieval successful",
-				Debug:  "file " + file.Name + ", creds " + username + ":" + password,
+				Points: c.Points,
+				Debug:  "smb file " + file.Name + " retrieval successful, creds " + username + ":" + password,
 			}
 			return
 		}
 	} else {
 		res <- Result{
 			Status: true,
-			Error:  "smb login succeeded",
-			Debug:  "creds " + username + ":" + password,
+			Points: c.Points,
+			Debug:  "smb login succeeded, creds " + username + ":" + password,
 		}
 		return
 	}
 
+}
+
+func (c Smb) GetService() Service {
+	return c.Service
 }

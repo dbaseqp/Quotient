@@ -18,22 +18,22 @@ type Sql struct {
 }
 
 type queryData struct {
-	UseRegex       bool
-	Contains       bool
-	DatabaseExists bool
-	Database       string
-	Table          string
-	Column         string
-	Output         string
+	UseRegex bool
+	Contains bool
+	Command  string `toml:",omitempty"`
+	Database string `toml:",omitempty"`
+	Table    string `toml:",omitempty"`
+	Column   string `toml:",omitempty"`
+	Output   string `toml:",omitempty"`
 }
 
-func (c Sql) Run(teamID uint, boxIp string, res chan Result, service Service) {
-	username, password := getCreds(teamID, service.CredLists)
+func (c Sql) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+	username, password := getCreds(teamID, c.CredLists)
 
 	// Run query
 	q := c.Query[rand.Intn(len(c.Query))]
 
-	db, err := sql.Open(c.Kind, fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", username, password, boxIp, service.Port, q.Database))
+	db, err := sql.Open(c.Kind, fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", username, password, boxIp, c.Port, q.Database))
 	if err != nil {
 		res <- Result{
 			Error: "creating db handle failed",
@@ -56,19 +56,16 @@ func (c Sql) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	// Query the DB
 	// TODO: This is SQL injectable. Figure out Paramerterized queries. not that it really matters...
 	var rows *sql.Rows
-	if q.DatabaseExists {
-		rows, err = db.QueryContext(context.TODO(), "SHOW DATABASES;")
+	if q.Command != "" {
+		rows, err = db.QueryContext(context.TODO(), q.Command)
 		if err != nil {
 			res <- Result{
-				Error: "could not query db for database " + q.Database,
+				Error: "could not query db for database " + q.Command,
 				Debug: err.Error(),
 			}
 			return
 		}
 		defer rows.Close()
-
-		q.Contains = true
-		q.Output = q.Database
 	} else {
 		rows, err = db.QueryContext(context.TODO(), fmt.Sprintf("SELECT %s FROM %s;", q.Column, q.Table))
 		if err != nil {
@@ -124,15 +121,10 @@ func (c Sql) Run(teamID uint, boxIp string, res chan Result, service Service) {
 			}
 		}
 		if !foundSwitch {
-			var debug string
-			if q.DatabaseExists {
-				debug = "database server didn't contain database " + q.Output
-			} else {
-				debug = "database " + q.Database + " table " + q.Table + " column " + q.Column + " didn't contain " + q.Output
-			}
 			res <- Result{
 				Error: "query output didn't contain value",
-				Debug: debug}
+				Debug: output,
+			}
 			return
 		}
 		// Check for error in the rows
@@ -147,6 +139,11 @@ func (c Sql) Run(teamID uint, boxIp string, res chan Result, service Service) {
 
 	res <- Result{
 		Status: true,
+		Points: c.Points,
 		Debug:  "creds used were " + username + ":" + password,
 	}
+}
+
+func (c Sql) GetService() Service {
+	return c.Service
 }

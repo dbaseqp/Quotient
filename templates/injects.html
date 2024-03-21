@@ -252,6 +252,28 @@
 {{ end }}
 
 {{ if $user.UserInfo.Admin }}
+<script>
+    const evtSource = new EventSource("/api/sse");
+    evtSource.onmessage = (event) => {
+        data = JSON.parse(event.data)
+        console.log(data)
+        if (data.page == "injects") {
+            fetch("/api/injects")
+                .then((response) => {
+                    if (!response.ok) {
+                        Promise.reject(response);
+                    }
+                    return response.json();
+                })
+                .then((data) => {
+                    console.log(data)
+                })
+                .catch((error) => {
+                    createToast(error, "bg-danger")
+                })
+        }
+    }
+</script>
 {{ else }}
 <script>
     document.addEventListener('DOMContentLoaded', function () {

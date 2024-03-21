@@ -16,25 +16,25 @@ import (
 
 type Ssh struct {
 	Service
-	PrivKey     string
-	BadAttempts int
+	PrivKey     string `toml:",omitempty"`
+	BadAttempts int    `toml:",omitzero"`
 	Command     []commandData
 }
 
 type commandData struct {
 	UseRegex bool
 	Contains bool
-	Command  string
-	Output   string
+	Command  string `toml:",omitempty"`
+	Output   string `toml:",omitempty"`
 }
 
-func (c Ssh) Run(teamID uint, boxIp string, res chan Result, service Service) {
+func (c Ssh) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	// Create client config
-	username, password := getCreds(teamID, service.CredLists)
+	username, password := getCreds(teamID, c.CredLists)
 	config := &ssh.ClientConfig{
 		User:            username,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         GlobalTimeout,
+		Timeout:         time.Duration(c.Timeout) * time.Second,
 	}
 	config.SetDefaults()
 	config.Ciphers = append(config.Ciphers, "3des-cbc")
@@ -71,17 +71,17 @@ func (c Ssh) Run(teamID uint, boxIp string, res chan Result, service Service) {
 				ssh.Password(uuid.New().String()),
 			},
 			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-			Timeout:         GlobalTimeout,
+			Timeout:         time.Duration(c.Timeout) * time.Second,
 		}
 
-		badConn, err := ssh.Dial("tcp", boxIp+":"+strconv.Itoa(service.Port), badConf)
+		badConn, err := ssh.Dial("tcp", boxIp+":"+strconv.Itoa(c.Port), badConf)
 		if err == nil {
 			badConn.Close()
 		}
 	}
 
 	// Connect to ssh server
-	conn, err := ssh.Dial("tcp", boxIp+":"+strconv.Itoa(service.Port), config)
+	conn, err := ssh.Dial("tcp", boxIp+":"+strconv.Itoa(c.Port), config)
 	if err != nil {
 		if c.PrivKey != "" {
 			res <- Result{
@@ -153,7 +153,7 @@ func (c Ssh) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	if len(c.Command) > 0 {
 		r := c.Command[rand.Intn(len(c.Command))]
 		fmt.Fprintln(stdin, r.Command)
-		time.Sleep(time.Duration(int(GlobalTimeout) / 8))
+		time.Sleep(time.Duration(int(time.Duration(c.Timeout)*time.Second) / 8)) // command wait time
 		if r.Contains {
 			if !strings.Contains(stdoutBytes.String(), r.Output) {
 				res <- Result{
@@ -191,6 +191,11 @@ func (c Ssh) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	}
 	res <- Result{
 		Status: true,
+		Points: c.Points,
 		Debug:  "creds used were " + username + ":" + password,
 	}
+}
+
+func (c Ssh) GetService() Service {
+	return c.Service
 }

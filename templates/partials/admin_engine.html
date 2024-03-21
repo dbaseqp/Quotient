@@ -95,7 +95,7 @@
             event.preventDefault();
 
             let formid = "exportForm";
-            let url = "/api/engine/export";
+            let url = "/api/engine/export/scores";
 
             window.open(url, "_blank")
         });
@@ -142,6 +142,8 @@
 {{ define "teams"}}
 <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addteamModal">Add new
     team</button>
+<button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#importteamModal">Import teams
+    CSV</button>
 
 <div class="modal fade" data-bs-backdrop="static" data-bs-keyboard="false" id="addteamModal" tabindex="-1"
     aria-labelledby="addteamModalLabel" aria-hidden="true">
@@ -173,6 +175,33 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 <button type="submit" form="addteamForm" class="btn btn-primary">Add team
                     <div class="spinner-border text-primary d-none" role="status" id="addteamSpinner">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" data-bs-backdrop="static" data-bs-keyboard="false" id="importteamModal" tabindex="-1"
+    aria-labelledby="importteamModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="importteamModalLabel">Import teams</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="importteamForm">
+                    <div class="mb-3">
+                        <textarea class="form-control" name="teams" rows="10"
+                            placeholder="team name,password,3rd octet IP"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" form="importteamForm" class="btn btn-primary">Import teams
+                    <div class="spinner-border text-primary d-none" role="status" id="importteamSpinner">
                         <span class="visually-hidden">Loading...</span>
                     </div>
                 </button>
@@ -232,14 +261,38 @@
                 "password": form.password.value,
                 "ip": parseInt(form.ip.value),
             })
-            console.log(data)
             let success_function = function (data) {
                 const modal = bootstrap.Modal.getInstance(document.getElementById('addteamModal'))
 
-                createToast("Team successfully added", "bg-success")
+                createToast("Team successfully added " + data.team.Name, "bg-success")
                 modal.hide()
             }
             postAjax(event, formid, data, url, success_function)
+        });
+
+        document.getElementById('importteamForm').addEventListener('submit', function (event) {
+            // Prevent the default form submission
+            event.preventDefault();
+
+            let formid = "importteamForm";
+            let url = "/api/engine/addteam";
+
+            const form = document.forms[formid]
+            form.teams.value.split("\n").forEach((line) => {
+                record = line.split(",")
+                let data = JSON.stringify({
+                    "name": record[0],
+                    "password": record[1],
+                    "ip": parseInt(record[2]),
+                })
+                let success_function = function (data) {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('importteamModal'))
+
+                    createToast("Team successfully added " + data.team.Name, "bg-success")
+                    modal.hide()
+                }
+                postAjax(event, formid, data, url, success_function)
+            })
         });
     });
 </script>
@@ -404,12 +457,6 @@
         });
     });
 </script>
-{{ end }}
-{{ define "environment" }}
-<div class="pb-4">
-    <h3>Configuration Dump</h3>
-    <pre>{{ .prettyconfig }}</pre>
-</div>
 {{ end }}
 {{ define "adjustments" }}
 <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addadjustmentModal">Add new

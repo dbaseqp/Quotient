@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
@@ -14,10 +15,10 @@ type Imap struct {
 	Encrypted bool
 }
 
-func (c Imap) Run(teamID uint, boxIp string, res chan Result, service Service) {
+func (c Imap) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	// Create a dialer so we can set timeouts
 	dialer := net.Dialer{
-		Timeout: GlobalTimeout,
+		Timeout: time.Duration(c.Timeout) * time.Second,
 	}
 
 	// Defining these allow the if/else block below
@@ -26,9 +27,9 @@ func (c Imap) Run(teamID uint, boxIp string, res chan Result, service Service) {
 
 	// Connect to server with TLS or not
 	if c.Encrypted {
-		cl, err = client.DialWithDialerTLS(&dialer, fmt.Sprintf("%s:%d", boxIp, service.Port), &tls.Config{})
+		cl, err = client.DialWithDialerTLS(&dialer, fmt.Sprintf("%s:%d", boxIp, c.Port), &tls.Config{})
 	} else {
-		cl, err = client.DialWithDialer(&dialer, fmt.Sprintf("%s:%d", boxIp, service.Port))
+		cl, err = client.DialWithDialer(&dialer, fmt.Sprintf("%s:%d", boxIp, c.Port))
 	}
 	if err != nil {
 		res <- Result{
@@ -39,10 +40,10 @@ func (c Imap) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	}
 	defer cl.Close()
 
-	if !service.Anonymous {
-		username, password := getCreds(teamID, service.CredLists)
+	if !c.Anonymous {
+		username, password := getCreds(teamID, c.CredLists)
 		// Set timeout for commands
-		cl.Timeout = GlobalTimeout
+		cl.Timeout = time.Duration(c.Timeout) * time.Second
 
 		// Login
 		err = cl.Login(username, password)
@@ -67,11 +68,17 @@ func (c Imap) Run(teamID uint, boxIp string, res chan Result, service Service) {
 		}
 		res <- Result{
 			Status: true,
+			Points: c.Points,
 			Debug:  "mailbox listed successfully with creds " + username + ":" + password,
 		}
 	}
 	res <- Result{
 		Status: true,
+		Points: c.Points,
 		Debug:  "smtp server responded to request (anonymous)",
 	}
+}
+
+func (c Imap) GetService() Service {
+	return c.Service
 }

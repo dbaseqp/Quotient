@@ -9,11 +9,11 @@ type Pop3 struct {
 	Encrypted bool
 }
 
-func (c Pop3) Run(teamID uint, boxIp string, res chan Result, service Service) {
+func (c Pop3) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	// Create a dialer so we can set timeouts
 	p := pop3.New(pop3.Opt{
 		Host:       boxIp,
-		Port:       service.Port,
+		Port:       c.Port,
 		TLSEnabled: c.Encrypted,
 	})
 
@@ -30,8 +30,8 @@ func (c Pop3) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	defer conn.Quit()
 
 	// Authenticate.
-	if !service.Anonymous {
-		username, password := getCreds(teamID, service.CredLists)
+	if !c.Anonymous {
+		username, password := getCreds(teamID, c.CredLists)
 		if err := conn.Auth(username, password); err != nil {
 			res <- Result{
 				Error: "login failed",
@@ -50,11 +50,17 @@ func (c Pop3) Run(teamID uint, boxIp string, res chan Result, service Service) {
 		}
 		res <- Result{
 			Status: true,
+			Points: c.Points,
 			Debug:  "mailbox listed successfully with creds " + username + ":" + password,
 		}
 	}
 	res <- Result{
 		Status: true,
+		Points: c.Points,
 		Debug:  "smtp server responded to request (anonymous)",
 	}
+}
+
+func (c Pop3) GetService() Service {
+	return c.Service
 }

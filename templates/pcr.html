@@ -1,13 +1,13 @@
 {{ define "content"}}
-{{ $credentials := .credentials }}
 
 {{ $id := uint .user.UserInfo.ID}}
 {{ if .user.UserInfo.Admin }}
 {{ $id = 1 }}
 {{ end }}
 
-{{ $lists := index .credentials $id}}
-{{ $credlists := keys $lists }}
+{{ $credentials := .credentials }}
+{{ $credlists := keys $credentials }}
+{{ .credlists }}
 <div class="d-flex flex-column flex-grow-1">
     <div class="m-4 p-4">
         <h2>Password Change Requests</h2>

@@ -20,7 +20,7 @@ type DnsRecord struct {
 	Answer []string
 }
 
-func (c Dns) Run(teamID uint, boxIp string, res chan Result, service Service) {
+func (c Dns) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	// Pick a record
 	record := c.Record[rand.Intn(len(c.Record))]
 	fqdn := dns.Fqdn(record.Domain)
@@ -39,11 +39,11 @@ func (c Dns) Run(teamID uint, boxIp string, res chan Result, service Service) {
 	}
 
 	// Make it obey timeout via deadline
-	deadctx, cancel := context.WithDeadline(context.TODO(), time.Now().Add(GlobalTimeout))
+	deadctx, cancel := context.WithDeadline(context.TODO(), time.Now().Add(time.Duration(c.Timeout)*time.Second))
 	defer cancel()
 
 	// Send the query
-	in, err := dns.ExchangeContext(deadctx, &msg, fmt.Sprintf("%s:%d", boxIp, service.Port))
+	in, err := dns.ExchangeContext(deadctx, &msg, fmt.Sprintf("%s:%d", boxIp, c.Port))
 	if err != nil {
 		res <- Result{
 			Error: "error sending query",
@@ -68,8 +68,8 @@ func (c Dns) Run(teamID uint, boxIp string, res chan Result, service Service) {
 			if a, ok := answer.(*dns.A); ok && (a.A).String() == expectedAnswer {
 				res <- Result{
 					Status: true,
-					Error:  "record " + record.Domain + " returned " + expectedAnswer,
-					Debug:  "acceptable answers were: " + answerList,
+					Points: c.Points,
+					Debug:  "record " + record.Domain + " returned " + expectedAnswer + ". acceptable answers were: " + answerList,
 				}
 				return
 			}
@@ -81,4 +81,8 @@ func (c Dns) Run(teamID uint, boxIp string, res chan Result, service Service) {
 		Error: "incorrect answer(s) received from DNS",
 		Debug: "acceptable answers were: " + answerList + "," + " received " + fmt.Sprint(in.Answer),
 	}
+}
+
+func (c Dns) GetService() Service {
+	return c.Service
 }

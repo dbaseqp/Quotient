@@ -56,7 +56,7 @@ func makeGraphs() error {
 	return nil
 }
 
-func graphCurrentChecks(data map[uint][]ServiceData, path string, config GraphConfig) error {
+func graphCurrentChecks(data map[uint][]CheckData, path string, config GraphConfig) error {
 	W := 945
 	H := 454
 	// const W = 50

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
@@ -24,6 +26,8 @@ var (
 	manualAdjustments map[uint]int
 
 	engineMutex = &sync.Mutex{}
+
+	stream = NewSSEServer()
 )
 
 func addViewRoutes(router *gin.RouterGroup) {
@@ -58,6 +62,9 @@ func addPublicRoutes(router *gin.RouterGroup) {
 	router.POST("/login", login)
 }
 func addAuthRoutes(router *gin.RouterGroup) {
+	// sse
+	router.GET("/sse", stream.ServeHTTP(), sse)
+
 	// authentication
 	router.GET("/logout", logout)
 
@@ -72,33 +79,38 @@ func addAuthRoutes(router *gin.RouterGroup) {
 	router.GET("/injects/:injectid/file/:filename", downloadInjectFile)
 	router.POST("/injects/:injectid/submit", submitInject)
 	router.GET("/injects/:injectid/:teamid", getTeamInjectSubmissions)
+	router.GET("/injects/:injectid/:teamid/submissions/:submissionid/:filename", downloadSubmissionFile)
 
 	// pcr portal
 	router.POST("/pcrs/submit", submitPCR)
 }
 func addAdminRoutes(router *gin.RouterGroup) {
+	// announcements
+	router.POST("/announcements/add", addAnnouncement)
+	router.DELETE("/announcements/:announcementid", deleteAnnouncement)
+
 	// team portal
 	router.POST("/teams/:teamid/edit", updateTeam)
 	router.DELETE("/teams/:teamid", deleteTeam) // admin
 
 	// admin portal
-	router.GET("/engine/export", exportScores) // admin
+	router.GET("/engine/export/scores", exportScores) // admin
+	router.GET("/engine/export/config", exportConfig) // admin
+
 	router.GET("/engine/config", getConfig)    // admin
 	router.PUT("/engine/config", submitConfig) // admin
 	router.POST("/engine/addteam", addTeam)    // admin
 	router.POST("/engine/adjustment", submitManualAdjustment)
-	router.POST("/engine/announcements/add", addAnnouncement)
-	router.DELETE("/engine/announcements/:announcementid", deleteAnnouncement)
 	router.POST("/engine/pause", pauseEngine)
 	router.POST("/engine/resume", resumeEngine)
 	router.POST("/engine/reset", resetEngine)
+	router.GET("/engine/services/:servicename", getServiceConfig)
 
 	// inject portal
-	router.POST("/injects/:injectid/:teamid/submissions/:submissionid/grade", gradeTeamInjectSubmission) // admin
-	router.GET("/injects/:injectid/:teamid/submissions/:submissionid/:filename", downloadSubmissionFile) //admin
 	router.POST("/injects/add", addInject)                                                               // admin
 	router.POST("/injects/:injectid/edit", updateInject)                                                 // admin
 	router.DELETE("/injects/:injectid", deleteInject)                                                    // admin
+	router.POST("/injects/:injectid/:teamid/submissions/:submissionid/grade", gradeTeamInjectSubmission) // admin
 }
 
 func pauseEngine(c *gin.Context) {
@@ -194,6 +206,145 @@ func resetEngine(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
+func getServiceConfig(c *gin.Context) {
+	servicename := c.Param("servicename")
+	for _, box := range eventConf.Box {
+		for _, s := range box.Custom {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Dns {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Ftp {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Imap {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Ldap {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Ping {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Pop3 {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Rdp {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Smb {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Smtp {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Sql {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Ssh {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Tcp {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Vnc {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.Web {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+		for _, s := range box.WinRM {
+			if s.Name == servicename {
+				c.JSON(http.StatusOK, s)
+				return
+			}
+		}
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"error": "Service not found"})
+}
+
+// func updateServiceConfig(c *gin.Context) {
+// 	type ServiceForm struct {
+// 		Name         string    `json:"name"`    // Name is the box name plus the service (ex. lunar-dns)
+// 		Display      string    `json:"display"` // Display is the name of the service (ex. dns)
+// 		FQDN         string    `json:"fqdn"`
+// 		IP           string    `json:"ip"`
+// 		CredLists    []string  `json:"credlists"`
+// 		Port         int       `json:"port"`
+// 		Anonymous    bool      `json:"anonymous"`
+// 		Points       int       `json:"points"`
+// 		SlaPenalty   int       `json:"slapenalty"`
+// 		SlaThreshold int       `json:"slathreshold"`
+// 		LaunchTime   time.Time `json:"launchtime"`
+// 		StopTime     time.Time `json:"stoptime"`
+// 		Disabled     bool      `json:"disabled"`
+// 	}
+
+// 	var serviceForm ServiceForm
+// 	if err := c.ShouldBindJSON(&serviceForm); err != nil {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	servicename := c.Param("servicename")
+// 	for _, box := range eventConf.Box {
+// 		for _, service := range box.CheckList {
+// 			if service.ServiceName == servicename {
+// 				service.Service = serviceForm.Service
+// 				c.JSON(http.StatusOK, service.Service)
+// 				return
+// 			}
+// 		}
+// 	}
+// 	c.JSON(http.StatusBadGateway, gin.H{"error": "Service not found"})
+// }
+
 func getConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, eventConf)
 }
@@ -203,6 +354,18 @@ func getTeamScore(c *gin.Context) {
 	teamScore, err := dbGetTeamScore(teamid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// team based auth
+	claims, err := contextGetClaims(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !claims.Admin && claims.ID != uint(teamid) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
@@ -254,8 +417,21 @@ func exportScores(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	exportPath := "./temporary/export.json"
+	exportPath := "./temporary/scores.json"
 	os.WriteFile(exportPath, jsonData, 0644)
+	c.File(exportPath)
+}
+
+func exportConfig(c *gin.Context) {
+	buf := new(bytes.Buffer)
+	encoder := toml.NewEncoder(buf)
+	encoder.Indent = "    "
+	if err := encoder.Encode(eventConf); err != nil {
+		c.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+	exportPath := "./temporary/export.conf"
+	os.WriteFile(exportPath, buf.Bytes(), 0644)
 	c.File(exportPath)
 }
 
@@ -282,44 +458,39 @@ func submitPCR(c *gin.Context) {
 		Changes  string `json:"changes"`
 	}
 
-	tok, err := c.Cookie("auth_token")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	claims, err := getClaimsFromToken(tok)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
 	var pcrForm PCRForm
 	if err := c.ShouldBindJSON(&pcrForm); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	// team based auth
+	claims, err := contextGetClaims(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	var teamid uint
-	userinfo := claims["UserInfo"].(map[string]any)
-	if userinfo["Admin"].(bool) {
+	if claims.Admin {
 		teamid = uint(pcrForm.TeamID)
 	} else {
-		teamid = uint(userinfo["ID"].(float64))
+		teamid = claims.ID
 	}
 
 	scanner := bufio.NewScanner(strings.NewReader(pcrForm.Changes))
 	for scanner.Scan() {
 		record := strings.Split(scanner.Text(), ",")
 		// Process each line as needed
-		if _, ok := credentials[teamid][pcrForm.CredList][record[0]]; ok {
-			credentials[teamid][pcrForm.CredList][record[0]] = record[1]
+		if _, ok := credentials[pcrForm.CredList][teamid][record[0]]; ok {
+			credentials[pcrForm.CredList][teamid][record[0]] = record[1]
 		}
 	}
 
 	teamSpecificCredlist := filepath.Join("submissions/pcrs", fmt.Sprint(teamid), pcrForm.CredList)
 
 	// Write the modified content back to the file
-	credentialsMutex[teamid][pcrForm.CredList].Lock()
+	credentialsMutex[pcrForm.CredList][teamid].Lock()
 	file, err := os.Create(teamSpecificCredlist)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -327,14 +498,14 @@ func submitPCR(c *gin.Context) {
 	}
 	defer file.Close()
 
-	for username, password := range credentials[teamid][pcrForm.CredList] {
+	for username, password := range credentials[pcrForm.CredList][teamid] {
 		_, err = file.WriteString(fmt.Sprintf("%s,%s\n", username, password))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 	}
-	credentialsMutex[teamid][pcrForm.CredList].Unlock()
+	credentialsMutex[pcrForm.CredList][teamid].Unlock()
 
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
@@ -364,7 +535,7 @@ func addAnnouncement(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
+	SendSSE(gin.H{"admin": false, "page": "announcements"})
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
@@ -426,7 +597,7 @@ func addTeam(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "success"})
+	c.JSON(http.StatusOK, gin.H{"status": "success", "team": team})
 }
 
 func updateTeam(c *gin.Context) {
@@ -463,7 +634,7 @@ func updateTeam(c *gin.Context) {
 	err := dbUpdateTeam(team)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Team name/IP must be unique")})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Team name/IP must be unique"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -545,7 +716,7 @@ func addInject(c *gin.Context) {
 	injectid, err := dbAddInject(inject)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Inject name must be unique")})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Inject name must be unique"})
 			return
 		}
 		// Delete uploaded files if database function fails
@@ -564,6 +735,7 @@ func addInject(c *gin.Context) {
 		submissions[int(injectid)][int(team.ID)] = 0
 	}
 	submissionMutex.Unlock()
+	SendSSE(gin.H{"admin": true, "page": "injects"})
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
@@ -673,7 +845,7 @@ func updateInject(c *gin.Context) {
 	err = dbUpdateInject(inject)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Inject name must be unique")})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Inject name must be unique"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -707,17 +879,13 @@ func submitInject(c *gin.Context) {
 		return
 	}
 
-	tok, err := c.Cookie("auth_token")
+	// team based auth
+	claims, err := contextGetClaims(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	claims, err := getClaimsFromToken(tok)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	teamid := int(claims["UserInfo"].(map[string]any)["ID"].(float64))
+	teamid := int(claims.ID)
 	submissionid := submissions[injectid][teamid] + 1
 
 	var filenames []string
@@ -776,6 +944,19 @@ func deleteInject(c *gin.Context) {
 func getTeamInjectSubmissions(c *gin.Context) {
 	teamid, _ := strconv.Atoi(c.Param("teamid"))
 	injectid, _ := strconv.Atoi(c.Param("injectid"))
+
+	// team based auth
+	claims, err := contextGetClaims(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !claims.Admin && claims.ID != uint(teamid) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	teamInjectSubmissions, err := dbGetInjectSubmissions(injectid, teamid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -831,19 +1012,14 @@ func downloadInjectFile(c *gin.Context) {
 		return
 	}
 
-	tok, err := c.Cookie("auth_token")
+	// team based auth
+	claims, err := contextGetClaims(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	claims, err := getClaimsFromToken(tok)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	isAdmin := claims["UserInfo"].(map[string]any)["Admin"].(bool)
 
-	if isAdmin == false && time.Now().Before(inject.OpenTime) {
+	if claims.Admin == false && time.Now().Before(inject.OpenTime) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "that file does not exist!"})
 		return
 	}
@@ -858,12 +1034,24 @@ func downloadInjectFile(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{"error": "that file does not exist!"})
 }
 
-// perform authorization check and then move to auth routes
 func downloadSubmissionFile(c *gin.Context) {
 	teamid, _ := strconv.Atoi(c.Param("teamid"))
 	injectid, _ := strconv.Atoi(c.Param("injectid"))
 	submissionid, _ := strconv.Atoi(c.Param("submissionid"))
 	filename := c.Param("filename")
+
+	// team based auth
+	claims, err := contextGetClaims(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !claims.Admin && claims.ID != uint(teamid) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	submissions, err := dbGetInjectSubmissions(injectid, teamid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -922,6 +1110,19 @@ func submitManualAdjustment(c *gin.Context) {
 func getTeamService(c *gin.Context) {
 	teamid, _ := strconv.Atoi(c.Param("teamid"))
 	servicename := c.Param("servicename")
+
+	// team based auth
+	claims, err := contextGetClaims(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !claims.Admin && claims.ID != uint(teamid) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	servicedata, err := dbGetTeamServices(teamid, -1, servicename)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
