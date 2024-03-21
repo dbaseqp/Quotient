@@ -1,4 +1,4 @@
-Some Unhinged Guy Made Another All-in-one Scoring Engine (QUOTIENT)
+Quotient, a service scoring solution divided into many parts
 =================================
 
 The successor of [DWAYNE-INATOR-5000](https://github.com/DSU-DefSec/DWAYNE-INATOR-5000).
