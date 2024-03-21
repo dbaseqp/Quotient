@@ -330,9 +330,9 @@
                                                             document.getElementById("slathresholdInput").value = data.SlaThreshold
                                                             launchtimepicker.dates.setFromInput(data.LaunchTime)
                                                             stoptimepicker.dates.setFromInput(data.StopTime)
-                                                            document.querySelectorAll("input.form-check-input").forEach((checkbox) => {
+                                                            for (const checkbox of document.querySelectorAll("input.form-check-input")) {
                                                                 checkbox.checked = false
-                                                            })
+                                                            }
                                                             console.log(data)
                                                             if (data.CredLists != null) {
                                                                 data.CredLists.forEach((credlist) => {
