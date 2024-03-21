@@ -334,7 +334,7 @@
                                                                 checkbox.checked = false
                                                             }
                                                             console.log(data)
-                                                            if (data.CredLists != null) {
+                                                            if (data.CredLists != null && data.CredLists.length > 0) {
                                                                 data.CredLists.forEach((credlist) => {
                                                                     console.log("checkbox-" + credlist)
                                                                     document.getElementById("checkbox-" + credlist).checked = true
