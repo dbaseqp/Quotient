@@ -81,8 +81,8 @@ func graphCurrentChecks(data map[uint][]CheckData, path string, config GraphConf
 		return err
 	}
 
-	xoffset := iconWidth * 2
-	yoffset := iconHeight
+	xoffset := int(iconWidth * 1.3)
+	yoffset := int(iconHeight * 1.3)
 	scaleX := iconWidth / float64(uiw)
 	scaleY := iconHeight / float64(uih)
 
@@ -161,9 +161,9 @@ func graphCurrentChecks(data map[uint][]CheckData, path string, config GraphConf
 			dc.Translate(float64(xoffset/2), 0)
 			dc.Scale(scaleX, scaleY)
 			if check.Result == true {
-				dc.DrawImageAnchored(upIcon, 0, 0, 0.5, 0)
+				dc.DrawImageAnchored(upIcon, 0, (yoffset / 2), 0.5, 0)
 			} else {
-				dc.DrawImageAnchored(downIcon, 0, 0, 0.5, 0)
+				dc.DrawImageAnchored(downIcon, 0, (yoffset / 2), 0.5, 0)
 			}
 			dc.Pop()
 			dc.Translate(float64(xoffset), 0)
