@@ -50,6 +50,7 @@
 
                 createToast("Announcement successfully added", "bg-success")
                 modal.hide()
+                location.reload()
             }
             postAjax(event, formid, data, url, success_function)
         });
@@ -111,6 +112,7 @@
 
                 createToast("Announcement successfully deleted", "bg-success")
                 modal.hide()
+                location.reload()
             }
             fetch(url, {
                 method: "delete",

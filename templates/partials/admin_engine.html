@@ -266,6 +266,7 @@
 
                 createToast("Team successfully added " + data.team.Name, "bg-success")
                 modal.hide()
+                location.reload()
             }
             postAjax(event, formid, data, url, success_function)
         });
@@ -290,6 +291,7 @@
 
                     createToast("Team successfully added " + data.team.Name, "bg-success")
                     modal.hide()
+                    location.reload()
                 }
                 postAjax(event, formid, data, url, success_function)
             })
@@ -373,6 +375,7 @@
 
                 createToast("Team successfully updated", "bg-success")
                 modal.hide()
+                location.reload()
             }
             postAjax(event, formid, data, url, success_function)
         });
@@ -434,6 +437,7 @@
 
                 createToast("Team successfully deleted", "bg-success")
                 modal.hide()
+                location.reload()
             }
             fetch(url, {
                 method: "delete",
@@ -554,6 +558,7 @@
 
                 createToast("Point adjustment successfully added", "bg-success")
                 modal.hide()
+                location.reload()
             }
             postAjax(event, formid, data, url, success_function)
         });

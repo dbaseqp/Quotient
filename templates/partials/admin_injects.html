@@ -104,6 +104,7 @@
 
                 createToast("Inject successfully added", "bg-success")
                 modal.hide()
+                location.reload()
             }
             postAjax(event, formid, data, url, success_function)
         });
@@ -169,6 +170,7 @@
 
                 createToast("Inject successfully deleted", "bg-success")
                 modal.hide()
+                location.reload()
             }
             fetch(url, {
                 method: "delete",
@@ -319,6 +321,7 @@
 
                 createToast("Inject successfully updated", "bg-success")
                 modal.hide()
+                location.reload()
             }
             postAjax(event, formid, data, url, success_function)
         });
