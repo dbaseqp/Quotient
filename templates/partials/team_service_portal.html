@@ -1,6 +1,6 @@
 {{ define "portal" }}
 <div class="team-portal-container d-flex flex-column flex-grow-1" {{ if not .user.UserInfo.Admin }}style="width:0"{{ end }}>
-    <h3>Service Uptime</h3>
+    <h3 id="uptime">Service Uptime</h3>
     <div class="table-container">
         <table id="teamUptime" class="table table-bordered text-nowrap">
             <thead>
@@ -119,6 +119,10 @@
                             rounds[check.Round.ID] = check.Round.StartTime
                         }
                         records[check.ServiceName][check.Round.ID] = check.Result
+                    }
+                    let sorted_rounds = Object.keys(rounds).reverse()
+                    if (sorted_rounds.length > 0) {
+                        document.getElementById("uptime").textContent = "Service Uptime (" + new Date(rounds[sorted_rounds[0]]).toLocaleTimeString() + ")"
                     }
                     Object.keys(rounds).reverse().forEach((roundid) => {
                         const th = document.createElement("th")
