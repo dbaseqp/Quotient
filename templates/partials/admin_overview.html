@@ -29,11 +29,13 @@
                         <div class="carousel-inner">
                             <div data-carousel-id="pills-scoresOverTime-tab" class="carousel-item active">
                                 <h4 class="pb-4">Scores Over Time</h2>
-                                    <img data-plot-name="points-over-time" src="" class="d-block w-100" alt="Image has not been generated">
+                                    <img data-plot-name="points-over-time" src="" class="d-block w-100"
+                                        alt="Image has not been generated">
                             </div>
                             <div data-carousel-id="pills-currentStatus-tab" class="carousel-item">
                                 <h4 class="pb-4">Current Service Status</h2>
-                                    <img data-plot-name="current-status" src="" class="d-block w-100" alt="Image has not been generated">
+                                    <img data-plot-name="current-status" src="" class="d-block w-100"
+                                        alt="Image has not been generated">
                             </div>
                         </div>
                     </div>
@@ -47,18 +49,21 @@
                 <div class="border rounded-4 p-4">
                     <div class="pb-2">
                         <h4>Team Overviews</h4>
-                        <div>View the teams' overview pages</div>
+                        <div class="text-body-secondary">View the teams' overview pages</div>
                     </div>
-                    {{ range $team := .teams}}
-                    <div class="d-flex flex-row align-items-center justify-content-between my-4">
-                        <div class="d-flex flex-column">
-                            <h5>{{ $team.Name}}</h5>
-                        </div>
-                        <button type="button" class="btn btn-outline-secondary overview" data-bs-toggle="modal"
+                    <div class="list-group">
+                        {{ range $team := .teams}}
+                        <button class="list-group-item list-group-item-action d-flex overview" data-bs-toggle="modal"
                             data-bs-target="#teamOverviewModal" data-team-id="{{ $team.ID }}"
-                            data-team-name="{{ $team.Name }}"><i class="bi bi-zoom-in"></i></button>
+                            data-team-name="{{ $team.Name }}">
+                            <div class="ms-2 me-auto">
+                                <span><i class="bi bi-people me-2"></i>{{ $team.Name }}</span>
+                            </div>
+                            <span><i class="bi bi-chevron-compact-right"></i></span>
+                        </button>
+                        {{ end }}
                     </div>
-                    {{ end }}
+
                 </div>
                 <div class="modal fade" id="teamOverviewModal" tabindex="-1" aria-labelledby="teamOverviewModalLabel"
                     aria-hidden="true">

@@ -671,3 +671,35 @@ func dbGetTeamServices(teamid int, limit int, servicename string) ([]CheckData, 
 
 	return serviceResults, nil
 }
+
+func dbGetTeamSLAs(teamid int) ([]SLAData, error) {
+	var rounds []RoundData
+
+	result := db.Preload("SLAs", func(db *gorm.DB) *gorm.DB {
+		return db.Where("sla_data.team_id = ?", teamid)
+	}).Table("round_data").Order("start_time desc").Find(&rounds)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	slas := make([]SLAData, 0)
+	for _, round := range rounds {
+		slas = append(slas, round.SLAs...)
+	}
+
+	return slas, nil
+}
+
+func dbGetTeamRounds(teamid int, limit int) ([]RoundData, error) {
+	var rounds []RoundData
+	result := db.Preload("Checks", func(db *gorm.DB) *gorm.DB {
+		return db.Where("check_data.team_id = ?", teamid)
+	}).Table("round_data").Order("start_time desc").Limit(limit).Find(&rounds)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return rounds, nil
+}

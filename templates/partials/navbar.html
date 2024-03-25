@@ -79,6 +79,7 @@
                             </div>
                         </a>
                     </li>
+                    {{ if or (.config.EasyPCR) (.user.UserInfo.Admin) }}
                     <li class="nav-item">
                         <a class='nav-link p-3 {{ if eq .title "PCRs"}}active{{end}}' aria-current="page" href="/pcrs">
                             <div class="d-flex flex-column justify-content-center align-items-center">
@@ -87,6 +88,7 @@
                             </div>
                         </a>
                     </li>
+                    {{ end }}
                     {{ if .user.UserInfo.Admin }}
                     <li class="nav-item">
                         <a class='nav-link p-3 {{ if eq .title "Engine"}}active{{end}}' aria-current="page" href="/engine">

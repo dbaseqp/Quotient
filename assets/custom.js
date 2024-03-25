@@ -113,22 +113,24 @@ function createToast(message, color, delay) {
 }
 
 function postAjax(e, formid, data, url, success_function) {
-    e.preventDefault();
+    e.preventDefault()
+    showLoading()
     fetch(url, {
         method: "post",
         body: data,
     })
         .then(response => {
+            hideLoading()
             if (!response.ok) {
                 Promise.reject(response);
             }
             return response.json();
         })
         .then(data => {
-            if (data.status == "success") { // typeof data.error === 'undefined'
-                success_function(data)
-            } else {
+            if (data.error) {
                 createToast(data.error, "bg-danger")
+            } else {
+                success_function(data)
             }
         })
         .catch(error => {
@@ -151,4 +153,14 @@ function formatTime() {
             time.textContent = date.toLocaleString()
         }
     })
+}
+
+function showLoading() {
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('loadingModal'))
+    modal.show()
+}
+
+function hideLoading() {
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('loadingModal'))
+    modal.hide()
 }

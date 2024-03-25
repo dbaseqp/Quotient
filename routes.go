@@ -40,17 +40,22 @@ func addViewRoutesTeam(router *gin.RouterGroup) {
 	router.GET("/announcements", viewAnnouncements)
 	router.GET("/injects", viewInjects)
 	router.GET("/injects/:injectid", viewInject)
-	router.GET("/pcrs", viewPCRs)
+	if eventConf.EasyPCR {
+		router.GET("/pcrs", viewPCRs)
+	}
 	router.GET("/overview", viewOverview)
-	if eventConf.DisableHeadToHead == false {
+	if !eventConf.DisableHeadToHead {
 		router.Static("/plots", "./plots")
 	}
 }
 
 func addViewRoutesAdmin(router *gin.RouterGroup) {
 	router.GET("/engine", viewEngine)
-	if eventConf.DisableHeadToHead == true {
+	if eventConf.DisableHeadToHead {
 		router.Static("/plots", "./plots")
+	}
+	if !eventConf.EasyPCR {
+		router.GET("/pcrs", viewPCRs)
 	}
 }
 
@@ -69,7 +74,9 @@ func addAuthRoutes(router *gin.RouterGroup) {
 	router.GET("/logout", logout)
 
 	// team portal
-	router.GET("/teams/:teamid/scores", getTeamScore)
+	router.GET("/teams/:teamid/scores/uptime", getTeamUptime)
+	router.GET("/teams/:teamid/scores/sla", getTeamSLA)
+	router.GET("/teams/:teamid/scores/rounds/:count", getTeamRounds) // maybe turn this into a get parameter
 	router.GET("/teams/:teamid/scores/:servicename", getTeamService)
 
 	// inject portal
@@ -468,6 +475,11 @@ func submitPCR(c *gin.Context) {
 	claims, err := contextGetClaims(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !claims.Admin && !eventConf.EasyPCR {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
@@ -1105,6 +1117,85 @@ func submitManualAdjustment(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+func getTeamUptime(c *gin.Context) {
+	teamid, _ := strconv.Atoi(c.Param("teamid"))
+
+	// team based auth
+	claims, err := contextGetClaims(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !claims.Admin && claims.ID != uint(teamid) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	teamUptime := make(map[string]Uptime)
+	for _, box := range eventConf.Box {
+		for _, runner := range box.Runners {
+			if time.Now().After(runner.GetService().LaunchTime) {
+				teamUptime[runner.GetService().Name] = uptime[uint(teamid)][runner.GetService().Name]
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"uptime": teamUptime})
+}
+
+func getTeamSLA(c *gin.Context) {
+	teamid, _ := strconv.Atoi(c.Param("teamid"))
+
+	// team based auth
+	claims, err := contextGetClaims(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !claims.Admin && claims.ID != uint(teamid) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	slas, err := dbGetTeamSLAs(teamid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"slas": slas})
+}
+
+func getTeamRounds(c *gin.Context) {
+	teamid, _ := strconv.Atoi(c.Param("teamid"))
+	count, err := strconv.Atoi(c.Param("count"))
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// team based auth
+	claims, err := contextGetClaims(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !claims.Admin && claims.ID != uint(teamid) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	rounds, err := dbGetTeamRounds(teamid, count)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"rounds": rounds})
 }
 
 func getTeamService(c *gin.Context) {

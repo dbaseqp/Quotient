@@ -9,7 +9,6 @@
         <div class="d-flex h-auto justify-content-center align-items-center">
             <table class="table table-hover table-bordered my-2">
                 <thead class="">
-                    <th style="width:3rem">ID</th>
                     <th style="width:auto">Announcement</th>
                     <th style="width:15rem">Time</th>
                     {{ if $user.UserInfo.Admin }}
@@ -19,9 +18,6 @@
                 <tbody>
                     {{ range $announcement := .announcements }}
                     <tr data-announcement-id="{{ $announcement.ID }}">
-                        <td>
-                            {{ $announcement.ID }}
-                        </td>
                         <td>
                             {{ $announcement.Content }}
                         </td>
