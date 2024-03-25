@@ -1,6 +1,10 @@
 <nav class="navbar sticky-top navbar-expand-lg bg-contrast" id="navbar">
     <div class="container-fluid px-4">
+        {{ if .user }}
         <a class="navbar-brand" href="/announcements"><b>{{ .name }}</b></a>
+        {{ else }}
+        <a class="navbar-brand" href="/login"><b>{{ .name }}</b></a>
+        {{ end }}
         {{ if .user }}
         <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasNavbar"
             aria-controls="offcanvasNavbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -60,6 +64,14 @@
                             <div class="d-flex flex-column justify-content-center align-items-center">
                                 <i class="bi bi-broadcast-pin"></i>
                                 Announcements
+                            </div>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class='nav-link p-3 {{ if eq .title "Scoreboard"}}active{{end}}' aria-current="page" href="/scoreboard">
+                            <div class="d-flex flex-column justify-content-center align-items-center">
+                                <i class="bi bi-activity"></i>
+                                Scoreboard
                             </div>
                         </a>
                     </li>

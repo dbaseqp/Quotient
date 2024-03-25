@@ -1,6 +1,35 @@
 {{ define "content"}}
-<div class="d-flex h-100">
-    
+<div class="d-flex flex-column h-100">
+    <div class="d-flex flex-column justify-content-around align-items-center">
+        <h1> Current Status </h1>
+        <span> Round Time: {{ format .round.StartTime }} </span>
+    </div>
+    <table class="scoreboard m-4 me-auto">
+        <thead>
+            <th></th>
+            {{ range $service := .services }}
+            <th>
+                {{ $service }}
+            </th>
+            {{ end }}
+        </thead>
+        <tbody>
+            {{ range $team := .teams }}
+            <tr>
+                <th>{{ $team.Name }}</th>
+                {{ range $check := $team.Checks }}
+                <td class="service-icon text-center">
+                    {{ if $check.Result }}
+                    <img src="/assets/services/up.png">
+                    {{ else }}
+                    <img src="/assets/services/down.png">
+                    {{ end }}
+                </td>
+                {{ end }}
+            </tr>
+            {{ end }}
+        </tbody>
+    </table>
 </div>
 {{ end }}
 {{ template "base" .}}

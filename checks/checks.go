@@ -42,6 +42,11 @@ func getCreds(teamID uint, credLists []string) (string, string) {
 	credListName := credLists[rand.Intn(len(credLists))]
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	if _, ok := Creds[credListName]; !ok || len(Creds[credListName][teamID]) == 0 {
+		return "", ""
+	}
+
 	random := rng.Intn(len(Creds[credListName][teamID]))
 	count := 0
 	for username, password := range Creds[credListName][teamID] {
@@ -69,10 +74,10 @@ type Runner interface {
 	GetService() Service
 }
 
-func Dispatch(teamID uint, teamIP int, boxName string, boxIP string, boxFQDN string, runner Runner, resChan chan Result) {
+func Dispatch(teamID uint, teamIdentifier string, boxName string, boxIP string, boxFQDN string, runner Runner, resChan chan Result) {
 	// make temporary channel to race against timeout
 	res := make(chan Result)
-	fullIP := strings.Replace(boxIP, "_", fmt.Sprint(teamIP), 1)
+	fullIP := strings.Replace(boxIP, "_", fmt.Sprint(teamIdentifier), 1)
 	fullFQDN := strings.Replace(boxIP, "_", fmt.Sprint(boxFQDN), 1)
 	timeout := time.Duration(runner.GetService().Timeout) * time.Second
 

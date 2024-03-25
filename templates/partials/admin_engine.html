@@ -165,9 +165,9 @@
                             aria-required="true">
                     </div>
                     <div class="mb-3">
-                        <label for="ip" class="col-form-label">IP 3rd Octet:</label>
-                        <input name="ip" type="number" min="1" max="254" class="form-control" id="ip" required
-                            aria-required="true">
+                        <label for="identifier" class="col-form-label">Team Identifier Number:</label>
+                        <input name="identifier" type="number" min="1" max="254" class="form-control" id="identifier"
+                            required aria-required="true">
                     </div>
                 </form>
             </div>
@@ -194,7 +194,7 @@
                 <form id="importteamForm">
                     <div class="mb-3">
                         <textarea class="form-control" name="teams" rows="10"
-                            placeholder="team name,password,3rd octet IP"></textarea>
+                            placeholder="team name,password,team identifier number"></textarea>
                     </div>
                 </form>
             </div>
@@ -214,14 +214,16 @@
         <thead>
             <th>Team Name</th>
             <th>Password</th>
-            <th>IP 3rd Octet</th>
+            <th>Team Identifier Number <i class="bi bi-info-circle" data-bs-toggle="tooltip"
+                    data-bs-title="This number is what replaces underscores (_) in your config. For example: if you set this number to 1, 192.168._.10 becomes 192.168.1.10. However, 192.168.10_.10 becomes 192.168.101.10."></i>
+            </th>
             <th>Edit</th>
             <th>Delete</th>
         </thead>
         <tbody>
             {{ range $team := .teams}}
             <tr data-team-id="{{ $team.ID }}" data-team-name="{{ $team.Name }}" data-team-password="{{ $team.Pw }}"
-                data-team-ip="{{ $team.IP }}">
+                data-team-identifier="{{ $team.Identifier }}">
                 <td>
                     {{ $team.Name }}
                 </td>
@@ -229,7 +231,7 @@
                     {{ $team.Pw }}
                 </td>
                 <td>
-                    {{ $team.IP }}
+                    {{ $team.Identifier }}
                 </td>
                 <td>
                     <button type="button" class="btn btn-primary editteam" data-bs-toggle="modal"
@@ -259,7 +261,7 @@
             let data = JSON.stringify({
                 "name": form.name.value,
                 "password": form.password.value,
-                "ip": parseInt(form.ip.value),
+                "identifier": form.identifier.value,
             })
             let success_function = function (data) {
                 const modal = bootstrap.Modal.getInstance(document.getElementById('addteamModal'))
@@ -284,7 +286,7 @@
                 let data = JSON.stringify({
                     "name": record[0],
                     "password": record[1],
-                    "ip": parseInt(record[2]),
+                    "identifier": record[2],
                 })
                 let success_function = function (data) {
                     const modal = bootstrap.Modal.getInstance(document.getElementById('importteamModal'))
@@ -320,8 +322,9 @@
                             aria-required="true">
                     </div>
                     <div class="mb-3">
-                        <label for="ip" class="col-form-label">IP 3rd Octet:</label>
-                        <input name="ip" type="text" class="form-control" id="ip" required aria-required="true">
+                        <label for="identifier" class="col-form-label">Team Identifier Number:</label>
+                        <input name="identifier" type="text" class="form-control" id="identifier" required
+                            aria-required="true">
                     </div>
                 </form>
             </div>
@@ -344,13 +347,13 @@
                 let myID = team.getAttribute('data-team-id')
                 let myName = team.getAttribute('data-team-name')
                 let myPassword = team.getAttribute('data-team-password')
-                let myIP = team.getAttribute('data-team-ip')
+                let myIdentifier = team.getAttribute('data-team-identifier')
 
                 let modal = document.getElementById('editteamModal')
                 modal.querySelector('form').setAttribute('data-team-id', myID)
                 modal.querySelector('[name="teamname"]').value = myName
                 modal.querySelector('[name="password"]').value = myPassword
-                modal.querySelector('[name="ip"]').value = myIP
+                modal.querySelector('[name="identifier"]').value = myIdentifier
             })
         }
 
@@ -368,7 +371,7 @@
             let data = JSON.stringify({
                 "name": form.teamname.value,
                 "password": form.password.value,
-                "ip": parseInt(form.ip.value),
+                "identifier": form.identifier.value,
             })
             let success_function = function (data) {
                 const modal = bootstrap.Modal.getInstance(document.getElementById('editteamModal'))

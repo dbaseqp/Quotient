@@ -211,3 +211,16 @@ div.dt-container .dt-paging .dt-paging-button.disabled:hover,
 div.dt-container .dt-paging .dt-paging-button.disabled:active {
     color: #88888888 !important;
 }
+
+.scoreboard tr {
+    border-bottom: solid 1px;
+}
+
+.scoreboard tr td, .scoreboard tr th {
+    padding: 0.5rem;
+}
+
+.service-icon img {
+    max-width: 25px;
+    max-height: 25px;
+}

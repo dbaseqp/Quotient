@@ -12,24 +12,11 @@ import (
 )
 
 // schema structs
-type BoxData struct {
-	ID       uint
-	Name     string        `gorm:"unique"`
-	Services []ServiceData `gorm:"foreignKey:BoxID"`
-}
-
-type ServiceData struct {
-	ID    uint
-	BoxID uint
-	Box   BoxData
-	Name  string `gorm:"unique"`
-}
-
 type TeamData struct {
 	ID                     uint
 	Name                   string `gorm:"unique"` // https://www.postgresql.org/docs/current/functions-sequence.html#:~:text=Caution,of%20assigned%20values
 	Pw                     string
-	IP                     int `gorm:"unique"`
+	Identifier             string `gorm:"unique"`
 	Token                  string
 	CumulativeServiceScore int
 	DeletedAt              time.Time
@@ -111,75 +98,6 @@ type AnnouncementData struct {
 }
 
 // database methods
-func dbGetBoxes() ([]BoxData, error) {
-	var boxes []BoxData
-
-	result := db.Find(&boxes)
-
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	return boxes, nil
-}
-
-func dbGetServices() ([]ServiceData, error) {
-	var services []ServiceData
-
-	result := db.Find(&services)
-
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	return services, nil
-}
-
-func dbEnvironmentConfig() error {
-	boxes, err := dbGetBoxes()
-	if err != nil {
-		return err
-	}
-	services, err := dbGetServices()
-	if err != nil {
-		return err
-	}
-
-	configBoxes := make(map[string]bool)
-	configServices := make(map[string]bool)
-	tx := db.Begin()
-	for _, box := range eventConf.Box {
-		b := BoxData{Name: box.Name}
-		configBoxes[b.Name] = true
-		result := tx.Where("name = ?", b.Name).FirstOrCreate(&b) // FirstOrCreate is Save for non-primary key conditions
-		if result.Error != nil {
-			return result.Error
-		}
-		for _, service := range box.Runners {
-			s := ServiceData{BoxID: b.ID, Name: service.GetService().Name}
-			configServices[s.Name] = true
-			result := tx.Where("box_id = ? AND name = ?", s.BoxID, s.Name).FirstOrCreate(&s)
-			if result.Error != nil {
-				return result.Error
-			}
-		}
-	}
-	tx.Commit()
-
-	// see what things in DB are not in config
-	for _, box := range boxes {
-		if _, ok := configBoxes[box.Name]; !ok {
-			log.Printf("Box %s found in DB but not found in config. Possibly renamed or removed. Undo and use GUI to do these actions", box.Name)
-		}
-	}
-
-	for _, service := range services {
-		if _, ok := configServices[service.Name]; !ok {
-			log.Printf("Box %s found in DB but not found in config. Possibly renamed or removed. Undo and use GUI to do these actions", service.Name)
-		}
-	}
-
-	return nil
-}
-
 func dbLogin(username string, password string) (uint, error) {
 	var team TeamData
 
@@ -207,6 +125,26 @@ func dbGetChecks() (map[uint][]RoundPointsData, error) {
 		records[team.ID] = results
 	}
 	return records, nil
+}
+
+func dbGetScoreboard() ([]TeamData, RoundData, error) {
+	var teams []TeamData
+
+	var round RoundData
+	result := db.Table("round_data").Last(&round)
+	if result.Error != nil {
+		return nil, RoundData{}, result.Error
+	}
+
+	result = db.Preload("Checks", func(db *gorm.DB) *gorm.DB {
+		return db.Where("check_data.round_id = ?", round.ID).Order("check_data.service_name asc")
+	}).Table("team_data").Order("name asc").Find(&teams)
+
+	if result.Error != nil {
+		return nil, RoundData{}, result.Error
+	}
+
+	return teams, round, nil
 }
 
 func dbGetChecksThisRound(roundid int) (map[uint][]CheckData, error) {

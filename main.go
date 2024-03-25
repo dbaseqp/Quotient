@@ -95,17 +95,11 @@ func bootstrap() {
 	}
 	debugPrint("Connected to DB")
 
-	err = db.AutoMigrate(&BoxData{}, &ServiceData{}, &TeamData{}, &RoundData{}, &CheckData{}, &SLAData{}, &ManualAdjustmentData{}, &InjectData{}, &SubmissionData{}, &AnnouncementData{}, &RoundPointsData{})
+	err = db.AutoMigrate(&TeamData{}, &RoundData{}, &CheckData{}, &SLAData{}, &ManualAdjustmentData{}, &InjectData{}, &SubmissionData{}, &AnnouncementData{}, &RoundPointsData{})
 	if err != nil {
 		log.Fatalln("Failed to auto migrate:", err)
 		return
 	}
-
-	err = dbEnvironmentConfig()
-	if err != nil {
-		log.Fatalln("Failed to update box/service tables:", err)
-	}
-	debugPrint("Updated box/service tables")
 
 	err = dbCalculateCumulativeServiceScore()
 	if err != nil {

@@ -33,10 +33,10 @@ var (
 func addViewRoutes(router *gin.RouterGroup) {
 	router.GET("/", viewIndex)
 	router.GET("/login", viewLogin)
+	router.GET("/scoreboard", viewScoreboard) // need to implement public headtoheads
 }
 
 func addViewRoutesTeam(router *gin.RouterGroup) {
-	router.GET("/scoreboard", viewScoreboard) // need to implement public headtoheads
 	router.GET("/announcements", viewAnnouncements)
 	router.GET("/injects", viewInjects)
 	router.GET("/injects/:injectid", viewInject)
@@ -564,9 +564,9 @@ func deleteAnnouncement(c *gin.Context) {
 
 func addTeam(c *gin.Context) {
 	type TeamForm struct {
-		Name string `json:"name"`
-		Pw   string `json:"password"`
-		IP   int    `json:"ip"` // 3rd octet
+		Name       string `json:"name"`
+		Pw         string `json:"password"`
+		Identifier string `json:"identifier"`
 		//Token string `toml:"token,omitempty" json:"token,omitempty"`
 	}
 	var teamForm TeamForm
@@ -585,21 +585,22 @@ func addTeam(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing team password"})
 		return
 	}
-	if teamForm.IP == 0 {
+	if teamForm.Identifier == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing team third octet"})
 		return
 	}
-	if teamForm.IP < 1 || teamForm.IP > 254 {
+	identifier, err := strconv.Atoi(teamForm.Identifier)
+	if identifier < 1 || identifier > 254 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team third octet"})
 		return
 	}
 
 	team := TeamData{
-		Name: teamForm.Name,
-		Pw:   teamForm.Pw,
-		IP:   teamForm.IP,
+		Name:       teamForm.Name,
+		Pw:         teamForm.Pw,
+		Identifier: teamForm.Identifier,
 	}
-	_, err := dbAddTeam(team)
+	_, err = dbAddTeam(team)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Team name/IP must be unique"})
@@ -615,9 +616,9 @@ func addTeam(c *gin.Context) {
 func updateTeam(c *gin.Context) {
 	// optional fields, only update ones that are not zero-valued
 	type TeamForm struct {
-		Name     string `form:"name"`
-		Password string `form:"password"`
-		IP       int    `form:"ip"`
+		Name       string `form:"name"`
+		Password   string `form:"password"`
+		Identifier string `form:"identifier"`
 	}
 	var teamForm TeamForm
 	teamid, _ := strconv.Atoi(c.Param("teamid"))
@@ -639,8 +640,8 @@ func updateTeam(c *gin.Context) {
 		team.Pw = teamForm.Password
 	}
 
-	if teamForm.IP != 0 {
-		team.IP = teamForm.IP
+	if teamForm.Identifier != "" {
+		team.Identifier = teamForm.Identifier
 	}
 
 	err := dbUpdateTeam(team)

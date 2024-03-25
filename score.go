@@ -132,7 +132,7 @@ func scoreRvB(m Config) map[uint][]checks.Result {
 					}
 					thisTeamWg.Add(1)
 					debugPrint("[SCORE] Running", service.Name, "for", team.Name)
-					go checks.Dispatch(team.ID, team.IP, box.Name, box.IP, box.FQDN, runner, teamRunners)
+					go checks.Dispatch(team.ID, team.Identifier, box.Name, box.IP, box.FQDN, runner, teamRunners)
 				}
 			}
 
