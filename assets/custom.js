@@ -119,14 +119,14 @@ function postAjax(e, formid, data, url, success_function) {
         method: "post",
         body: data,
     })
-        .then(response => {
+        .then((response) => {
             hideLoading()
             if (!response.ok) {
                 Promise.reject(response);
             }
             return response.json();
         })
-        .then(data => {
+        .then((data) => {
             if (data.error) {
                 createToast(data.error, "bg-danger")
             } else {
@@ -161,6 +161,8 @@ function showLoading() {
 }
 
 function hideLoading() {
-    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('loadingModal'))
-    modal.hide()
+    modal.getElementById("loadingModal").addEventListener('shown.bs.modal', (event) => {
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('loadingModal'))
+        modal.hide()
+    })
 }
