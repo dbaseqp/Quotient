@@ -189,7 +189,7 @@ func ldapLogin(username string, password string) (uint, bool, error) {
 		eventConf.LdapBaseDn, // baseDN
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		fmt.Sprintf("(samaccountname=%s)", username), // filter
-		[]string{"dn", "cn", "memberOf"},             // attributes to retrieve
+		[]string{"cn", "memberOf"},                   // attributes to retrieve
 		nil,
 	)
 	searchResult, err := ldapServer.Search(searchRequest)
@@ -205,9 +205,8 @@ func ldapLogin(username string, password string) (uint, bool, error) {
 	}
 
 	// test bind
-
-	debugPrint(searchResult.Entries[0].GetAttributeValue("dn"))
-	err = ldapServer.Bind(searchResult.Entries[0].GetAttributeValue("dn"), password) // test correct password
+	debugPrint("test", searchResult.Entries[0].DN)
+	err = ldapServer.Bind(searchResult.Entries[0].DN, password) // test correct password
 	if err != nil {
 		// c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
 		return 0, false, err
