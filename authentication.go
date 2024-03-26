@@ -12,6 +12,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/go-ldap/ldap/v3"
 	"github.com/golang-jwt/jwt/v4"
 )
 
@@ -96,6 +97,126 @@ func initCookies(router *gin.Engine) {
 	router.Use(sessions.Sessions("quotient", cookie.NewStore([]byte("quotient"))))
 }
 
+func login(c *gin.Context) {
+	var err error
+	session := sessions.Default(c)
+	var jsonData map[string]interface{}
+	if err := c.ShouldBindJSON(&jsonData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing fields"})
+		return
+	}
+
+	username := jsonData["username"].(string)
+	password := jsonData["password"].(string)
+
+	// Validate form input
+	if strings.Trim(username, " ") == "" || strings.Trim(password, " ") == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username or password can't be empty."})
+		return
+	}
+
+	// Authenticate user
+	var isAdmin bool
+	var teamid uint
+
+	if eventConf.LdapConnectUrl != "" {
+		ldapServer, err := ldap.DialURL(eventConf.LdapConnectUrl)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer ldapServer.Close()
+
+		binddn := fmt.Sprintf("uid=%s,%s", username, eventConf.LdapUserBaseDn)
+		err = ldapServer.Bind(binddn, password)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
+			return
+		}
+
+		searchRequest := ldap.NewSearchRequest(
+			eventConf.LdapUserBaseDn, // baseDN
+			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+			fmt.Sprintf("(uid=%s)", username), // filter
+			[]string{"cn", "memberOf"},        // attributes to retrieve
+			nil,
+		)
+		searchResult, err := ldapServer.Search(searchRequest)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Check if user was found (which should always be true if it binded)
+		if len(searchResult.Entries) == 0 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
+			return
+		}
+
+		// Print group membership
+		for _, entry := range searchResult.Entries {
+			for _, memberOf := range entry.GetAttributeValues("memberOf") {
+				if memberOf == eventConf.LdapAdminFilter {
+					isAdmin = true
+					break
+				}
+				if memberOf == eventConf.LdapTeamFilter {
+					team, err := dbGetTeam(entry.GetAttributeValue("cn"))
+					if err != nil {
+						c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+						return
+					}
+					teamid = team.ID
+					break
+				}
+			}
+		}
+	}
+
+	// user still not found yet
+	if !isAdmin && teamid == 0 {
+		for _, admin := range eventConf.Admin {
+			if username == admin.Name && password == admin.Pw {
+				isAdmin = true
+				break
+			}
+		}
+
+		if !isAdmin {
+			teamid, err = dbLogin(username, password)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
+				return
+			}
+		}
+	}
+
+	session.Set("id", username)
+
+	jwtContent := UserJWTData{
+		Username: username,
+		Admin:    isAdmin,
+		ID:       teamid,
+	}
+
+	tok, err := create(username, jwtContent)
+	if err != nil {
+		fmt.Println(err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate JWT"})
+		return
+	}
+
+	c.SetCookie("auth_token", tok, 86400, "/", "*", false, false)
+
+	if err := session.Save(); err != nil {
+		fmt.Println(err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to save session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "redirect": "/"})
+}
+
 func logout(c *gin.Context) {
 	session := sessions.Default(c)
 	id := session.Get("id")
@@ -123,68 +244,6 @@ func logout(c *gin.Context) {
 	}
 
 	c.Redirect(http.StatusSeeOther, "/")
-}
-
-func login(c *gin.Context) {
-	var err error
-	session := sessions.Default(c)
-	var jsonData map[string]interface{}
-	if err := c.ShouldBindJSON(&jsonData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing fields"})
-		return
-	}
-
-	username := jsonData["username"].(string)
-	password := jsonData["password"].(string)
-
-	// Validate form input
-	if strings.Trim(username, " ") == "" || strings.Trim(password, " ") == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username or password can't be empty."})
-		return
-	}
-
-	// Authenticate user
-	var isAdmin bool
-	for _, admin := range eventConf.Admin {
-		if username == admin.Name && password == admin.Pw {
-			isAdmin = true
-		}
-	}
-	var teamid uint
-	if !isAdmin {
-		teamid, err = dbLogin(username, password)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
-			return
-		}
-	}
-
-	session.Set("id", username)
-
-	jwtContent := UserJWTData{
-		Username: username,
-		Admin:    isAdmin,
-	}
-	if isAdmin == false {
-		jwtContent.ID = teamid
-	}
-
-	tok, err := create(username, jwtContent)
-	if err != nil {
-		fmt.Println(err)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate JWT"})
-		return
-	}
-
-	c.SetCookie("auth_token", tok, 86400, "/", "*", false, false)
-
-	if err := session.Save(); err != nil {
-		fmt.Println(err)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to save session"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "success", "redirect": "/"})
 }
 
 func isLoggedIn(c *gin.Context) (bool, error) {

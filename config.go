@@ -33,6 +33,16 @@ type Config struct {
 	Timezone      string
 	JWTPrivateKey string
 	JWTPublicKey  string
+
+	// LDAP settings
+	LdapConnectUrl   string
+	LdapBindUser     string
+	LdapBindPassword string
+	LdapBindDn       string
+	LdapUserBaseDn   string
+	LdapAdminFilter  string
+	LdapTeamFilter   string
+
 	// Optional settings
 	EasyPCR     bool
 	Verbose     bool

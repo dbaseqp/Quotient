@@ -101,6 +101,14 @@ func bootstrap() {
 		return
 	}
 
+	if eventConf.LdapConnectUrl != "" {
+		err = dbLoadLdapTeams()
+		if err != nil {
+			log.Fatalln("Failed to sync LDAP teams to DB:", err)
+		}
+		debugPrint("Synced LDAP teams to DB")
+	}
+
 	err = dbCalculateCumulativeServiceScore()
 	if err != nil {
 		log.Fatalln("Failed to calculate cumulative service scores:", err)

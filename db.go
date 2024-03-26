@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"quotient/checks"
+	"strings"
 	"time"
 
+	"github.com/go-ldap/ldap/v3"
 	"github.com/lib/pq"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -332,15 +335,76 @@ func dbProcessRound(m Config, roundData map[uint][]checks.Result) error {
 	return nil
 }
 
-func dbGetInjects() ([]InjectData, error) {
-	var injects []InjectData
+func dbLoadLdapTeams() error {
+	ldapServer, err := ldap.DialURL(eventConf.LdapConnectUrl)
+	if err != nil {
+		return err
+	}
+	defer ldapServer.Close()
 
-	result := db.Order("open_time desc").Find(&injects)
+	binddn := fmt.Sprintf("uid=%s,%s", eventConf.LdapBindUser, eventConf.LdapBindDn)
+	err = ldapServer.Bind(binddn, eventConf.LdapBindPassword)
+	if err != nil {
+		return err
+	}
+
+	searchRequest := ldap.NewSearchRequest(
+		eventConf.LdapUserBaseDn, // baseDN ou=defenders,ou=users,ou=wrccdc,dc=wrccdc,dc=org
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		eventConf.LdapTeamFilter, // filter to users
+		[]string{"cn"},           // attributes to retrieve
+		nil,
+	)
+	searchResult, err := ldapServer.Search(searchRequest)
+	if err != nil {
+		return err
+	}
+
+	// Check if user was found
+	if len(searchResult.Entries) == 0 {
+		return nil
+	}
+
+	// add teams not already in database
+	teams, err := dbGetTeams()
+
+	if err != nil {
+		return err
+	}
+
+	// Print group membership
+	for _, entry := range searchResult.Entries {
+		for _, cn := range entry.GetAttributeValues("cn") {
+			var found bool
+			for _, team := range teams {
+				if cn == team.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				// get team identifier from cn, needs to relooked at for future extensibility
+				name := strings.Split(cn, " ")
+				t := TeamData{
+					Name:       cn,
+					Identifier: name[len(name)-1],
+				}
+				dbAddTeam(t)
+			}
+		}
+	}
+	return nil
+}
+
+func dbGetTeam(name string) (TeamData, error) {
+	var team TeamData
+
+	result := db.Where("name = ?", name).First(&team)
 
 	if result.Error != nil {
-		return nil, result.Error
+		return TeamData{}, result.Error
 	}
-	return injects, nil
+	return team, nil
 }
 
 func dbGetTeams() ([]TeamData, error) {
@@ -352,6 +416,17 @@ func dbGetTeams() ([]TeamData, error) {
 		return nil, result.Error
 	}
 	return teams, nil
+}
+
+func dbGetInjects() ([]InjectData, error) {
+	var injects []InjectData
+
+	result := db.Order("open_time desc").Find(&injects)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return injects, nil
 }
 
 func dbGetAnnouncements() ([]AnnouncementData, error) {
