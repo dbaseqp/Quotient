@@ -41,6 +41,15 @@ timezone = "America/Los_Angeles"        # Timezone you want to use
 jwtprivatekey = "config/privkey.pem"    # Private key used for JWT 
 jwtpublickey = "config/pubkey.pem"      # Public key used for JWT
 
+##### Optional LDAP auth source #####
+# ldapconnecturl = "ldaps://yourldapserver.netbios.tld:636"
+# ldapbinddn = "cn=Some Service Account,ou=yourou,dc=netbios,dc=tld"
+# ldapbindpassword = "yoursupersecretpassword"
+# ldapbasedn = "dc=netbios,dc=tld"                              # where all searches will begin
+# ldapteamou = "ou=teams,ou=users,dc=netbios,dc=tld"            # OU containing all teams
+# ldapadmingroupdn = "cn=admins,ou=groups,dc=netbios,dc=tld"    # group all admins are memberOf
+# ldapteamgroupdn = "cn=teams,ou=groups,dc=netbios,dc=tld"      # group all teams are memberOf
+
 ##### Optional engine settings #####
 # verbose = true                      # Show score debug info to competitors
 # easypcr = true                      # Allow teams to submit password changes
