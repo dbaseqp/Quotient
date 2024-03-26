@@ -36,9 +36,8 @@ type Config struct {
 
 	// LDAP settings
 	LdapConnectUrl   string
-	LdapBindUser     string
-	LdapBindPassword string
 	LdapBindDn       string
+	LdapBindPassword string
 	LdapUserBaseDn   string
 	LdapAdminFilter  string
 	LdapTeamFilter   string

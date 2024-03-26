@@ -342,14 +342,14 @@ func dbLoadLdapTeams() error {
 	}
 	defer ldapServer.Close()
 
-	binddn := fmt.Sprintf("uid=%s,%s", eventConf.LdapBindUser, eventConf.LdapBindDn)
+	binddn := fmt.Sprintf(eventConf.LdapBindDn)
 	err = ldapServer.Bind(binddn, eventConf.LdapBindPassword)
 	if err != nil {
 		return err
 	}
 
 	searchRequest := ldap.NewSearchRequest(
-		eventConf.LdapUserBaseDn, // baseDN ou=defenders,ou=users,ou=wrccdc,dc=wrccdc,dc=org
+		eventConf.LdapUserBaseDn, // baseDN
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		eventConf.LdapTeamFilter, // filter to users
 		[]string{"cn"},           // attributes to retrieve
