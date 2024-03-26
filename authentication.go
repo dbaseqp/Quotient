@@ -178,7 +178,7 @@ func ldapLogin(username string, password string) (uint, bool, error) {
 	}
 	defer ldapServer.Close()
 
-	binddn := fmt.Sprintf("cn=%s,%s", username, eventConf.LdapUserBaseDn)
+	binddn := fmt.Sprintf("samaccountname=%s,%s", username, eventConf.LdapUserBaseDn)
 	err = ldapServer.Bind(binddn, password)
 	if err != nil {
 		// c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
