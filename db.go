@@ -357,10 +357,10 @@ func dbLoadLdapTeams() error {
 	}
 
 	searchRequest := ldap.NewSearchRequest(
-		eventConf.LdapUserBaseDn, // baseDN
+		eventConf.LdapTeamOu, // baseDN
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		eventConf.LdapTeamFilter, // filter to users
-		[]string{"cn"},           // attributes to retrieve
+		eventConf.LdapTeamGroupDn, // filter to users
+		[]string{"cn"},            // attributes to retrieve
 		nil,
 	)
 	searchResult, err := ldapServer.Search(searchRequest)

@@ -39,9 +39,9 @@ type Config struct {
 	LdapBindDn       string
 	LdapBindPassword string
 	LdapBaseDn       string
-	LdapUserBaseDn   string
-	LdapAdminBaseDn  string
-	LdapTeamFilter   string
+	LdapTeamOu       string
+	LdapAdminGroupDn string
+	LdapTeamGroupDn  string
 
 	// Optional settings
 	EasyPCR     bool

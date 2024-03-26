@@ -11,7 +11,7 @@
             <span class="navbar-toggler-icon"></span>
         </button> 
         {{ end }}
-        <ul class="navbar-nav">
+        <ul class="navbar-nav flex-row">
             {{ if .user }}
             <div class="d-flex justify-content-center align-items-center">
                 Logged in as {{ .user.UserInfo.Username }}
