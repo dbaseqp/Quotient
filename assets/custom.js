@@ -161,7 +161,7 @@ function showLoading() {
 }
 
 function hideLoading() {
-    modal.getElementById("loadingModal").addEventListener('shown.bs.modal', (event) => {
+    document.getElementById("loadingModal").addEventListener('shown.bs.modal', (event) => {
         const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('loadingModal'))
         modal.hide()
     })
