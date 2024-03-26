@@ -120,56 +120,9 @@ func login(c *gin.Context) {
 	var teamid uint
 
 	if eventConf.LdapConnectUrl != "" {
-		ldapServer, err := ldap.DialURL(eventConf.LdapConnectUrl)
+		teamid, isAdmin, err = ldapLogin(username, password)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		defer ldapServer.Close()
-
-		binddn := fmt.Sprintf("uid=%s,%s", username, eventConf.LdapUserBaseDn)
-		err = ldapServer.Bind(binddn, password)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
-			return
-		}
-
-		searchRequest := ldap.NewSearchRequest(
-			eventConf.LdapUserBaseDn, // baseDN
-			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-			fmt.Sprintf("(uid=%s)", username), // filter
-			[]string{"cn", "memberOf"},        // attributes to retrieve
-			nil,
-		)
-		searchResult, err := ldapServer.Search(searchRequest)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		// Check if user was found (which should always be true if it binded)
-		if len(searchResult.Entries) == 0 {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
-			return
-		}
-
-		// Print group membership
-		for _, entry := range searchResult.Entries {
-			for _, memberOf := range entry.GetAttributeValues("memberOf") {
-				if memberOf == eventConf.LdapAdminFilter {
-					isAdmin = true
-					break
-				}
-				if memberOf == eventConf.LdapTeamFilter {
-					team, err := dbGetTeam(entry.GetAttributeValue("cn"))
-					if err != nil {
-						c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-						return
-					}
-					teamid = team.ID
-					break
-				}
-			}
+			debugPrint("LDAP ERROR:", err)
 		}
 	}
 
@@ -215,6 +168,64 @@ func login(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "success", "redirect": "/"})
+}
+
+func ldapLogin(username string, password string) (uint, bool, error) {
+	ldapServer, err := ldap.DialURL(eventConf.LdapConnectUrl)
+	if err != nil {
+		// c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return 0, false, err
+	}
+	defer ldapServer.Close()
+
+	binddn := fmt.Sprintf("uid=%s,%s", username, eventConf.LdapUserBaseDn)
+	err = ldapServer.Bind(binddn, password)
+	if err != nil {
+		// c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
+		return 0, false, err
+	}
+
+	searchRequest := ldap.NewSearchRequest(
+		eventConf.LdapUserBaseDn, // baseDN
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		fmt.Sprintf("(uid=%s)", username), // filter
+		[]string{"cn", "memberOf"},        // attributes to retrieve
+		nil,
+	)
+	searchResult, err := ldapServer.Search(searchRequest)
+	if err != nil {
+		// c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return 0, false, err
+	}
+
+	// Check if user was found (which should always be true if it binded)
+	if len(searchResult.Entries) == 0 {
+		// c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
+		return 0, false, err
+	}
+
+	var isAdmin bool
+	var teamid uint
+
+	// Print group membership
+	for _, entry := range searchResult.Entries {
+		for _, memberOf := range entry.GetAttributeValues("memberOf") {
+			if memberOf == eventConf.LdapAdminFilter {
+				isAdmin = true
+				break
+			}
+			if memberOf == eventConf.LdapTeamFilter {
+				team, err := dbGetTeam(entry.GetAttributeValue("cn"))
+				if err != nil {
+					// c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return 0, false, err
+				}
+				teamid = team.ID
+				break
+			}
+		}
+	}
+	return teamid, isAdmin, nil
 }
 
 func logout(c *gin.Context) {
