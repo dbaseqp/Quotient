@@ -188,8 +188,8 @@ func ldapLogin(username string, password string) (uint, bool, error) {
 	searchRequest := ldap.NewSearchRequest(
 		eventConf.LdapUserBaseDn, // baseDN
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(cn=%s)", username), // filter
-		[]string{"cn", "memberOf"},       // attributes to retrieve
+		fmt.Sprintf("(samaccountname=%s)", username), // filter
+		[]string{"cn", "memberOf"},                   // attributes to retrieve
 		nil,
 	)
 	searchResult, err := ldapServer.Search(searchRequest)
