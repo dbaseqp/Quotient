@@ -359,8 +359,8 @@ func dbLoadLdapTeams() error {
 	searchRequest := ldap.NewSearchRequest(
 		eventConf.LdapTeamOu, // baseDN
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		eventConf.LdapTeamGroupDn, // filter to users
-		[]string{"cn"},            // attributes to retrieve
+		fmt.Sprintf("(memberOf=%s)", eventConf.LdapTeamGroupDn), // filter to users
+		[]string{"cn"}, // attributes to retrieve
 		nil,
 	)
 	searchResult, err := ldapServer.Search(searchRequest)
