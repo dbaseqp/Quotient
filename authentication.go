@@ -178,18 +178,18 @@ func ldapLogin(username string, password string) (uint, bool, error) {
 	}
 	defer ldapServer.Close()
 
-	binddn := fmt.Sprintf("samaccountname=%s,%s", username, eventConf.LdapUserBaseDn)
-	err = ldapServer.Bind(binddn, password)
+	err = ldapServer.Bind(eventConf.LdapBindDn, eventConf.LdapBindPassword)
 	if err != nil {
 		// c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
 		return 0, false, err
 	}
 
+	// search for dn based on SAM
 	searchRequest := ldap.NewSearchRequest(
 		eventConf.LdapUserBaseDn, // baseDN
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		fmt.Sprintf("(samaccountname=%s)", username), // filter
-		[]string{"cn", "memberOf"},                   // attributes to retrieve
+		[]string{"dn", "cn", "memberOf"},             // attributes to retrieve
 		nil,
 	)
 	searchResult, err := ldapServer.Search(searchRequest)
@@ -200,6 +200,15 @@ func ldapLogin(username string, password string) (uint, bool, error) {
 
 	// Check if user was found (which should always be true if it binded)
 	if len(searchResult.Entries) == 0 {
+		// c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
+		return 0, false, errors.New("incorrect username or password")
+	}
+
+	// test bind
+
+	debugPrint(searchResult.Entries[0].GetAttributeValue("dn"))
+	err = ldapServer.Bind(searchResult.Entries[0].GetAttributeValue("dn"), password) // test correct password
+	if err != nil {
 		// c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
 		return 0, false, err
 	}
