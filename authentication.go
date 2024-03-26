@@ -186,7 +186,7 @@ func ldapLogin(username string, password string) (uint, bool, error) {
 
 	// search for dn based on SAM
 	searchRequest := ldap.NewSearchRequest(
-		eventConf.LdapUserBaseDn, // baseDN
+		"", // baseDN
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		fmt.Sprintf("(samaccountname=%s)", username), // filter
 		[]string{"dn", "cn", "memberOf"},             // attributes to retrieve
