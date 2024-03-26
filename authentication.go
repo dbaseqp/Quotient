@@ -221,7 +221,7 @@ func ldapLogin(username string, password string) (uint, bool, error) {
 				isAdmin = true
 				break
 			}
-			if strings.EqualFold(memberOf, eventConf.LdapTeamOu) {
+			if strings.EqualFold(memberOf, eventConf.LdapTeamGroupDn) {
 				team, err := dbGetTeam(entry.GetAttributeValue("cn"))
 				if err != nil {
 					// c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
