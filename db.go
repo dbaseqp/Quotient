@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"quotient/checks"
@@ -136,6 +137,9 @@ func dbGetScoreboard() ([]TeamData, RoundData, error) {
 	var round RoundData
 	result := db.Table("round_data").Last(&round)
 	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, RoundData{}, nil
+		}
 		return nil, RoundData{}, result.Error
 	}
 
