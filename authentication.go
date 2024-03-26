@@ -205,7 +205,6 @@ func ldapLogin(username string, password string) (uint, bool, error) {
 	}
 
 	// test bind
-	debugPrint("test", searchResult.Entries[0].DN)
 	err = ldapServer.Bind(searchResult.Entries[0].DN, password) // test correct password
 	if err != nil {
 		// c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Incorrect username or password."})
@@ -218,6 +217,7 @@ func ldapLogin(username string, password string) (uint, bool, error) {
 	// Print group membership
 	for _, entry := range searchResult.Entries {
 		for _, memberOf := range entry.GetAttributeValues("memberOf") {
+			debugPrint("test", memberOf)
 			if strings.EqualFold(memberOf, eventConf.LdapAdminBaseDn) {
 				isAdmin = true
 				break
