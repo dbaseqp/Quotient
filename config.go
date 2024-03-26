@@ -38,6 +38,7 @@ type Config struct {
 	LdapConnectUrl   string
 	LdapBindDn       string
 	LdapBindPassword string
+	LdapBaseDn       string
 	LdapUserBaseDn   string
 	LdapAdminBaseDn  string
 	LdapTeamFilter   string
