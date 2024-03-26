@@ -387,6 +387,7 @@ func dbLoadLdapTeams() error {
 				name := strings.Split(cn, " ")
 				t := TeamData{
 					Name:       cn,
+					Pw:         "<Password is in LDAP>",
 					Identifier: name[len(name)-1],
 				}
 				dbAddTeam(t)
