@@ -210,11 +210,11 @@ func ldapLogin(username string, password string) (uint, bool, error) {
 	// Print group membership
 	for _, entry := range searchResult.Entries {
 		for _, memberOf := range entry.GetAttributeValues("memberOf") {
-			if strings.EqualFold(memberOf, eventConf.LdapAdminFilter) {
+			if strings.EqualFold(memberOf, eventConf.LdapAdminBaseDn) {
 				isAdmin = true
 				break
 			}
-			if strings.EqualFold(memberOf, eventConf.LdapTeamFilter) {
+			if strings.EqualFold(memberOf, eventConf.LdapUserBaseDn) {
 				team, err := dbGetTeam(entry.GetAttributeValue("cn"))
 				if err != nil {
 					// c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

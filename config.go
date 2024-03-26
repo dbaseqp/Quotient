@@ -39,7 +39,7 @@ type Config struct {
 	LdapBindDn       string
 	LdapBindPassword string
 	LdapUserBaseDn   string
-	LdapAdminFilter  string
+	LdapAdminBaseDn  string
 	LdapTeamFilter   string
 
 	// Optional settings
