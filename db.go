@@ -105,6 +105,10 @@ type AnnouncementData struct {
 func dbLogin(username string, password string) (uint, error) {
 	var team TeamData
 
+	if username == "" || password == "" {
+		return 0, errors.New("username/password cannot be empty")
+	}
+
 	result := db.Where("name = ? AND pw = ?", username, password).First(&team)
 
 	if result.Error != nil {
