@@ -12,6 +12,8 @@ Usage
 3. Compile the code (`cd QUOTIENT; go build`).
 4. Save your configuration as `./config/event.conf`.
 5. Run the engine (`./quotient`).
+6. Add teams through the admin UI.
+7. MAKE SURE YOU REBOOT THE ENGINE AFTER ADDING TEAMS!!!!!!!!!!!
 
 Configuration
 -------------
