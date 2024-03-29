@@ -78,7 +78,7 @@ func Dispatch(teamID uint, teamIdentifier string, boxName string, boxIP string, 
 	// make temporary channel to race against timeout
 	res := make(chan Result)
 	fullIP := strings.Replace(boxIP, "_", fmt.Sprint(teamIdentifier), 1)
-	fullFQDN := strings.Replace(boxIP, "_", fmt.Sprint(boxFQDN), 1)
+	fullFQDN := strings.Replace(boxFQDN, "_", fmt.Sprint(teamIdentifier), 1)
 	timeout := time.Duration(runner.GetService().Timeout) * time.Second
 
 	var target string
