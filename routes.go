@@ -590,7 +590,7 @@ func addTeam(c *gin.Context) {
 		return
 	}
 	identifier, err := strconv.Atoi(teamForm.Identifier)
-	if identifier < 1 || identifier > 254 {
+	if identifier < 0 || identifier > 254 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team third octet"})
 		return
 	}
