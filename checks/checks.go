@@ -93,6 +93,7 @@ func Dispatch(teamID uint, teamIdentifier string, boxName string, boxIP string, 
 	select {
 	case result = <-res:
 	case <-time.After(timeout):
+		result.Debug = "Target: " + target
 		result.Error = "Timed out"
 	}
 	result.ServiceName = runner.GetService().Name
