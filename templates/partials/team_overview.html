@@ -182,10 +182,15 @@
                                             tr.appendChild(status)
                                             if (round.Debug) {
                                                 const debug = document.createElement("td")
-                                                const error = document.createElement("td")
                                                 debug.textContent = round.Debug
-                                                error.textContent = round.Error
                                                 tr.appendChild(debug)
+                                            } else if (round.Error) { // padding in case no debug but has an error
+                                                const debug = document.createElement("td")
+                                                tr.appendChild(debug)
+                                            }
+                                            if (round.Error) {
+                                                const error = document.createElement("td")
+                                                error.textContent = round.Error
                                                 tr.appendChild(error)
                                             }
                                             tbody.appendChild(tr)
