@@ -13,7 +13,7 @@ Usage
 4. Save your configuration as `./config/event.conf`.
 5. Run the engine (`./quotient`).
 6. Add teams through the admin UI.
-7. MAKE SURE YOU REBOOT THE ENGINE AFTER ADDING TEAMS!!!!!!!!!!!
+7. MAKE SURE YOU REBOOT THE ENGINE AFTER ADDING TEAMS!!!!!!!!!!! (this will be fixed later)
 
 Configuration
 -------------
@@ -50,7 +50,6 @@ jwtpublickey = "config/pubkey.pem"      # Public key used for JWT
 # ldapbinddn = "cn=Some Service Account,ou=yourou,dc=netbios,dc=tld"
 # ldapbindpassword = "yoursupersecretpassword"
 # ldapbasedn = "dc=netbios,dc=tld"                              # Where all searches will begin
-# ldapteamou = "ou=teams,ou=users,dc=netbios,dc=tld"            # OU containing all teams
 # ldapadmingroupdn = "cn=admins,ou=groups,dc=netbios,dc=tld"    # Group all admins are memberOf
 # ldapteamgroupdn = "cn=teams,ou=groups,dc=netbios,dc=tld"      # Group all teams are memberOf
 
