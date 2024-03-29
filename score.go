@@ -18,6 +18,9 @@ var (
 func Score() {
 	// wait until engine is not paused
 	for {
+		// static state of eventConf so it is stable for duration of this round
+		roundConf := eventConf
+
 		log.Println("[SCORE] ===== Queuing round", roundNumber)
 		enginePauseWg.Wait()
 
@@ -32,8 +35,6 @@ func Score() {
 		nextRoundTime := roundStartTime.Add((time.Duration(eventConf.Delay) * time.Second) + jitter)
 		log.Println("[SCORE] ===== Next round scheduled after", eventConf.Delay, "seconds with jitter", jitter)
 
-		// pass current state of eventConf so it is stable for duration of this round
-		roundConf := eventConf
 		var roundData map[uint][]checks.Result
 		switch eventConf.EventType {
 		case "rvb":
@@ -41,18 +42,16 @@ func Score() {
 		case "koth":
 			roundData = scoreKoTH(roundConf)
 		}
-		err := dbCreateRound(roundNumber, roundStartTime)
-		if err != nil {
-			errorPrint(err.Error())
-		}
 
+		var err error
 		// award teams for successful scores
-		err = dbProcessRound(roundConf, roundData)
+		err = dbProcessRound(roundConf, roundStartTime, roundData)
 		if err != nil {
 			// if you see this, that is very bad
 			errorPrint("FAILED TO SAVE ROUND DATA FOR ROUND", roundNumber, ":", err.Error())
 		}
-		// these may be RvB only functions that need to be refactored
+
+		// calculate total scores for each team
 		err = dbUpdateCumulativeServiceScoreCache(roundData)
 		if err != nil {
 			errorPrint("FAILED TO UPDATE CUMULATIVE SCORE CACHE DATA FOR ROUND", roundNumber, ":", err.Error())

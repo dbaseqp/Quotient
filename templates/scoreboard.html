@@ -2,7 +2,7 @@
 <div class="d-flex flex-column h-100 pt-4">
     <div class="d-flex flex-column justify-content-around align-items-center">
         <h1> Current Status </h1>
-        <span> Round Time: {{ format .round.StartTime }} </span>
+        <span> Round {{ .round.ID }} Time: {{ format .round.StartTime }} </span>
     </div>
     <table class="scoreboard m-4 me-auto">
         <thead>

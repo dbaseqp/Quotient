@@ -46,7 +46,6 @@ jwtpublickey = "config/pubkey.pem"      # Public key used for JWT
 # ldapbinddn = "cn=Some Service Account,ou=yourou,dc=netbios,dc=tld"
 # ldapbindpassword = "yoursupersecretpassword"
 # ldapbasedn = "dc=netbios,dc=tld"                              # where all searches will begin
-# ldapteamou = "ou=teams,ou=users,dc=netbios,dc=tld"            # OU containing all teams
 # ldapadmingroupdn = "cn=admins,ou=groups,dc=netbios,dc=tld"    # group all admins are memberOf
 # ldapteamgroupdn = "cn=teams,ou=groups,dc=netbios,dc=tld"      # group all teams are memberOf
 

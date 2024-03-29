@@ -295,20 +295,15 @@ func dbGetLastRoundNumber() (int, error) {
 	return int(count), nil
 }
 
-func dbCreateRound(roundNumber int, startTime time.Time) error {
-	result := db.Create(&RoundData{ID: uint(roundNumber), StartTime: startTime})
-
-	if result.Error != nil {
-		return result.Error
-	}
-	return nil
-}
-
 // given a map of teamid to result data, give points to teams
 // this should be fundamentally sound regardless of event type
 // need to make sure that holes are acceptable for koth
-func dbProcessRound(m Config, roundData map[uint][]checks.Result) error {
+func dbProcessRound(m Config, startTime time.Time, roundData map[uint][]checks.Result) error {
 	tx := db.Begin()
+	result := tx.Create(&RoundData{StartTime: startTime})
+	if result.Error != nil {
+		return result.Error
+	}
 	for teamid := range roundData {
 		debugPrint("[SCORE] ===== Saving scores for", teamid)
 		var sum int
@@ -357,7 +352,7 @@ func dbLoadLdapTeams() error {
 	}
 
 	searchRequest := ldap.NewSearchRequest(
-		eventConf.LdapTeamOu, // baseDN
+		eventConf.LdapBaseDn, // baseDN
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		fmt.Sprintf("(memberOf=%s)", eventConf.LdapTeamGroupDn), // filter to users
 		[]string{"cn"}, // attributes to retrieve

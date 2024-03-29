@@ -21,9 +21,9 @@
                             <button class="nav-link text-start" id="v-pills-teams-tab" data-tab-id="teams"
                                 data-bs-toggle="pill" data-bs-target="#v-pills-teams" type="button" role="tab"
                                 aria-controls="v-pills-teams" aria-selected="false">Team Configuration</button>
-                            <button class="nav-link text-start" id="v-pills-environment-tab" data-tab-id="environment"
+                            <!-- <button class="nav-link text-start" id="v-pills-environment-tab" data-tab-id="environment"
                                 data-bs-toggle="pill" data-bs-target="#v-pills-environment" type="button" role="tab"
-                                aria-controls="v-pills-environment" aria-selected="false">Environment</button>
+                                aria-controls="v-pills-environment" aria-selected="false">Environment</button> -->
                         </div>
                         <hr class="d-block d-lg-none">
                     </div>
@@ -199,6 +199,37 @@
                                                                             </ul>
                                                                         </div>
                                                                         <div class="mb-3">
+                                                                            <label for="launchtimePickerInput"
+                                                                                class="col-form-label">Launch
+                                                                                Time:</label>
+                                                                            <div class="input-group"
+                                                                                id="launchtimePicker"
+                                                                                data-td-target-input="nearest"
+                                                                                data-td-target-toggle="nearest">
+                                                                                <input name="launchtimeInput"
+                                                                                    id="launchtimePickerInput"
+                                                                                    type="text" class="form-control"
+                                                                                    data-td-target="#launchtimePicker"
+                                                                                    required aria-required="true">
+                                                                            </div>
+                                                                            <div class="mb-3">
+                                                                                <label for="stoptimePickerInput"
+                                                                                    class="col-form-label">Stop
+                                                                                    Time:</label>
+                                                                                <div class="input-group"
+                                                                                    id="stoptimePicker"
+                                                                                    data-td-target-input="nearest"
+                                                                                    data-td-target-toggle="nearest">
+                                                                                    <input name="stoptimeInput"
+                                                                                        id="stoptimePickerInput"
+                                                                                        type="text" class="form-control"
+                                                                                        data-td-target="#stoptimePicker"
+                                                                                        required aria-required="true">
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                        <hr>
+                                                                        <div class="mb-3">
                                                                             <label for="pointsInput"
                                                                                 class="form-label">Points</label>
                                                                             <input name="display" type="number"
@@ -228,35 +259,6 @@
                                                                                 id="slathresholdInput"
                                                                                 placeholder="The part after the box name">
                                                                         </div>
-                                                                        <div class="mb-3">
-                                                                            <label for="launchtimePickerInput"
-                                                                                class="col-form-label">Launch
-                                                                                Time:</label>
-                                                                            <div class="input-group"
-                                                                                id="launchtimePicker"
-                                                                                data-td-target-input="nearest"
-                                                                                data-td-target-toggle="nearest">
-                                                                                <input name="launchtimeInput"
-                                                                                    id="launchtimePickerInput"
-                                                                                    type="text" class="form-control"
-                                                                                    data-td-target="#launchtimePicker"
-                                                                                    required aria-required="true">
-                                                                            </div>
-                                                                            <div class="mb-3">
-                                                                                <label for="stoptimePickerInput"
-                                                                                    class="col-form-label">Stop
-                                                                                    Time:</label>
-                                                                                <div class="input-group"
-                                                                                    id="stoptimePicker"
-                                                                                    data-td-target-input="nearest"
-                                                                                    data-td-target-toggle="nearest">
-                                                                                    <input name="stoptimeInput"
-                                                                                        id="stoptimePickerInput"
-                                                                                        type="text" class="form-control"
-                                                                                        data-td-target="#stoptimePicker"
-                                                                                        required aria-required="true">
-                                                                                </div>
-                                                                            </div>
                                                                     </form>
                                                                 </div>
                                                                 <div class="tab-pane fade" id="pills-advanced"

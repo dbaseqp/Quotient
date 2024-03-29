@@ -39,7 +39,6 @@ type Config struct {
 	LdapBindDn       string
 	LdapBindPassword string
 	LdapBaseDn       string
-	LdapTeamOu       string
 	LdapAdminGroupDn string
 	LdapTeamGroupDn  string
 
