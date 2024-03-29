@@ -10,8 +10,8 @@ type Tcp struct {
 	Service
 }
 
-func (c Tcp) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
-	_, err := net.DialTimeout("tcp", boxIp+":"+strconv.Itoa(c.Port), time.Duration(c.Timeout)*time.Second)
+func (c Tcp) Run(teamID uint, target string, res chan Result) {
+	_, err := net.DialTimeout("tcp", target+":"+strconv.Itoa(c.Port), time.Duration(c.Timeout)*time.Second)
 	if err != nil {
 		res <- Result{
 			Error: "connection error",

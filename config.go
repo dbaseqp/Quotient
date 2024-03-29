@@ -268,8 +268,8 @@ func parseEnvironment(boxes []Box) error {
 			return fmt.Errorf("no name found for box %d", i)
 		}
 
-		if box.IP == "" {
-			return errors.New("no ip found for box " + box.Name)
+		if box.IP == "" && box.FQDN == "" {
+			return errors.New("no ip/fqdn found for box " + box.Name)
 		}
 
 		// Ensure TeamID replacement chars are lowercase

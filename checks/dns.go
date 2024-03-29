@@ -20,7 +20,7 @@ type DnsRecord struct {
 	Answer []string
 }
 
-func (c Dns) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+func (c Dns) Run(teamID uint, target string, res chan Result) {
 	// Pick a record
 	record := c.Record[rand.Intn(len(c.Record))]
 	fqdn := dns.Fqdn(record.Domain)
@@ -43,7 +43,7 @@ func (c Dns) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	defer cancel()
 
 	// Send the query
-	in, err := dns.ExchangeContext(deadctx, &msg, fmt.Sprintf("%s:%d", boxIp, c.Port))
+	in, err := dns.ExchangeContext(deadctx, &msg, fmt.Sprintf("%s:%d", target, c.Port))
 	if err != nil {
 		res <- Result{
 			Error: "error sending query",

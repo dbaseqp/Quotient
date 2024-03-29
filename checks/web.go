@@ -24,7 +24,7 @@ type urlData struct {
 	CompareFile string `toml:",omitempty"` // TODO implement
 }
 
-func (c Web) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+func (c Web) Run(teamID uint, target string, res chan Result) {
 	u := c.Url[rand.Intn(len(c.Url))]
 
 	tr := &http.Transport{
@@ -36,7 +36,7 @@ func (c Web) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 		},
 	}
 	client := &http.Client{Transport: tr}
-	resp, err := client.Get(c.Scheme + "://" + boxIp + ":" + strconv.Itoa(c.Port) + u.Path)
+	resp, err := client.Get(c.Scheme + "://" + target + ":" + strconv.Itoa(c.Port) + u.Path)
 	if err != nil {
 		res <- Result{
 			Error: "web request errored out",

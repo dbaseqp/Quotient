@@ -14,7 +14,7 @@ type Ldap struct {
 	Encrypted bool
 }
 
-func (c Ldap) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+func (c Ldap) Run(teamID uint, target string, res chan Result) {
 	// Set timeout
 	ldap.DefaultTimeout = time.Duration(c.Timeout) * time.Second
 
@@ -23,7 +23,7 @@ func (c Ldap) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	if c.Encrypted {
 		scheme = "ldaps"
 	}
-	lconn, err := ldap.DialURL(fmt.Sprintf("%s://%s:%d", scheme, boxIp, c.Port))
+	lconn, err := ldap.DialURL(fmt.Sprintf("%s://%s:%d", scheme, target, c.Port))
 	if err != nil {
 		res <- Result{
 			Error: "failed to connect",

@@ -27,13 +27,13 @@ type queryData struct {
 	Output   string `toml:",omitempty"`
 }
 
-func (c Sql) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+func (c Sql) Run(teamID uint, target string, res chan Result) {
 	username, password := getCreds(teamID, c.CredLists)
 
 	// Run query
 	q := c.Query[rand.Intn(len(c.Query))]
 
-	db, err := sql.Open(c.Kind, fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", username, password, boxIp, c.Port, q.Database))
+	db, err := sql.Open(c.Kind, fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", username, password, target, c.Port, q.Database))
 	if err != nil {
 		res <- Result{
 			Error: "creating db handle failed",

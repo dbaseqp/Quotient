@@ -9,10 +9,10 @@ type Pop3 struct {
 	Encrypted bool
 }
 
-func (c Pop3) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+func (c Pop3) Run(teamID uint, target string, res chan Result) {
 	// Create a dialer so we can set timeouts
 	p := pop3.New(pop3.Opt{
-		Host:       boxIp,
+		Host:       target,
 		Port:       c.Port,
 		TLSEnabled: c.Encrypted,
 	})

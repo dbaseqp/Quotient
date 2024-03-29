@@ -28,7 +28,7 @@ type commandData struct {
 	Output   string `toml:",omitempty"`
 }
 
-func (c Ssh) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+func (c Ssh) Run(teamID uint, target string, res chan Result) {
 	// Create client config
 	username, password := getCreds(teamID, c.CredLists)
 	config := &ssh.ClientConfig{
@@ -74,14 +74,14 @@ func (c Ssh) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 			Timeout:         time.Duration(c.Timeout) * time.Second,
 		}
 
-		badConn, err := ssh.Dial("tcp", boxIp+":"+strconv.Itoa(c.Port), badConf)
+		badConn, err := ssh.Dial("tcp", target+":"+strconv.Itoa(c.Port), badConf)
 		if err == nil {
 			badConn.Close()
 		}
 	}
 
 	// Connect to ssh server
-	conn, err := ssh.Dial("tcp", boxIp+":"+strconv.Itoa(c.Port), config)
+	conn, err := ssh.Dial("tcp", target+":"+strconv.Itoa(c.Port), config)
 	if err != nil {
 		if c.PrivKey != "" {
 			res <- Result{

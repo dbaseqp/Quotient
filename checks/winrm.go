@@ -25,18 +25,18 @@ type winCommandData struct {
 	Output   string
 }
 
-func (c WinRM) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+func (c WinRM) Run(teamID uint, target string, res chan Result) {
 	username, password := getCreds(teamID, c.CredLists)
 	params := *winrm.DefaultParameters
 
 	// Run bad attempts if specified
 	for i := 0; i < c.BadAttempts; i++ {
-		endpoint := winrm.NewEndpoint(boxIp, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
+		endpoint := winrm.NewEndpoint(target, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
 		winrm.NewClientWithParameters(endpoint, username, uuid.New().String(), &params)
 	}
 
 	// Log in to WinRM
-	endpoint := winrm.NewEndpoint(boxIp, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
+	endpoint := winrm.NewEndpoint(target, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
 	client, err := winrm.NewClientWithParameters(endpoint, username, password, &params)
 	if err != nil {
 		res <- Result{

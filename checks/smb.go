@@ -23,13 +23,13 @@ type smbFile struct {
 	Regex string
 }
 
-func (c Smb) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+func (c Smb) Run(teamID uint, target string, res chan Result) {
 	// create smb object outside of if statement scope
 
 	// Authenticated SMB
 	username, password := getCreds(teamID, c.CredLists)
 
-	conn, err := net.Dial("tcp", boxIp+":"+strconv.Itoa(c.Port))
+	conn, err := net.Dial("tcp", target+":"+strconv.Itoa(c.Port))
 	if err != nil {
 		res <- Result{
 			Error: "connection failed",

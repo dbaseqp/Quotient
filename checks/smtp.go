@@ -27,7 +27,7 @@ func (a unencryptedAuth) Start(server *smtp.ServerInfo) (string, []byte, error) 
 	return a.Auth.Start(&s)
 }
 
-func (c Smtp) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+func (c Smtp) Run(teamID uint, target string, res chan Result) {
 	// Create a dialer
 	dialer := net.Dialer{
 		Timeout: time.Duration(c.Timeout) * time.Second,
@@ -36,7 +36,7 @@ func (c Smtp) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	// ***********************************************
 	// Set up custom auth for bypassing net/smtp protections
 	username, password := getCreds(teamID, c.CredLists)
-	auth := unencryptedAuth{smtp.PlainAuth("", username, password, boxIp)}
+	auth := unencryptedAuth{smtp.PlainAuth("", username, password, target)}
 	// ***********************************************
 
 	// The good way to do auth
@@ -51,9 +51,9 @@ func (c Smtp) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	var err error
 
 	if c.Encrypted {
-		conn, err = tls.DialWithDialer(&dialer, "tcp", fmt.Sprintf("%s:%d", boxIp, c.Port), &tlsConfig)
+		conn, err = tls.DialWithDialer(&dialer, "tcp", fmt.Sprintf("%s:%d", target, c.Port), &tlsConfig)
 	} else {
-		conn, err = dialer.DialContext(context.TODO(), "tcp", fmt.Sprintf("%s:%d", boxIp, c.Port))
+		conn, err = dialer.DialContext(context.TODO(), "tcp", fmt.Sprintf("%s:%d", target, c.Port))
 	}
 	if err != nil {
 		res <- Result{
@@ -65,7 +65,7 @@ func (c Smtp) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 	defer conn.Close()
 
 	// Create smtp client
-	sconn, err := smtp.NewClient(conn, boxIp)
+	sconn, err := smtp.NewClient(conn, target)
 	if err != nil {
 		res <- Result{
 			Error: "smtp client creation failed",

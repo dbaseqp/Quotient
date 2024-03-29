@@ -24,7 +24,7 @@ func commandOutput(cmd string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func (c Custom) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+func (c Custom) Run(teamID uint, target string, res chan Result) {
 	re, err := regexp.Compile(c.Regex)
 	if err != nil {
 		res <- Result{
@@ -38,8 +38,8 @@ func (c Custom) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) 
 
 	// Replace command input keywords
 	formedCommand := c.Command
-	formedCommand = strings.Replace(formedCommand, "BOXIP", boxIp, -1)
-	formedCommand = strings.Replace(formedCommand, "FQDN", boxFQDN, -1)
+	formedCommand = strings.Replace(formedCommand, "BOXIP", target, -1)
+	formedCommand = strings.Replace(formedCommand, "FQDN", target, -1)
 
 	// We shell escape username and password, who knows what format they are
 	formedCommand = strings.Replace(formedCommand, "USERNAME", shellescape.Quote(username), -1)

@@ -15,7 +15,7 @@ type Imap struct {
 	Encrypted bool
 }
 
-func (c Imap) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
+func (c Imap) Run(teamID uint, target string, res chan Result) {
 	// Create a dialer so we can set timeouts
 	dialer := net.Dialer{
 		Timeout: time.Duration(c.Timeout) * time.Second,
@@ -27,9 +27,9 @@ func (c Imap) Run(teamID uint, boxIp string, boxFQDN string, res chan Result) {
 
 	// Connect to server with TLS or not
 	if c.Encrypted {
-		cl, err = client.DialWithDialerTLS(&dialer, fmt.Sprintf("%s:%d", boxIp, c.Port), &tls.Config{})
+		cl, err = client.DialWithDialerTLS(&dialer, fmt.Sprintf("%s:%d", target, c.Port), &tls.Config{})
 	} else {
-		cl, err = client.DialWithDialer(&dialer, fmt.Sprintf("%s:%d", boxIp, c.Port))
+		cl, err = client.DialWithDialer(&dialer, fmt.Sprintf("%s:%d", target, c.Port))
 	}
 	if err != nil {
 		res <- Result{

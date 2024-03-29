@@ -70,7 +70,7 @@ type Result struct {
 
 // checks for each service
 type Runner interface {
-	Run(uint, string, string, chan Result)
+	Run(uint, string, chan Result)
 	GetService() Service
 }
 
@@ -81,7 +81,14 @@ func Dispatch(teamID uint, teamIdentifier string, boxName string, boxIP string, 
 	fullFQDN := strings.Replace(boxIP, "_", fmt.Sprint(boxFQDN), 1)
 	timeout := time.Duration(runner.GetService().Timeout) * time.Second
 
-	go runner.Run(teamID, fullIP, fullFQDN, res)
+	var target string
+	if fullFQDN != "" {
+		target = fullFQDN
+	} else {
+		target = fullIP
+	}
+
+	go runner.Run(teamID, target, res)
 	var result Result
 	select {
 	case result = <-res:
