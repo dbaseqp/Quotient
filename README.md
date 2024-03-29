@@ -12,6 +12,8 @@ Usage
 3. Compile the code (`cd QUOTIENT; go build`).
 4. Save your configuration as `./config/event.conf`.
 5. Run the engine (`./quotient`).
+6. Add teams through the admin UI.
+7. MAKE SURE YOU REBOOT THE ENGINE AFTER ADDING TEAMS!!!!!!!!!!!
 
 Configuration
 -------------
@@ -35,7 +37,9 @@ eventtype = "rvb"                   # Scoring algorithm to use
                                         # rvb: score each sevice for each team
                                         # more options will be added later
 dbconnecturl = "postgres://engineuser:password@localhost:5432/engine" # configure these in ./.env  
-bindaddress = "192.168.220.10"      # IP to bind to
+bindaddress = "192.168.220.10"      # Primary IP to bind to
+interface = "ens160"                # Interface the primary IP is on
+subnet = "192.168.220.0/24"         # Subnet of secondary IPs to rotate in
 
 timezone = "America/Los_Angeles"        # Timezone you want to use
 jwtprivatekey = "config/privkey.pem"    # Private key used for JWT 
@@ -45,9 +49,10 @@ jwtpublickey = "config/pubkey.pem"      # Public key used for JWT
 # ldapconnecturl = "ldaps://yourldapserver.netbios.tld:636"
 # ldapbinddn = "cn=Some Service Account,ou=yourou,dc=netbios,dc=tld"
 # ldapbindpassword = "yoursupersecretpassword"
-# ldapbasedn = "dc=netbios,dc=tld"                              # where all searches will begin
-# ldapadmingroupdn = "cn=admins,ou=groups,dc=netbios,dc=tld"    # group all admins are memberOf
-# ldapteamgroupdn = "cn=teams,ou=groups,dc=netbios,dc=tld"      # group all teams are memberOf
+# ldapbasedn = "dc=netbios,dc=tld"                              # Where all searches will begin
+# ldapteamou = "ou=teams,ou=users,dc=netbios,dc=tld"            # OU containing all teams
+# ldapadmingroupdn = "cn=admins,ou=groups,dc=netbios,dc=tld"    # Group all admins are memberOf
+# ldapteamgroupdn = "cn=teams,ou=groups,dc=netbios,dc=tld"      # Group all teams are memberOf
 
 ##### Optional engine settings #####
 # verbose = true                      # Show score debug info to competitors
