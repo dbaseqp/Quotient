@@ -316,8 +316,8 @@ func startEvent(beginTime time.Time) {
 	// Start the web server
 	log.Println("Startup complete. Took", time.Since(beginTime))
 	if eventConf.Https {
-		log.Fatal(router.RunTLS(fmt.Sprintf("%s:%d", eventConf.PrimaryBindAddress, eventConf.Port), eventConf.Cert, eventConf.Key))
+		log.Fatal(router.RunTLS(fmt.Sprintf("%s:%d", eventConf.BindAddress, eventConf.Port), eventConf.Cert, eventConf.Key))
 	} else {
-		log.Fatal(router.Run(fmt.Sprintf("%s:%d", eventConf.PrimaryBindAddress, eventConf.Port)))
+		log.Fatal(router.Run(fmt.Sprintf("%s:%d", eventConf.BindAddress, eventConf.Port)))
 	}
 }
