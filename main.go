@@ -101,14 +101,6 @@ func bootstrap() {
 		return
 	}
 
-	if eventConf.LdapConnectUrl != "" {
-		err = dbLoadLdapTeams()
-		if err != nil {
-			log.Fatalln("Failed to sync LDAP teams to DB:", err)
-		}
-		debugPrint("Synced LDAP teams to DB")
-	}
-
 	err = dbCalculateCumulativeServiceScore()
 	if err != nil {
 		log.Fatalln("Failed to calculate cumulative service scores:", err)
@@ -324,8 +316,8 @@ func startEvent(beginTime time.Time) {
 	// Start the web server
 	log.Println("Startup complete. Took", time.Since(beginTime))
 	if eventConf.Https {
-		log.Fatal(router.RunTLS(fmt.Sprintf("%s:%d", eventConf.BindAddress, eventConf.Port), eventConf.Cert, eventConf.Key))
+		log.Fatal(router.RunTLS(fmt.Sprintf("%s:%d", eventConf.PrimaryBindAddress, eventConf.Port), eventConf.Cert, eventConf.Key))
 	} else {
-		log.Fatal(router.Run(fmt.Sprintf("%s:%d", eventConf.BindAddress, eventConf.Port)))
+		log.Fatal(router.Run(fmt.Sprintf("%s:%d", eventConf.PrimaryBindAddress, eventConf.Port)))
 	}
 }
