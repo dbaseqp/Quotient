@@ -112,6 +112,7 @@ func addAdminRoutes(router *gin.RouterGroup) {
 	router.POST("/engine/resume", resumeEngine)
 	router.POST("/engine/reset", resetEngine)
 	router.GET("/engine/services/:servicename", getServiceConfig)
+	router.POST("/engine/syncldap", syncLdap)
 
 	// inject portal
 	router.POST("/injects/add", addInject)                                                               // admin
@@ -213,6 +214,17 @@ func resetEngine(c *gin.Context) {
 	engineMutex.Unlock()
 	log.Println("[ENGINE] ===== Event reset successfully")
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+func syncLdap(c *gin.Context) {
+	if eventConf.LdapConnectUrl != "" {
+		err := dbLoadLdapTeams()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		debugPrint("Synced LDAP teams to DB")
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
+	}
 }
 
 func getServiceConfig(c *gin.Context) {

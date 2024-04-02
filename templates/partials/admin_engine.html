@@ -163,11 +163,15 @@
 </script>
 {{ end }}
 {{ define "teams"}}
-<button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addteamModal">Add new
+<button id="addteambutton" type="button" class="btn btn-primary" data-bs-toggle="modal"
+    data-bs-target="#addteamModal">Add new
     team</button>
-<button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#importteamModal">Import teams
+<button id="importteambutton" type="button" class="btn btn-primary" data-bs-toggle="modal"
+    data-bs-target="#importteamModal">Import teams
     CSV</button>
-
+{{ if ne .config.LdapBindURL "" }}
+<button id="syncldapbutton" type="button" class="btn btn-primary">Sync teams w/LDAP</button>
+{{ end }}
 <div class="modal fade" data-bs-backdrop="static" data-bs-keyboard="false" id="addteamModal" tabindex="-1"
     aria-labelledby="addteamModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -269,6 +273,24 @@
         </tbody>
     </table>
 </div>
+{{ if ne .config.LdapBindURL "" }}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        document.getElementById('syncldapbutton').addEventListener('click', function (event) {
+            event.preventDefault();
+
+            let formid = "";
+            let url = "/api/engine/syncldap";
+
+            let data = JSON.stringify({})
+            let success_function = function (data) {
+                createToast("Synced with LDAP successfuly", "bg-success")
+            }
+            postAjax(event, formid, data, url, success_function)
+        })
+    })
+</script>
+{{ end }}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         let form = document.getElementById('addteamForm')
