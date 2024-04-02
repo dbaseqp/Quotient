@@ -131,6 +131,7 @@ func pauseEngine(c *gin.Context) {
 	enginePause = true
 	engineMutex.Unlock()
 	log.Println("[ENGINE] ===== Engine paused")
+	SendSSE(gin.H{"admin": true, "page": "engine", "engine": false})
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
@@ -145,6 +146,7 @@ func resumeEngine(c *gin.Context) {
 	enginePause = false
 	engineMutex.Unlock()
 	log.Println("[ENGINE] ===== Engine resumed")
+	SendSSE(gin.H{"admin": true, "page": "engine", "engine": true})
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 

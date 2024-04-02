@@ -23,6 +23,19 @@
         </div>
     </form>
 </div>
+
+<script>
+    const evtSource = new EventSource("/api/sse");
+    evtSource.onmessage = (event) => {
+        data = JSON.parse(event.data)
+        console.log(data)
+        if (data.page == "engine") {
+            if (data.engine) {
+                document.getElementById('engineSwtich').checked = data.engine
+            }
+        }
+    }
+</script>
 <script>
     document.getElementById('engineSwtich').addEventListener('change', function (event) {
         let formid = "controlsForm";
@@ -63,7 +76,7 @@
                 }
             })
             .catch(error => {
-                event.target.checked = false
+                event.target.checked = !event.target.checked
                 createToast(error, "bg-danger")
             })
     })
