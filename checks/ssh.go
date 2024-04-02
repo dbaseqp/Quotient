@@ -28,7 +28,7 @@ type commandData struct {
 	Output   string `toml:",omitempty"`
 }
 
-func (c Ssh) Run(teamID uint, target string, res chan Result) {
+func (c Ssh) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	// Create client config
 	username, password := getCreds(teamID, c.CredLists)
 	config := &ssh.ClientConfig{

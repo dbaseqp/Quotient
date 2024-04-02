@@ -27,7 +27,7 @@ type queryData struct {
 	Output   string `toml:",omitempty"`
 }
 
-func (c Sql) Run(teamID uint, target string, res chan Result) {
+func (c Sql) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	username, password := getCreds(teamID, c.CredLists)
 
 	// Run query

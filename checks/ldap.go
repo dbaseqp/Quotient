@@ -14,7 +14,7 @@ type Ldap struct {
 	Encrypted bool
 }
 
-func (c Ldap) Run(teamID uint, target string, res chan Result) {
+func (c Ldap) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	// Set timeout
 	ldap.DefaultTimeout = time.Duration(c.Timeout) * time.Second
 

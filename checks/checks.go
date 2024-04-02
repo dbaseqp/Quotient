@@ -70,7 +70,7 @@ type Result struct {
 
 // checks for each service
 type Runner interface {
-	Run(uint, string, chan Result)
+	Run(uint, string, string, chan Result)
 	GetService() Service
 }
 
@@ -88,7 +88,7 @@ func Dispatch(teamID uint, teamIdentifier string, boxName string, boxIP string, 
 		target = fullIP
 	}
 
-	go runner.Run(teamID, target, res)
+	go runner.Run(teamID, teamIdentifier, target, res)
 	var result Result
 	select {
 	case result = <-res:

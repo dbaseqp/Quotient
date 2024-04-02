@@ -23,7 +23,7 @@ type smbFile struct {
 	Regex string
 }
 
-func (c Smb) Run(teamID uint, target string, res chan Result) {
+func (c Smb) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	// create smb object outside of if statement scope
 
 	// Authenticated SMB

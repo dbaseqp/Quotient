@@ -24,7 +24,7 @@ type urlData struct {
 	CompareFile string `toml:",omitempty"` // TODO implement
 }
 
-func (c Web) Run(teamID uint, target string, res chan Result) {
+func (c Web) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	u := c.Url[rand.Intn(len(c.Url))]
 
 	tr := &http.Transport{

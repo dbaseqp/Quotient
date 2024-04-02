@@ -11,7 +11,7 @@ type Rdp struct {
 	Service
 }
 
-func (c Rdp) Run(teamID uint, target string, res chan Result) {
+func (c Rdp) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	_, err := net.DialTimeout("tcp", target+":"+strconv.Itoa(c.Port), time.Duration(c.Timeout)*time.Second)
 	if err != nil {
 		res <- Result{

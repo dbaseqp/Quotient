@@ -12,7 +12,7 @@ type Vnc struct {
 	Service
 }
 
-func (c Vnc) Run(teamID uint, target string, res chan Result) {
+func (c Vnc) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	// Configure the vnc client
 	username, password := getCreds(teamID, c.CredLists)
 	config := vnc.ClientConfig{

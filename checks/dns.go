@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/miekg/dns"
@@ -20,11 +21,10 @@ type DnsRecord struct {
 	Answer []string
 }
 
-func (c Dns) Run(teamID uint, target string, res chan Result) {
+func (c Dns) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	// Pick a record
 	record := c.Record[rand.Intn(len(c.Record))]
-	fqdn := dns.Fqdn(record.Domain)
-	answerList := fmt.Sprint(record.Answer)
+	fqdn := strings.ReplaceAll(dns.Fqdn(record.Domain), "_", teamIdentifier)
 
 	// Setup for dns query
 	var msg dns.Msg
@@ -47,7 +47,7 @@ func (c Dns) Run(teamID uint, target string, res chan Result) {
 	if err != nil {
 		res <- Result{
 			Error: "error sending query",
-			Debug: "record " + record.Domain + ":" + answerList + ": " + err.Error(),
+			Debug: "record " + record.Domain + ":" + fmt.Sprint(record.Answer) + ": " + err.Error(),
 		}
 		return
 	}
@@ -56,7 +56,7 @@ func (c Dns) Run(teamID uint, target string, res chan Result) {
 	if len(in.Answer) < 1 {
 		res <- Result{
 			Error: "no records received",
-			Debug: "record " + record.Domain + "-> " + answerList,
+			Debug: "record " + record.Domain + "-> " + fmt.Sprint(record.Answer),
 		}
 		return
 	}
@@ -65,11 +65,12 @@ func (c Dns) Run(teamID uint, target string, res chan Result) {
 	for _, answer := range in.Answer {
 		// Check if an answer is an A record and it matches the expected IP
 		for _, expectedAnswer := range record.Answer {
+			expectedAnswer = strings.ReplaceAll(expectedAnswer, "_", teamIdentifier)
 			if a, ok := answer.(*dns.A); ok && (a.A).String() == expectedAnswer {
 				res <- Result{
 					Status: true,
 					Points: c.Points,
-					Debug:  "record " + record.Domain + " returned " + expectedAnswer + ". acceptable answers were: " + answerList,
+					Debug:  "record " + record.Domain + " returned " + expectedAnswer + ". acceptable answers were: " + fmt.Sprint(record.Answer),
 				}
 				return
 			}
@@ -79,7 +80,7 @@ func (c Dns) Run(teamID uint, target string, res chan Result) {
 	// If we reach here no records matched expected IP and check fails
 	res <- Result{
 		Error: "incorrect answer(s) received from DNS",
-		Debug: "acceptable answers were: " + answerList + "," + " received " + fmt.Sprint(in.Answer),
+		Debug: "acceptable answers were: " + fmt.Sprint(record.Answer) + "," + " received " + fmt.Sprint(in.Answer),
 	}
 }
 

@@ -15,7 +15,7 @@ type Imap struct {
 	Encrypted bool
 }
 
-func (c Imap) Run(teamID uint, target string, res chan Result) {
+func (c Imap) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	// Create a dialer so we can set timeouts
 	dialer := net.Dialer{
 		Timeout: time.Duration(c.Timeout) * time.Second,

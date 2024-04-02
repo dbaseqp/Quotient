@@ -25,7 +25,7 @@ type winCommandData struct {
 	Output   string
 }
 
-func (c WinRM) Run(teamID uint, target string, res chan Result) {
+func (c WinRM) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	username, password := getCreds(teamID, c.CredLists)
 	params := *winrm.DefaultParameters
 

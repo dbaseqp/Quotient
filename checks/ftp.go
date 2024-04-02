@@ -21,7 +21,7 @@ type FtpFile struct {
 	Regex string
 }
 
-func (c Ftp) Run(teamID uint, target string, res chan Result) {
+func (c Ftp) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	conn, err := ftp.Dial(target+":"+strconv.Itoa(c.Port), ftp.DialWithTimeout(time.Duration(c.Timeout)*time.Second))
 	if err != nil {
 		res <- Result{

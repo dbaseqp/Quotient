@@ -24,7 +24,7 @@ func commandOutput(cmd string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func (c Custom) Run(teamID uint, target string, res chan Result) {
+func (c Custom) Run(teamID uint, teamIdentifier string, target string, res chan Result) {
 	re, err := regexp.Compile(c.Regex)
 	if err != nil {
 		res <- Result{
