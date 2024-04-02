@@ -30,8 +30,18 @@
         data = JSON.parse(event.data)
         console.log(data)
         if (data.page == "engine") {
-            if (data.engine) {
+            if (data.engine != undefined) {
                 document.getElementById('engineSwtich').checked = data.engine
+                message = "The current state is: "
+                if (data.engine) {
+                    message += "RUNNING."
+                    createToast("Engine is now running", "bg-success")
+                }
+                else {
+                    message += "PAUSED."
+                    createToast("Engine is now running", "bg-success")
+                }
+                document.getElementById("statusMessage").textContent = message
             }
         }
     }
@@ -47,14 +57,14 @@
 
             success_function = function (data) {
                 createToast("Engine is now running", "bg-success")
-                document.getElementById("statusMessage").textContent = "The current state is: RUNNING"
+                document.getElementById("statusMessage").textContent = "The current state is: RUNNING."
             }
         } else {
             url = "/api/engine/pause";
 
             success_function = function (data) {
                 createToast("Engine is now paused", "bg-success")
-                document.getElementById("statusMessage").textContent = "The current state is: PAUSED"
+                document.getElementById("statusMessage").textContent = "The current state is: PAUSED."
             }
         }
         fetch(url, {
@@ -179,8 +189,8 @@
                     </div>
                     <div class="mb-3">
                         <label for="identifier" class="col-form-label">Team Identifier Number:</label>
-                        <input name="identifier" type="text" class="form-control" id="identifier"
-                            required aria-required="true">
+                        <input name="identifier" type="text" class="form-control" id="identifier" required
+                            aria-required="true">
                     </div>
                 </form>
             </div>
