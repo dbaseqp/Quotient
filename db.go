@@ -256,6 +256,11 @@ func dbResetScoring() error {
 	if result.Error != nil {
 		return result.Error
 	}
+	// RoundData.ID
+	result = tx.Exec("ALTER SEQUENCE round_data_id_seq RESTART WITH 1")
+	if result.Error != nil {
+		return result.Error
+	}
 
 	result = tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&RoundPointsData{})
 	if result.Error != nil {
