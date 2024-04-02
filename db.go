@@ -291,13 +291,13 @@ func dbResetScoring() error {
 }
 
 func dbGetLastRoundNumber() (int, error) {
-	var count int64
-	result := db.Table("round_data").Count(&count)
+	var round RoundData
+	result := db.Table("round_data").Last(&round)
 
 	if result.Error != nil {
 		return 0, result.Error
 	}
-	return int(count), nil
+	return int(round.ID), nil
 }
 
 // given a map of teamid to result data, give points to teams
