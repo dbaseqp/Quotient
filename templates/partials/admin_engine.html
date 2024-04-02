@@ -169,7 +169,7 @@
 <button id="importteambutton" type="button" class="btn btn-primary" data-bs-toggle="modal"
     data-bs-target="#importteamModal">Import teams
     CSV</button>
-{{ if ne .config.LdapBindURL "" }}
+{{ if ne .config.LdapConnectUrl "" }}
 <button id="syncldapbutton" type="button" class="btn btn-primary">Sync teams w/LDAP</button>
 {{ end }}
 <div class="modal fade" data-bs-backdrop="static" data-bs-keyboard="false" id="addteamModal" tabindex="-1"
@@ -273,7 +273,7 @@
         </tbody>
     </table>
 </div>
-{{ if ne .config.LdapBindURL "" }}
+{{ if ne .config.LdapConnectUrl "" }}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('syncldapbutton').addEventListener('click', function (event) {
