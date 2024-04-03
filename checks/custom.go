@@ -38,8 +38,9 @@ func (c Custom) Run(teamID uint, teamIdentifier string, target string, res chan 
 
 	// Replace command input keywords
 	formedCommand := c.Command
-	formedCommand = strings.Replace(formedCommand, "BOXIP", target, -1)
+	formedCommand = strings.Replace(formedCommand, "BOXIP", target, -1) // is there a case where u need IP and FQDN?
 	formedCommand = strings.Replace(formedCommand, "FQDN", target, -1)
+	formedCommand = strings.Replace(formedCommand, "TEAMIDENTIFIER", teamIdentifier, -1)
 
 	// We shell escape username and password, who knows what format they are
 	formedCommand = strings.Replace(formedCommand, "USERNAME", shellescape.Quote(username), -1)
