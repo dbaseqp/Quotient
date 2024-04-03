@@ -194,64 +194,102 @@ func bootstrap() {
 	}
 
 	for _, file := range credlistFiles {
-		if file.IsDir() || !strings.HasSuffix(file.Name(), ".credlist") {
+		if !strings.HasSuffix(file.Name(), ".credlist") {
 			continue // Skip directories and non .credlist files
 		}
-		credentials[file.Name()] = make(map[uint]map[string]string)
-		credentialsMutex[file.Name()] = make(map[uint]*sync.Mutex)
-		for _, team := range teams {
-
-			credentials[file.Name()][team.ID] = make(map[string]string)
-			credentialsMutex[file.Name()][team.ID] = &sync.Mutex{}
-			// flesh out default credlists to teams
-			teamSpecificCredlist := filepath.Join("submissions/pcrs/", fmt.Sprint(team.ID), file.Name())
-			_, err = os.Stat(teamSpecificCredlist)
-			// if file doesn't exist
+		// team variation credlists
+		if file.IsDir() {
+			// this will generate clones of credlists even if team doesn't use it
+			err := filepath.WalkDir(filepath.Join("config", file.Name()), func(path string, entry fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".credlist") {
+					return nil
+				}
+				credentials[entry.Name()] = make(map[uint]map[string]string)
+				credentialsMutex[entry.Name()] = make(map[uint]*sync.Mutex)
+				for _, team := range teams {
+					err := generateCredlist(filepath.Join(file.Name(), entry.Name()), entry.Name(), team)
+					if err != nil {
+						fmt.Println("Error opening file:", err)
+					}
+				}
+				return nil
+			})
 			if err != nil {
-				debugPrint("No", file.Name(), "file found for", team.Name, "... creating default credlist")
-				if err := os.MkdirAll(filepath.Join("submissions/pcrs/", fmt.Sprint(team.ID)), os.ModePerm); err != nil {
-					log.Fatalln("Failed to create copy credlist for team:", team.ID, team.Name, err.Error())
-				}
-
-				credlistPath := filepath.Join("config", file.Name())
-				credlist, err := os.Open(credlistPath)
-				if err != nil {
-					fmt.Println("Error opening file:", err)
-					continue
-				}
-				defer credlist.Close()
-
-				destination, err := os.Create(teamSpecificCredlist) //create the destination file
-				if err != nil {
-					log.Fatalln("Failed to create copy credlist for team:", team.ID, team.Name)
-				}
-				defer destination.Close()
-				_, err = io.Copy(destination, credlist)
-				if err != nil {
-					log.Fatalln("Failed to copy credlist for team:", team.ID, team.Name)
-				}
+				log.Fatalln("Failed to load credlist files:", err)
 			}
 
-			// Create a CSV reader
-			credlist, err := os.Open(teamSpecificCredlist)
-			if err != nil {
-				fmt.Println("Error opening file:", err)
-				continue
+		} else {
+			credentials[file.Name()] = make(map[uint]map[string]string)
+			credentialsMutex[file.Name()] = make(map[uint]*sync.Mutex)
+			for _, team := range teams {
+				generateCredlist(file.Name(), file.Name(), team)
 			}
-			defer credlist.Close()
-			reader := csv.NewReader(credlist)
+		}
+	}
+	checks.Creds = credentials
+	debugPrint("Loaded credential states into memory", credentials)
 
-			// Read the CSV data
-			for {
-				record, err := reader.Read()
-				if err == io.EOF {
-					break
-				} else if err != nil {
-					fmt.Println("Error reading CSV:", err)
-					break
-				}
-				credentials[file.Name()][team.ID][record[0]] = record[1]
-			}
+	debugPrint("Initializing graphs")
+	err = makeGraphs()
+	if err != nil {
+		errorPrint("FAILED TO MAKE GRAPHS FOR ROUND", roundNumber, ":", err.Error())
+	}
+	debugPrint("Finished generating graphs")
+}
+
+func generateCredlist(path string, name string, team TeamData) error {
+	credentials[name][team.ID] = make(map[string]string)
+	credentialsMutex[name][team.ID] = &sync.Mutex{}
+	// flesh out default credlists to teams
+	teamSpecificCredlist := filepath.Join("submissions/pcrs/", fmt.Sprint(team.ID), name)
+	_, err := os.Stat(teamSpecificCredlist)
+	// if file doesn't exist
+	if err != nil {
+		debugPrint("No", path, "file found for", team.Name, "... creating default credlist")
+		if err := os.MkdirAll(filepath.Join("submissions/pcrs/", fmt.Sprint(team.ID)), os.ModePerm); err != nil {
+			log.Fatalln("Failed to create copy credlist for team:", team.ID, team.Name, err.Error())
+		}
+
+		credlistPath := filepath.Join("config", path)
+		credlist, err := os.Open(credlistPath)
+		if err != nil {
+			return err
+		}
+		defer credlist.Close()
+
+		destination, err := os.Create(teamSpecificCredlist) //create the destination file
+		if err != nil {
+			log.Fatalln("Failed to create copy credlist for team:", team.ID, team.Name)
+		}
+		defer destination.Close()
+		_, err = io.Copy(destination, credlist)
+		if err != nil {
+			log.Fatalln("Failed to copy credlist for team:", team.ID, team.Name)
+		}
+	}
+
+	// Create a CSV reader
+	credlist, err := os.Open(teamSpecificCredlist)
+	if err != nil {
+		return err
+	}
+	defer credlist.Close()
+	reader := csv.NewReader(credlist)
+
+	// Read the CSV data
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			fmt.Println("Error reading CSV:", err)
+			break
+		}
+		credentials[name][team.ID][record[0]] = record[1]
+	}
 		}
 	}
 	checks.Creds = credentials
