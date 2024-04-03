@@ -192,6 +192,9 @@
                                                 const error = document.createElement("td")
                                                 error.textContent = round.Error
                                                 tr.appendChild(error)
+                                            } else if (round.Debug) {
+                                                const debug = document.createElement("td")
+                                                tr.appendChild(debug)
                                             }
                                             tbody.appendChild(tr)
                                         })
