@@ -130,12 +130,27 @@ func viewOverview(c *gin.Context) {
 	tmpl, _ := template.Must(template.ParseGlob("templates/layouts/*.html")).ParseGlob("templates/partials/*.html")
 	tmpl.Funcs(templateFuncs)
 	tmpl.ParseFiles("templates/overview.html")
-	teams, err := dbGetTeams()
+	// teams, err := dbGetTeams()
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, err.Error())
+	// 	return
+	// }
+	teams, round, err := dbGetScoreboard()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, err.Error())
 		return
 	}
-	err = tmpl.Execute(c.Writer, pageData(c, gin.H{"title": "Overview", "teams": teams}))
+
+	services := make([]string, 0)
+	for _, box := range eventConf.Box {
+		for _, runner := range box.Runners {
+			if time.Now().After(runner.GetService().LaunchTime) && time.Now().Before(runner.GetService().StopTime) {
+				services = append(services, runner.GetService().Name)
+			}
+		}
+	}
+	sort.Strings(services)
+	err = tmpl.Execute(c.Writer, pageData(c, gin.H{"title": "Overview", "services": services, "teams": teams, "round": round}))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, err.Error())
 		return

@@ -44,19 +44,49 @@
                             </div>
                             <div data-carousel-id="pills-currentStatus-tab" class="carousel-item">
                                 <h4 class="pb-4">Current Service Status</h2>
-                                    <img data-plot-name="current-status" src="" class="d-block w-100"
-                                        alt="Image has not been generated">
+                                    <div class="table-container">
+                                        <table class="scoreboard m-4 me-auto">
+                                            <thead>
+                                                <th></th>
+                                                {{ range $service := .services }}
+                                                <th>
+                                                    {{ $service }}
+                                                </th>
+                                                {{ end }}
+                                            </thead>
+                                            <tbody>
+                                                {{ range $team := .teams }}
+                                                <tr>
+                                                    <th>{{ $team.Name }}</th>
+                                                    {{ range $check := $team.Checks }}
+                                                    <td class="service-icon text-center">
+                                                        {{ if $check.Result }}
+                                                        <img src="/assets/services/up.png">
+                                                        {{ else }}
+                                                        <img src="/assets/services/down.png">
+                                                        {{ end }}
+                                                    </td>
+                                                    {{ end }}
+                                                </tr>
+                                                {{ end }}
+                                            </tbody>
+                                        </table>
+                                    </div>
                             </div>
                             <div data-carousel-id="pills-uptime-tab" class="carousel-item">
                                 <h4 class="pb-4">Service Uptime</h2>
-                                    <table id="teamUptime" class="table table-bordered text-nowrap">
-                                        <thead>
-                                            <tr></tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr></tr>
-                                        </tbody>
-                                    </table>
+                                    <div class="table-container">
+                                        <table id="teamUptime" class="table table-bordered text-nowrap">
+                                            <thead>
+                                                <tr></tr>
+                                            </thead>
+                                            <tbody>
+                                                {{ range $team := .teams }}
+                                                <tr data-team-id="{{ $team.ID }}"></tr>
+                                                {{ end }}
+                                            </tbody>
+                                        </table>
+                                    </div>
                             </div>
                             <div data-carousel-id="pills-scores-tab" class="carousel-item">
                                 <h4 class="pb-4">Team Scores</h2>
@@ -126,7 +156,9 @@
         let carousel = document.getElementById("plotCarousel")
         let plots = carousel.querySelectorAll(".carousel-item img")
         plots.forEach((plot) => {
-            plot.src = "plots/" + plot.getAttribute("data-plot-name") + "-" + theme + ".png"
+            if (plot.getAttribute("data-plot-name")) {
+                plot.src = "plots/" + plot.getAttribute("data-plot-name") + "-" + theme + ".png"
+            }
         })
     }
     window.addEventListener('DOMContentLoaded', () => {
@@ -167,6 +199,52 @@
             bscarousel.pause()
         }
     });
+
+</script>
+
+<script>
+    let rows = teamUptime.querySelectorAll("tbody tr")
+    let firstRun = true
+    rows.forEach((row) => {
+        let teamid = row.getAttribute("data-team-id")
+        fetch("/api/teams/" + teamid + "/scores/uptime")
+            .then((response) => {
+                if (!response.ok) {
+                    Promise.reject(response)
+                }
+                return response.json()
+            })
+            .then((data) => {
+                if (data.error) {
+                    createToast(data.error, "bg-danger")
+                } else {
+                    let thead = teamUptime.querySelector("thead tr")
+                    let tbody = row;
+                    Object.keys(data.uptime).forEach((service) => {
+                        const name = document.createElement("td")
+                        const uptime = document.createElement("td")
+                        name.textContent = service
+                        let percent = Math.round(100 * data.uptime[service].Ups / data.uptime[service].Total)
+                        if (percent > 80) {
+                            uptime.className = "bg-success"
+                        } else if (percent > 60) {
+                            uptime.className = "bg-warning"
+                        } else {
+                            uptime.className = "bg-danger"
+                        }
+                        uptime.textContent = percent + "%"
+                        if (firstRun) {
+                            thead.appendChild(name)
+                        }
+                        tbody.appendChild(uptime)
+                    })
+                    firstRun = false
+                }
+            })
+            .catch((error) => {
+                createToast(error, "bg-danger")
+            })
+    })
 
 </script>
 {{ end }}
