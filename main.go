@@ -211,10 +211,12 @@ func bootstrap() {
 				credentials[entry.Name()] = make(map[uint]map[string]string)
 				credentialsMutex[entry.Name()] = make(map[uint]*sync.Mutex)
 				for _, team := range teams {
+					if strings.Contains(entry.Name(), team.Identifier) {
 					err := generateCredlist(filepath.Join(file.Name(), entry.Name()), entry.Name(), team)
 					if err != nil {
 						fmt.Println("Error opening file:", err)
 					}
+				}
 				}
 				return nil
 			})
