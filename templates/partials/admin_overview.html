@@ -2,7 +2,7 @@
 <div class="container-fluid">
     <div class="d-flex flex-column gap-3">
         <div class="row">
-            <div class="col col-lg-8">
+            <div class="col col-xl-8">
                 <ul class="nav nav-pills nav-pills-tray p-1 rounded-2" id="pills-tab" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active py-1" id="pills-scoresOverTime-tab" data-bs-toggle="pill"
@@ -14,11 +14,21 @@
                             data-bs-target="#plotCarousel" data-bs-slide-to="1" type="button" role="tab"
                             aria-controls="plotCarousel" aria-selected="false">Current Service Status</button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link py-1" id="pills-uptime-tab" data-bs-toggle="pill"
+                            data-bs-target="#plotCarousel" data-bs-slide-to="2" type="button" role="tab"
+                            aria-controls="plotCarousel" aria-selected="false">Service Uptime</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link py-1" id="pills-scores-tab" data-bs-toggle="pill"
+                            data-bs-target="#plotCarousel" data-bs-slide-to="3" type="button" role="tab"
+                            aria-controls="plotCarousel" aria-selected="false">Team Scores</button>
+                    </li>
                 </ul>
             </div>
         </div>
         <div class="row gap-2 gap-lg-0">
-            <div class="col col-lg-8">
+            <div class="col col-xl-8">
                 <div class="border bg-body rounded-4 p-4 overflow-y-auto">
                     <div class="d-flex flex-row justify-content-end">
                         <button id="plotFullscreen" type="button" class="btn">
@@ -37,14 +47,31 @@
                                     <img data-plot-name="current-status" src="" class="d-block w-100"
                                         alt="Image has not been generated">
                             </div>
+                            <div data-carousel-id="pills-uptime-tab" class="carousel-item">
+                                <h4 class="pb-4">Service Uptime</h2>
+                                    <table id="teamUptime" class="table table-bordered text-nowrap">
+                                        <thead>
+                                            <tr></tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr></tr>
+                                        </tbody>
+                                    </table>
+                            </div>
+                            <div data-carousel-id="pills-scores-tab" class="carousel-item">
+                                <h4 class="pb-4">Team Scores</h2>
+                                    <img data-plot-name="scores" src="" class="d-block w-100"
+                                        alt="Image has not been generated">
+                            </div>
                         </div>
                     </div>
                 </div>
                 <p style="text-align: center">
-                    📈 Scores calculated at <b>{{ (.now.In .loc).Format "03:04:05 PM" }}</b>.
+                    📈 Round {{ .round.ID }} scores calculated at <b>{{ (.round.StartTime.In .loc).Format "03:04:05 PM"
+                        }}</b>.
                 </p>
             </div>
-            <div class="w-100 m-0 d-lg-none d-block"></div>
+            <div class="w-100 m-0 d-xl-none d-block"></div>
             <div class="col">
                 <div class="border rounded-4 p-4">
                     <div class="pb-2">
