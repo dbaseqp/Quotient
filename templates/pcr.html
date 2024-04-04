@@ -7,7 +7,6 @@
 {{ end }}
 
 {{ $credentials := .credentials }}
-{{ $credlists := keys $credentials }}
 <div class="d-flex flex-column flex-grow-1">
     <div class="m-4 p-4">
         <h2>Password Change Requests</h2>
@@ -36,13 +35,18 @@
                                             {{ end }}
                                             <div class="col">
                                                 <label for="credlist" class="col-form-label">Cred List:</label>
-                                                <select name="credlist" class="form-select"
+                                                {{ range $team := .teams }}
+                                                {{ if (or $admin (eq $team.ID $id)) }}
+                                                <select id="credlist-team-{{ $team.ID }}" name="credlist-team-{{ $team.ID }}" class="form-select credlist"
                                                     aria-label="Select a list of credentials" required
                                                     aria-required="true">
+                                                    {{ $credlists := keys (index $credentials $team.ID) }}
                                                     {{ range $credlist := $credlists }}
                                                     <option value="{{ $credlist }}">{{ $credlist }}</option>
                                                     {{ end }}
                                                 </select>
+                                                {{ end }}
+                                                {{ end }}
                                             </div>
                                         </div>
                                     </div>
@@ -78,28 +82,34 @@
                                     {{ end }}
                                     <div class="col">
                                         <label for="credlist" class="col-form-label">Cred List:</label>
-                                        <select name="credlist" class="form-select"
-                                            aria-label="Select a list of credentials" required aria-required="true">
+                                        {{ range $team := .teams }}
+                                        {{ if (or $admin (eq $team.ID $id)) }}
+                                        <select id="credlist-team-{{ $team.ID }}" name="credlist" class="form-select"
+                                            aria-label="Select a list of credentials" required
+                                            aria-required="true">
+                                            {{ $credlists := keys (index $credentials $team.ID) }}
                                             {{ range $credlist := $credlists }}
                                             <option value="{{ $credlist }}">{{ $credlist }}</option>
                                             {{ end }}
                                         </select>
+                                        {{ end }}
+                                        {{ end }}
                                     </div>
                                 </div>
                             </form>
                             <div class="mt-4">
                                 <div class="tab-content" id="credentialsTabContent">
                                     {{ range $team := .teams }}
-                                    {{ range $credlist := $credlists }}
+                                    {{ range $credlist := keys (index $credentials $team.ID) }}
 
                                     {{ if (or $admin (eq $team.ID $id)) }}
                                     <div class="tab-pane fade" id="credentials-tab-pane-{{ $team.ID }}-{{ $credlist }}"
                                         role="tabpanel" aria-labelledby="credentials-tab-{{ $team.ID }}" tabindex="0">
                                         <ul>
-                                            {{ $usernames := keys (index $credentials $credlist $team.ID) }}
+                                            {{ $usernames := keys (index $credentials $team.ID $credlist) }}
                                             {{ range $username := $usernames }}
                                             <li>
-                                                <pre>{{ $username }},{{ index $credentials $credlist $team.ID $username }}</pre>
+                                                <pre>{{ $username }},{{ index $credentials $team.ID $credlist $username }}</pre>
                                             </li>
                                             {{ end }}
                                         </ul>
@@ -117,11 +127,14 @@
         </div>
     </div>
 </div>
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('pcrSubmitForm').addEventListener('submit', function (event) {
             // Prevent the default form submission
             event.preventDefault();
+
+            let activeTeam = document.querySelector('#pcrSubmitForm select.credlist')
 
             let formid = "pcrSubmitForm";
             let url = "/api/pcrs/submit";
@@ -129,7 +142,7 @@
             const form = document.forms[formid]
             let data = JSON.stringify({
                 {{ if .user.UserInfo.Admin }}"teamid": parseInt(form.teamid.value),{{ end }}
-                "credlist": form.credlist.value,
+                "credlist": form[activeTeam.id].value,
                 "changes": form.changes.value,
             })
             let success_function = function (data) {
@@ -144,12 +157,18 @@
 <script>
     const viewCredentialsForm = document.getElementById("pcrViewForm")
     const teamSelect = viewCredentialsForm.querySelector('select[name="teamid"]')
-    const credlistSelect = viewCredentialsForm.querySelector('select[name="credlist"]')
+    let credlistSelect = viewCredentialsForm.querySelectorAll('select[name="credlist"]')
     var lastActive
     function updateCredentialView() {
         {{ if $admin }}let teamid = teamSelect.value{{ end }}
         {{ if not $admin }}let teamid = {{ $id }}{{ end }}
-        let credlist = credlistSelect.value
+        let credlist;
+        credlistSelect.forEach((list) => {
+            if (!list.classList.contains("d-none")) {
+                credlist = list.value
+            }
+        })
+
         if (lastActive) {
             lastActive.className = "tab-pane fade"
         }
@@ -157,11 +176,50 @@
         newPane.className = "tabe-pane fade show active"
         lastActive = document.getElementById("credentials-tab-pane-" + teamid + "-" + credlist)
     }
-    updateCredentialView()
     window.addEventListener('DOMContentLoaded', () => {
-        {{ if $admin }}teamSelect.addEventListener('change', updateCredentialView){{ end }}
-        credlistSelect.addEventListener('change', updateCredentialView)
+        {{ if $admin }}teamSelect.addEventListener('change', (event) => {updateCredentialView()}){{ end }}
+        credlistSelect.forEach((credlist) => {
+            credlist.addEventListener('change', (event) => {updateCredentialView()})
+        })
+    })
+    updateCredentialView()
+</script>
+{{ if $admin }}
+<script>
+    credlistSelect.forEach((select) => {
+        select.classList.add("d-none")
+    })
+    credlistSelect[0].classList.remove("d-none")
+    credlistSelect[0].classList.add("active")
+    teamSelect.addEventListener('change', function(event) {
+        credlistSelect.forEach((credlist) => {
+            if (credlist.id == "credlist-team-"+teamSelect.value) {
+                credlist.classList.remove("d-none")
+                credlist.classList.add("active")
+            } else {
+                credlist.classList.add("d-none")
+                credlist.classList.remove("active")
+            }
+        })
+    })
+
+    let credlistFormSelect = document.querySelectorAll('#pcrSubmitForm select.credlist')
+    let teamFormSelect = document.querySelector('#pcrSubmitForm select[name="teamid"]')
+
+    credlistFormSelect.forEach((select) => {
+        select.classList.add("d-none")
+    })
+    credlistFormSelect[0].classList.remove("d-none")
+    teamFormSelect.addEventListener('change', function(event) {
+        credlistFormSelect.forEach((credlist) => {
+            if (credlist.id == "credlist-team-"+teamFormSelect.value) {
+                credlist.classList.remove("d-none")
+            } else {
+                credlist.classList.add("d-none")
+            }
+        })
     })
 </script>
+{{ end }}
 {{ end }}
 {{ template "base" .}}

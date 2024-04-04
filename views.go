@@ -28,7 +28,7 @@ var (
 			// sorry, i couldn't figure out how to do this...
 			var keys []string
 			switch temp := m.(type) {
-			case map[string]map[uint]map[string]string:
+			case map[string]map[string]string:
 				for key := range temp {
 					keys = append(keys, key)
 				}

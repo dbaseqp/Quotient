@@ -49,8 +49,8 @@ var (
 
 		credentials[listname][teamid][username] = password
 	*/
-	credentials      = make(map[string]map[uint]map[string]string)
-	credentialsMutex = make(map[string]map[uint]*sync.Mutex)
+	credentials      = make(map[uint]map[string]map[string]string)
+	credentialsMutex = make(map[uint]map[string]*sync.Mutex)
 
 	enginePauseWg = &sync.WaitGroup{}
 	enginePause   bool
@@ -194,6 +194,9 @@ func bootstrap() {
 		log.Fatalln("Failed to load credlist files:", err)
 	}
 
+	for _, team := range teams {
+		credentials[team.ID] = make(map[string]map[string]string)
+		credentialsMutex[team.ID] = make(map[string]*sync.Mutex)
 	for _, file := range credlistFiles {
 		if !strings.HasSuffix(file.Name(), ".credlist") {
 			continue // Skip directories and non .credlist files
@@ -208,14 +211,11 @@ func bootstrap() {
 				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".credlist") {
 					return nil
 				}
-				credentials[entry.Name()] = make(map[uint]map[string]string)
-				credentialsMutex[entry.Name()] = make(map[uint]*sync.Mutex)
-				for _, team := range teams {
+
 					if strings.Contains(entry.Name(), team.Identifier) {
 					err := generateCredlist(filepath.Join(file.Name(), entry.Name()), entry.Name(), team)
 					if err != nil {
 						fmt.Println("Error opening file:", err)
-					}
 				}
 				}
 				return nil
@@ -225,9 +225,6 @@ func bootstrap() {
 			}
 
 		} else {
-			credentials[file.Name()] = make(map[uint]map[string]string)
-			credentialsMutex[file.Name()] = make(map[uint]*sync.Mutex)
-			for _, team := range teams {
 				generateCredlist(file.Name(), file.Name(), team)
 			}
 		}
@@ -244,8 +241,8 @@ func bootstrap() {
 }
 
 func generateCredlist(path string, name string, team TeamData) error {
-	credentials[name][team.ID] = make(map[string]string)
-	credentialsMutex[name][team.ID] = &sync.Mutex{}
+	credentials[team.ID][name] = make(map[string]string)
+	credentialsMutex[team.ID][name] = &sync.Mutex{}
 	// flesh out default credlists to teams
 	teamSpecificCredlist := filepath.Join("submissions/pcrs/", fmt.Sprint(team.ID), name)
 	_, err := os.Stat(teamSpecificCredlist)
@@ -291,7 +288,7 @@ func generateCredlist(path string, name string, team TeamData) error {
 			fmt.Println("Error reading CSV:", err)
 			break
 		}
-		credentials[name][team.ID][record[0]] = record[1]
+		credentials[team.ID][name][record[0]] = record[1]
 	}
 	return nil
 }

@@ -508,15 +508,15 @@ func submitPCR(c *gin.Context) {
 	for scanner.Scan() {
 		record := strings.SplitN(scanner.Text(), ",", 2)
 		// Process each line as needed
-		if _, ok := credentials[pcrForm.CredList][teamid][record[0]]; ok {
-			credentials[pcrForm.CredList][teamid][record[0]] = record[1]
+		if _, ok := credentials[teamid][pcrForm.CredList][record[0]]; ok {
+			credentials[teamid][pcrForm.CredList][record[0]] = record[1]
 		}
 	}
 
 	teamSpecificCredlist := filepath.Join("submissions/pcrs", fmt.Sprint(teamid), pcrForm.CredList)
 
 	// Write the modified content back to the file
-	credentialsMutex[pcrForm.CredList][teamid].Lock()
+	credentialsMutex[teamid][pcrForm.CredList].Lock()
 	file, err := os.Create(teamSpecificCredlist)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -524,14 +524,14 @@ func submitPCR(c *gin.Context) {
 	}
 	defer file.Close()
 
-	for username, password := range credentials[pcrForm.CredList][teamid] {
+	for username, password := range credentials[teamid][pcrForm.CredList] {
 		_, err = file.WriteString(fmt.Sprintf("%s,%s\n", username, password))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 	}
-	credentialsMutex[pcrForm.CredList][teamid].Unlock()
+	credentialsMutex[teamid][pcrForm.CredList].Unlock()
 
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }

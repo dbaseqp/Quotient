@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	Creds map[string]map[uint]map[string]string
+	Creds map[uint]map[string]map[string]string
 
 	// Global list of all current CredentialSet
 )
@@ -43,13 +43,13 @@ func getCreds(teamID uint, credLists []string) (string, string) {
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	if _, ok := Creds[credListName]; !ok || len(Creds[credListName][teamID]) == 0 {
+	if _, ok := Creds[teamID]; !ok || len(Creds[teamID][credListName]) == 0 {
 		return "", ""
 	}
 
-	random := rng.Intn(len(Creds[credListName][teamID]))
+	random := rng.Intn(len(Creds[teamID][credListName]))
 	count := 0
-	for username, password := range Creds[credListName][teamID] {
+	for username, password := range Creds[teamID][credListName] {
 		if count == random {
 			return username, password
 		}
