@@ -328,3 +328,70 @@
     })
 </script>
 {{ end }}
+
+{{ define "gradeinject" }}
+<div class="modal fade text-body" data-bs-backdrop="static" data-bs-keyboard="false" id="gradeinjectModal" tabindex="-1"
+    aria-labelledby="gradeinjectModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="gradeinjectModalLabel">Grade inject</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="gradeinjectForm">
+                    <div class="mb-3">
+                        <label for="submissionid" class="col-form-label">Submission #:</label>
+                        <input name="submissionid" type="number" class="form-control" id="submissionid" required
+                            aria-required="true" disabled aria-disabled="true">
+                    </div>
+                    <div class="mb-3">
+                        <label for="grader" class="col-form-label">Grader:</label>
+                        <input name="grader" type="text" class="form-control" id="grader" required aria-required="true" disabled aria-disabled="true" value="{{ .UserInfo.Username }}">
+                    </div>
+                    <!-- <div class="mb-3">
+                        <label for="feedback" class="col-form-label">Feedback:</label>
+                        <input name="feedback" type="text" class="form-control" id="feedback">
+                    </div> -->
+                    <div class="mb-3">
+                        <label for="score" class="col-form-label">Score:</label>
+                        <input name="score" type="number" min="0" class="form-control" id="score" required
+                            aria-required="true">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" form="gradeinjectForm" class="btn btn-primary">Save grade</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    var gradeButtons = document.querySelectorAll('button.gradeinject')
+
+    gradeButtons.forEach((button) => {
+        let attemptfield = document.getElementById("submissionid")
+        attemptfield.value = button.getAttribute("data-submission-id")
+    })
+    document.getElementById('gradeinjectForm').addEventListener('submit', function (event) {
+            // Prevent the default form submission
+            event.preventDefault();
+
+            let formid = "gradeinjectForm";
+            const form = document.forms[formid]
+            let teamid = event.target.closest("form").getAttribute("data-team-id")
+            let url = "/api/injects/{{ .inject.ID }}/" + teamid + "/submissions/" + form.submissionid.value + "/grade";
+
+            let data = JSON.stringify({
+                "grader": form.grader.value,
+                "score": parseInt(form.score.value),
+                "feedback": form.feedback.value,
+            })
+            let success_function = function (data) {
+                createToast("Submission successfully graded", "bg-success")
+            }
+            postAjax(event, formid, data, url, success_function)
+        });
+</script>
+{{ end }}

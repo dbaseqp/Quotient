@@ -134,6 +134,12 @@
                                         <th>
                                             Attachments
                                         </th>
+                                        <th>
+                                            Grade
+                                        </th>
+                                        <th>
+                                            Actions
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -162,10 +168,19 @@
                                                 {{ end }}
                                             </ul>
                                         </td>
+                                        <td>
+                                            {{ $submission.Score }}
+                                        </td>
+                                        <td>
+                                            <button type="button" class="btn btn-primary gradeinject" data-submission-id="{{ $submission.AttemptNumber }}" data-bs-toggle="modal" data-bs-target="#gradeinjectModal">
+                                                Grade
+                                            </button>
+                                        </td>
                                     </tr>
                                     {{ end }}
                                     {{ end }}
                                     {{ end }}
+                                    {{ template "gradeinject" $user }}
                                 </tbody>
                             </table>
                         </div>
