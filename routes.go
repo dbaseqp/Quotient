@@ -506,7 +506,7 @@ func submitPCR(c *gin.Context) {
 
 	scanner := bufio.NewScanner(strings.NewReader(pcrForm.Changes))
 	for scanner.Scan() {
-		record := strings.Split(scanner.Text(), ",")
+		record := strings.SplitN(scanner.Text(), ",", 2)
 		// Process each line as needed
 		if _, ok := credentials[pcrForm.CredList][teamid][record[0]]; ok {
 			credentials[pcrForm.CredList][teamid][record[0]] = record[1]
@@ -1233,6 +1233,13 @@ func getTeamService(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+	if !claims.Admin && !eventConf.Verbose {
+		for i := range servicedata {
+			// use i to edit slice in place
+			servicedata[i].Debug = ""
+			servicedata[i].Error = ""
+		}
 	}
 	c.JSON(http.StatusOK, servicedata)
 }
