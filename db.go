@@ -295,6 +295,9 @@ func dbGetLastRoundNumber() (int, error) {
 	result := db.Table("round_data").Last(&round)
 
 	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return 0, nil
+		}
 		return 0, result.Error
 	}
 	return int(round.ID), nil
