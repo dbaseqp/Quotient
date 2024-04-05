@@ -71,8 +71,17 @@ func graphTotalScores(data []TeamData, path string, config GraphConfig) error {
 	var names []string
 	var placements []string
 	for i, team := range data {
-		scores = append(scores, float64(team.CumulativeServiceScore))
-		names = append(names, fmt.Sprintf("%s - %d", team.Name, team.CumulativeServiceScore))
+		slas, err := dbGetTeamSLAs(int(team.ID))
+		if err != nil {
+			return err
+		}
+		var slasum int
+		for _, sla := range slas {
+			slasum += sla.Penalty
+		}
+		total := team.CumulativeServiceScore - slasum
+		scores = append(scores, float64(total))
+		names = append(names, fmt.Sprintf("%s - %d", team.Name, total))
 		placements = append(placements, strconv.Itoa(len(data)-i))
 	}
 
@@ -296,7 +305,12 @@ func graphScoresOverTime(data map[uint][]RoundPointsData, path string, config Gr
 	}
 
 	for _, team := range teams {
-		line, _ := plotter.NewLine(getTeamPlotPoints(data[team.ID]))
+		slas, err := dbGetTeamSLAs(int(team.ID))
+		if err != nil {
+			return err
+		}
+
+		line, _ := plotter.NewLine(getTeamPlotPoints(data[team.ID], slas))
 		line.LineStyle.Width = vg.Points(2)
 		line.LineStyle.Color = color.RGBA{
 			R: uint8(float64(0xff) * colors[team.ID].R),
@@ -329,11 +343,16 @@ func graphScoresOverTime(data map[uint][]RoundPointsData, path string, config Gr
 	return nil
 }
 
-func getTeamPlotPoints(records []RoundPointsData) plotter.XYs {
+func getTeamPlotPoints(records []RoundPointsData, slas []SLAData) plotter.XYs {
 	plotPoints := make(plotter.XYs, len(records))
 	var sum int
 	for i := range plotPoints {
 		sum += records[i].PointsThisRound
+		for _, sla := range slas {
+			if sla.RoundID == records[i].RoundID {
+				sum -= sla.Penalty
+			}
+		}
 		plotPoints[i].X = float64(records[i].RoundID)
 		plotPoints[i].Y = float64(sum)
 	}
