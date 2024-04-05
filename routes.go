@@ -33,7 +33,9 @@ var (
 func addViewRoutes(router *gin.RouterGroup) {
 	router.GET("/", viewIndex)
 	router.GET("/login", viewLogin)
-	router.GET("/scoreboard", viewScoreboard) // need to implement public headtoheads
+	if !eventConf.DisableHeadToHead {
+		router.GET("/scoreboard", viewScoreboard) // need to implement public headtoheads
+	}
 }
 
 func addViewRoutesTeam(router *gin.RouterGroup) {

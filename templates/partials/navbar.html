@@ -72,6 +72,7 @@
                             </div>
                         </a>
                     </li>
+                    {{ if not .config.DisableHeadToHead }}
                     <li class="nav-item">
                         <a class='nav-link p-3 {{ if eq .title "Scoreboard"}}active{{end}}' aria-current="page" href="/scoreboard">
                             <div class="d-flex flex-column justify-content-center align-items-center">
@@ -80,6 +81,7 @@
                             </div>
                         </a>
                     </li>
+                    {{ end }}
                     <li class="nav-item">
                         <a class='nav-link p-3 {{ if eq .title "Overview"}}active{{end}}' aria-current="page" href="/overview">
                             <div class="d-flex flex-column justify-content-center align-items-center">

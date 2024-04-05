@@ -47,12 +47,14 @@
         <input name="username" class="form-control py-2 my-2" type="text" placeholder="Username" aria-label="username" autocomplete="username">
         <input name="password" class="form-control py-2 my-2" type="password" placeholder="Password" aria-label="password" autocomplete="current-password">
         <button class="form-control btn btn-primary" type="submit">Sign In</button>
+        {{ if not .config.DisableHeadToHead }}
         <div class="d-flex justify-content-center align-items-center text-center my-2">
           <span class="d-flex flex-grow-1 border-bottom mx-4 border-secondary"></span>
           or
           <span class="d-flex flex-grow-1 border-bottom mx-4 border-secondary"></span>
         </div>
         <a class="form-control btn btn-outline-secondary" href="/scoreboard">Scoreboard</a>
+        {{ end }}
       </form>
     </div>
   </div>
