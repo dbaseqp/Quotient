@@ -76,13 +76,15 @@
                             <div data-carousel-id="pills-uptime-tab" class="carousel-item">
                                 <h4 class="pb-4">Service Uptime</h2>
                                     <div class="table-container">
-                                        <table id="teamUptime" class="table table-bordered text-nowrap">
+                                        <table id="allUptime" class="table table-bordered text-nowrap">
                                             <thead>
-                                                <tr></tr>
+                                                <tr><th></th></tr>
                                             </thead>
                                             <tbody>
                                                 {{ range $team := .teams }}
-                                                <tr data-team-id="{{ $team.ID }}"></tr>
+                                                <tr data-team-id="{{ $team.ID }}">
+                                                    <th>{{ $team.Name }}</th>
+                                                </tr>
                                                 {{ end }}
                                             </tbody>
                                         </table>
@@ -203,7 +205,7 @@
 </script>
 
 <script>
-    let rows = teamUptime.querySelectorAll("tbody tr")
+    let rows = allUptime.querySelectorAll("#allUptime tbody tr")
     let firstRun = true
     rows.forEach((row) => {
         let teamid = row.getAttribute("data-team-id")
@@ -218,7 +220,7 @@
                 if (data.error) {
                     createToast(data.error, "bg-danger")
                 } else {
-                    let thead = teamUptime.querySelector("thead tr")
+                    let thead = allUptime.querySelector("thead tr")
                     let tbody = row;
                     Object.keys(data.uptime).forEach((service) => {
                         const name = document.createElement("td")
