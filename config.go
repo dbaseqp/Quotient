@@ -28,6 +28,7 @@ type Config struct {
 	EventType     string
 	DBConnectURL  string
 	BindAddress   string
+	Gateway       string
 	Interface     string
 	Subnet        string
 	Timezone      string
@@ -142,6 +143,10 @@ func checkConfig(conf *Config) error {
 
 	if conf.BindAddress == "" {
 		errResult = errors.Join(errResult, errors.New("no bind address specified"))
+	}
+
+	if conf.Gateway == "" {
+		errResult = errors.Join(errResult, errors.New("no gateway specified"))
 	}
 
 	if conf.Interface == "" {

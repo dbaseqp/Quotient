@@ -87,7 +87,7 @@ func scoreKoTH(m Config) map[uint][]checks.Result {
 }
 
 func rotateIP(m Config) error {
-	command := fmt.Sprintf("./scripts/rotate.sh %s %s %s", m.BindAddress, m.Subnet, m.Interface)
+	command := fmt.Sprintf("./scripts/rotate.sh %s %s %s %s", m.BindAddress, m.Gateway, m.Subnet, m.Interface)
 	out, err := exec.Command("/bin/sh", "-c", command).Output()
 
 	if err != nil {

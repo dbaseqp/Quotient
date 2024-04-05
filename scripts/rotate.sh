@@ -1,7 +1,8 @@
 #!/bin/bash
 bind="$1"
-subnet="$2"
-interface="$3"
+gateway="$2"
+subnet="$3"
+interface="$4"
 
 ip_to_binary() {
     local ip=$1
@@ -70,6 +71,7 @@ rotate() {
             echo $new_ip
             sudo ip addr add $new_ip/$prefix dev $interface
             sudo ip addr del $oldip_addr/$oldprefix dev $interface
+            sudo ip route add default via $gateway src $new_ip dev $interface
             break
         fi
     done
