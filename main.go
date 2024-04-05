@@ -197,34 +197,34 @@ func bootstrap() {
 	for _, team := range teams {
 		credentials[team.ID] = make(map[string]map[string]string)
 		credentialsMutex[team.ID] = make(map[string]*sync.Mutex)
-	for _, file := range credlistFiles {
-		if !strings.HasSuffix(file.Name(), ".credlist") {
-			continue // Skip directories and non .credlist files
-		}
-		// team variation credlists
-		if file.IsDir() {
-			// this will generate clones of credlists even if team doesn't use it
-			err := filepath.WalkDir(filepath.Join("config", file.Name()), func(path string, entry fs.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".credlist") {
-					return nil
-				}
+		for _, file := range credlistFiles {
+			if !strings.HasSuffix(file.Name(), ".credlist") {
+				continue // Skip directories and non .credlist files
+			}
+			// team variation credlists
+			if file.IsDir() {
+				// this will generate clones of credlists even if team doesn't use it
+				err := filepath.WalkDir(filepath.Join("config", file.Name()), func(path string, entry fs.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".credlist") {
+						return nil
+					}
 
 					if strings.Contains(entry.Name(), team.Identifier) {
-					err := generateCredlist(filepath.Join(file.Name(), entry.Name()), entry.Name(), team)
-					if err != nil {
-						fmt.Println("Error opening file:", err)
+						err := generateCredlist(filepath.Join(file.Name(), entry.Name()), entry.Name(), team)
+						if err != nil {
+							fmt.Println("Error opening file:", err)
+						}
+					}
+					return nil
+				})
+				if err != nil {
+					log.Fatalln("Failed to load credlist files:", err)
 				}
-				}
-				return nil
-			})
-			if err != nil {
-				log.Fatalln("Failed to load credlist files:", err)
-			}
 
-		} else {
+			} else {
 				generateCredlist(file.Name(), file.Name(), team)
 			}
 		}
