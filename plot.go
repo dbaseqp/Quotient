@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"os"
 	"path/filepath"
@@ -71,7 +72,7 @@ func graphTotalScores(data []TeamData, path string, config GraphConfig) error {
 	var placements []string
 	for i, team := range data {
 		scores = append(scores, float64(team.CumulativeServiceScore))
-		names = append(names, team.Name)
+		names = append(names, fmt.Sprintf("%s - %d", team.Name, team.CumulativeServiceScore))
 		placements = append(placements, strconv.Itoa(len(data)-i))
 	}
 
