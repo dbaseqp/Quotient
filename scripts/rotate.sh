@@ -70,8 +70,9 @@ rotate() {
         else
             echo $new_ip
             sudo ip addr add $new_ip/$prefix dev $interface
+            sudo ip route replace default via $gateway src $new_ip dev $interface
+            sudo ip route replace $subnet dev $interface proto kernel scope link src $new_ip
             sudo ip addr del $oldip_addr/$oldprefix dev $interface
-            sudo ip route add default via $gateway src $new_ip dev $interface
             break
         fi
     done
