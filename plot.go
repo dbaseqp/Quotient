@@ -104,6 +104,7 @@ func graphTotalScores(data []TeamData, lastRound RoundData, path string, config 
 	bars.LineStyle.Width = vg.Length(0)
 	bars.Color = plotutil.Color(1)
 	plot.Title.Text = fmt.Sprintf("Round %d - %s", lastRound.ID, lastRound.StartTime.Format("2006-01-02 15:04:05"))
+	plot.Title.TextStyle.Color = config.Color
 	plot.X.Label.TextStyle.Color = config.Color
 	plot.X.Color = config.Color
 	plot.X.Tick.Color = config.Color
@@ -282,6 +283,7 @@ func graphScoresOverTime(data map[uint][]RoundPointsData, lastRound RoundData, p
 	plot.X.Width = 2
 
 	plot.Title.Text = fmt.Sprintf("Round %d - %s", lastRound.ID, lastRound.StartTime.Format("2006-01-02 15:04:05"))
+	plot.Title.TextStyle.Color = config.Color
 	plot.X.Label.TextStyle.Color = config.Color
 	plot.X.Color = config.Color
 	plot.X.Tick.Color = config.Color
