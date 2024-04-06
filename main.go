@@ -141,7 +141,7 @@ func bootstrap() {
 
 	for _, team := range teams {
 		slaCount[team.ID] = make(map[string]int)
-		results, err := dbGetTeamServices(int(team.ID), eventConf.SlaThreshold*2, "")
+		results, err := dbGetTeamServices(int(team.ID), -1, "")
 		if err != nil {
 			log.Fatalln("Failed to load team score data:", err)
 		}
