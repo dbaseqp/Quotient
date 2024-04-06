@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
+	"golang.org/x/exp/slices"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -114,10 +115,11 @@ func bootstrap() {
 	}
 	debugPrint("Loaded submissions into memory")
 
-	roundNumber, err = dbGetLastRoundNumber()
+	round, err := dbGetLastRound()
 	if err != nil {
 		log.Fatalln("Failed to load previous round data:", err)
 	}
+	roundNumber = int(round.ID)
 	roundNumber++
 
 	// Load timezone
@@ -143,6 +145,8 @@ func bootstrap() {
 		if err != nil {
 			log.Fatalln("Failed to load team score data:", err)
 		}
+		slices.Reverse(results)
+
 		for _, box := range eventConf.Box {
 			for _, runner := range box.Runners {
 				for _, result := range results {

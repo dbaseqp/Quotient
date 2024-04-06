@@ -41,6 +41,11 @@ func makeGraphs() error {
 		return err
 	}
 
+	lastRound, err := dbGetLastRound()
+	if err != nil {
+		return err
+	}
+
 	// dataThisRound, err := dbGetChecksThisRound(roundNumber - 1)
 	// if err != nil {
 	// 	return err
@@ -50,21 +55,18 @@ func makeGraphs() error {
 	if err != nil {
 		return err
 	}
-	sort.Slice(dataScores, func(i, j int) bool {
-		return dataScores[i].CumulativeServiceScore < dataScores[j].CumulativeServiceScore
-	})
 
-	graphScoresOverTime(dataOverTime, "plots/points-over-time-light.png", lightmode)
-	graphScoresOverTime(dataOverTime, "plots/points-over-time-dark.png", darkmode)
-	graphTotalScores(dataScores, "plots/scores-light.png", lightmode)
-	graphTotalScores(dataScores, "plots/scores-dark.png", darkmode)
+	graphScoresOverTime(dataOverTime, lastRound, "plots/points-over-time-light.png", lightmode)
+	graphScoresOverTime(dataOverTime, lastRound, "plots/points-over-time-dark.png", darkmode)
+	graphTotalScores(dataScores, lastRound, "plots/scores-light.png", lightmode)
+	graphTotalScores(dataScores, lastRound, "plots/scores-dark.png", darkmode)
 	// graphCurrentChecks(dataThisRound, "plots/current-status-light.png", lightmode)
 	// graphCurrentChecks(dataThisRound, "plots/current-status-dark.png", darkmode)
 
 	return nil
 }
 
-func graphTotalScores(data []TeamData, path string, config GraphConfig) error {
+func graphTotalScores(data []TeamData, lastRound RoundData, path string, config GraphConfig) error {
 	plot := plot.New()
 
 	var scores []float64
@@ -79,9 +81,16 @@ func graphTotalScores(data []TeamData, path string, config GraphConfig) error {
 		for _, sla := range slas {
 			slasum += sla.Penalty
 		}
-		total := team.CumulativeServiceScore - slasum
-		scores = append(scores, float64(total))
-		names = append(names, fmt.Sprintf("%s - %d", team.Name, total))
+		data[i].CumulativeServiceScore = team.CumulativeServiceScore - slasum
+	}
+
+	sort.Slice(data, func(i, j int) bool {
+		return data[i].CumulativeServiceScore < data[j].CumulativeServiceScore
+	})
+
+	for i, team := range data {
+		scores = append(scores, float64(team.CumulativeServiceScore))
+		names = append(names, fmt.Sprintf("%s - %d", team.Name, team.CumulativeServiceScore))
 		placements = append(placements, strconv.Itoa(len(data)-i))
 	}
 
@@ -94,6 +103,7 @@ func graphTotalScores(data []TeamData, path string, config GraphConfig) error {
 
 	bars.LineStyle.Width = vg.Length(0)
 	bars.Color = plotutil.Color(1)
+	plot.Title.Text = fmt.Sprintf("Round %d - %s", lastRound.ID, lastRound.StartTime.Format("2006-01-02 15:04:05"))
 	plot.X.Label.TextStyle.Color = config.Color
 	plot.X.Color = config.Color
 	plot.X.Tick.Color = config.Color
@@ -266,11 +276,12 @@ func graphTotalScores(data []TeamData, path string, config GraphConfig) error {
 // 	return nil
 // }
 
-func graphScoresOverTime(data map[uint][]RoundPointsData, path string, config GraphConfig) error {
+func graphScoresOverTime(data map[uint][]RoundPointsData, lastRound RoundData, path string, config GraphConfig) error {
 	plot := plot.New()
 	plot.X.Label.Text = "Round"
 	plot.X.Width = 2
 
+	plot.Title.Text = fmt.Sprintf("Round %d - %s", lastRound.ID, lastRound.StartTime.Format("2006-01-02 15:04:05"))
 	plot.X.Label.TextStyle.Color = config.Color
 	plot.X.Color = config.Color
 	plot.X.Tick.Color = config.Color
