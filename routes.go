@@ -188,17 +188,6 @@ func resetEngine(c *gin.Context) {
 		}
 	}
 
-	log.Println("[ENGINE] ===== Deleting inject submissions")
-	submissionDir, err := os.ReadDir("submissions")
-	if err != nil {
-		log.Fatalln("Failed to open submissions directory:", err)
-	}
-	for _, file := range submissionDir {
-		if file.IsDir() && file.Name() != "pcrs" {
-			os.RemoveAll(filepath.Join("submissions", file.Name()))
-		}
-	}
-
 	log.Println("[ENGINE] ===== Deleting graphs")
 	plotDir, err := os.ReadDir("plots")
 	if err != nil {
