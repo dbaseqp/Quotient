@@ -1,0 +1,36 @@
+{{ define "themeswitcher" }}
+<div class="d-flex justify-content-center align-items-center">
+    <div class="btn-group">
+        <button type="button" class="btn dropdown-toggle" data-bs-toggle="dropdown" id="bd-theme" aria-expanded="false">
+            <i class="bi bi-circle-half my-1 theme-icon-active"></i>
+            <span class="d-lg-none ms-2" id="bd-theme-text"></span>
+        </button>
+        <ul class="dropdown-menu">
+            <li>
+                <button type="button" class="dropdown-item d-flex align-items-center" data-bs-theme-value="light"
+                    aria-pressed="false">
+                    <i class="bi bi-sun-fill me-2 opacity-50 theme-icon"></i>
+                    Light
+                    <i class="bi bi-checks2 ms-auto d-none"></i>
+                </button>
+            </li>
+            <li>
+                <button type="button" class="dropdown-item d-flex align-items-center" data-bs-theme-value="dark"
+                    aria-pressed="true">
+                    <i class="bi bi-moon-stars-fill me-2 opacity-50 theme-icon"></i>
+                    Dark
+                    <i class="bi bi-checks2 ms-auto d-none"></i>
+                </button>
+            </li>
+            <li>
+                <button type="button" class="dropdown-item d-flex align-items-center" data-bs-theme-value="auto"
+                    aria-pressed="false">
+                    <i class="bi bi-circle-half me-2 opacity-50 theme-icon"></i>
+                    Auto
+                    <i class="bi bi-checks2 ms-auto d-none"></i>
+                </button>
+            </li>
+        </ul>
+    </div>
+</div>
+{{ end }}

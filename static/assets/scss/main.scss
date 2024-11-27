@@ -1,0 +1,72 @@
+$body-bg-dark: #090909;
+
+@import './bootstrap.scss';
+
+@include media-breakpoint-down(md) {
+    #navbar {
+        max-width: unset;
+    }
+    #navbar .offcanvas {
+        max-width: 500px;
+    }
+}
+@include media-breakpoint-up(md) {
+    #navbar {
+        max-width: 200px;
+    }
+    #navbar .offcanvas {
+        max-width: 200px;
+    }
+}
+
+.nav-link.active {
+    background: linear-gradient(90deg, $primary 0%, $primary-text-emphasis 100%);
+    color: var(--bs-light)
+}
+
+.nav-link:not(.active):hover {
+    // background: $body-bg;
+}
+
+
+.inspector {
+    display: inline-block;
+    font: bold 14px helvetica, sans-serif;
+    background-color: rgba(var(--bs-secondary-bg-rgb), 1) !important;
+
+    /* Grey 100 */
+    cursor: default;
+}
+
+.inspector table {
+    border-collapse: separate;
+    border-spacing: 2px;
+}
+
+.inspector td,
+th {
+    /* Grey 900 */
+    color:  rgba(var(--bs-secondary-rgb), 1) !important;
+    padding: 2px;
+}
+
+.inspector input {
+    background-color: rgba(var(--bs-secondary-bg-rgb), 1) !important;
+    /* Grey 800 */
+    color:  rgba(var(--bs-secondary-rgb), 1) !important;
+    /* Grey 100 */
+    font: bold 12px helvetica, sans-serif;
+    border: 0px;
+    padding: 2px;
+}
+
+.inspector input:disabled {
+    background-color: #bdbdbd;
+    /* Grey 400 */
+    color: #616161;
+    /* Grey 700 */
+}
+
+.inspector select {
+    background-color: rgba(var(--bs-secondary-bg-rgb), 1) !important;
+}

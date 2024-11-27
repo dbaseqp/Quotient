@@ -1,0 +1,75 @@
+{{ define "content"}}
+{{ template "page" . }}
+{{ end }}
+
+{{ define "page" }}
+<div class="d-flex flex-grow-1 flex-column justify-content-center align-items-center w-100 h-100" style="height:0px;">
+    <div class="d-flex h-100 w-100 bg-primary-subtle" id="splash__container">
+        <div class="d-none d-md-flex flex-column justify-content-center align-items-center h-100 w-100"
+            id="splash__spread">
+            <img class="h-50 w-50" src="{{ .config.MiscSettings.LogoImage }}">
+            <h3>{{ .config.RequiredSettings.EventName }}</h3>
+        </div>
+        <div class="d-flex flex-column h-100 w-100 rounded-start-4 bg-body p-4" id="splash__login">
+            <div>
+                <h1 class="splash__title my-4 text-center">QUOTIENT</h1>
+                <h6 class="text-center">Welcome to the Quotient Scoring Engine</h6>
+            </div>
+            <div>
+                <form class="p-4" id="login__form" onsubmit="return formLogin(event)">
+                    <div class="mb-3">
+                        <label for="default-form__username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="default-form__username" name="username"
+                            placeholder="Username" aria-placeholder="Username">
+                    </div>
+                    <div class="mb-3">
+                        <label for="default-form__password" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="default-form__password" name="password"
+                            placeholder="Password" aria-placeholder="Password">
+                        <div class="invalid-feedback">
+                            Invalid credentials.
+                        </div>
+                    </div>
+                    <button type="submit" class="btn w-100 btn-primary">Submit</button>
+                </form>
+            </div>
+            <div class="d-flex w-100 justify-content-center align-items-center my-2"></div>
+            <div
+                class="d-flex flex-column justify-content-center align-items-center border-top border-bottom rounded-3 p-3">
+                {{ template "themeswitcher" . }}
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    const formLogin = (event) => {
+        event.preventDefault()
+        const FORM = event.target.closest('form')
+        const USERNAME = FORM.querySelector("[name='username']")
+        const PASSWORD = FORM.querySelector("[name='password']")
+        const PAYLOAD = {
+            username: USERNAME.value,
+            password: PASSWORD.value,
+        }
+        fetch('/api/login', {
+            method: "POST",
+            body: JSON.stringify(PAYLOAD),
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: "include",
+        }).then(response => {
+            if (!response.ok) {
+                return response.json()
+                    .catch((err) => {
+                        throw new Error(response.status)
+                    })
+                    .then((data) => {
+                        PASSWORD.classList.add("is-invalid")
+                    })
+            }
+            window.location = "/"
+        })
+    }
+</script>
+{{ end }}

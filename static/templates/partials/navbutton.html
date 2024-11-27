@@ -1,0 +1,9 @@
+{{ define "navbutton" }}
+{{ $pipe := index . "pipe"}}
+<a class='nav-link p-3 rounded-1 mx-2 mb-2 {{ if eq $pipe.title (index . "title" )}}active{{end}}' aria-current="page" href="{{ index . "href" }}">
+    <div class="d-flex justify-content-start align-items-center">
+        <i class="bi {{ index . "icon" }} me-3"></i>
+        {{ index . "title" }}
+    </div>
+</a>
+{{ end }}

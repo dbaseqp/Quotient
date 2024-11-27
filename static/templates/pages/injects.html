@@ -1,0 +1,559 @@
+{{ define "page" }}
+<div class="d-flex w-100 h-100">
+    <div class="nav-pills d-flex flex-column h-100 overflow-y-scroll justify-content-start align-items-center bg-body-secondary"
+        role="tablist" id="tab-container">
+        {{ if contains .roles "admin" }}
+        <button class="btn btn-primary rounded-0 w-100" data-bs-toggle="modal" data-bs-target="#create__form">
+            Create Inject
+        </button>
+
+        <div class="modal fade" id="create__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+            aria-labelledby="create__form--label" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-fullscreen-lg-down">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="create__form--label">Create Inject</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="create-inject-form" onsubmit="return formCreate(event)">
+                            <div class="mb-3">
+                                <label for="inject-title" class="form-label required">Title</label>
+                                <input type="text" class="form-control" id="inject-title" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="inject-description" class="form-label required">Description</label>
+                                <textarea class="form-control" id="inject-description" rows="3" required></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="inject-opentime" class="form-label required">Inject Release Time</label>
+                                <input type="datetime-local" class="form-control" id="inject-opentime" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="inject-duetime" class="form-label required">Inject Due Time</label>
+                                <input type="datetime-local" class="form-control" id="inject-duetime" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="inject-closetime" class="form-label required">Inject Close Time</label>
+                                <input type="datetime-local" class="form-control" id="inject-closetime" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="inject-files" class="form-label">Files</label>
+                                <input type="file" class="form-control" id="inject-files" multiple>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" form="create-inject-form">Create</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            const formCreate = (event) => {
+                event.preventDefault();
+                const FORM = event.target.closest("form");
+                const TITLE = FORM.querySelector("#inject-title");
+                const DESCRIPTION = FORM.querySelector("#inject-description");
+                const OPENTIME = FORM.querySelector("#inject-opentime");
+                const DUETIME = FORM.querySelector("#inject-duetime");
+                const CLOSETIME = FORM.querySelector("#inject-closetime");
+                const FILES = FORM.querySelector("#inject-files");
+
+                if (new Date(OPENTIME.value) > new Date(DUETIME.value)) {
+                    alert("Open time must be before or equal to due time.");
+                    return false;
+                }
+                if (new Date(DUETIME.value) > new Date(CLOSETIME.value)) {
+                    alert("Due time must be before or equal to close time.");
+                    return false;
+                }
+
+                const PAYLOAD = new FormData();
+                PAYLOAD.append("title", TITLE.value);
+                PAYLOAD.append("description", DESCRIPTION.value);
+                PAYLOAD.append("open-time", new Date(OPENTIME.value).toISOString());
+                PAYLOAD.append("due-time", new Date(DUETIME.value).toISOString());
+                PAYLOAD.append("close-time", new Date(CLOSETIME.value).toISOString());
+                for (const file of FILES.files) {
+                    PAYLOAD.append("files", file);
+                }
+
+                fetch("/api/injects/create", {
+                    method: "POST",
+                    body: PAYLOAD,
+                }).then((response) => {
+                    return response.json();
+                }).then((data) => {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    } else {
+                        console.log(data);
+                        window.location.reload();
+                    }
+                });
+            };
+        </script>
+
+        <div class="modal fade" id="edit__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+            aria-labelledby="edit__form--label" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-fullscreen-lg-down">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="edit__form--label">Edit Inject</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="edit-inject-form" onsubmit="return formEdit(event)">
+                            <div class="mb-3">
+                                <label for="edit-inject-title" class="form-label required">Title</label>
+                                <input type="text" class="form-control" id="edit-inject-title" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit-inject-description" class="form-label required">Description</label>
+                                <textarea class="form-control" id="edit-inject-description" rows="3"
+                                    required></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit-inject-opentime" class="form-label required">Inject Release
+                                    Time</label>
+                                <input type="datetime-local" class="form-control" id="edit-inject-opentime" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit-inject-duetime" class="form-label required">Inject Due Time</label>
+                                <input type="datetime-local" class="form-control" id="edit-inject-duetime" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit-inject-closetime" class="form-label required">Inject Close Time</label>
+                                <input type="datetime-local" class="form-control" id="edit-inject-closetime" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit-inject-files" class="form-label">New Files</label>
+                                <input type="file" class="form-control" id="edit-inject-files" multiple>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Existing Files</label>
+                                <ul id="existing-files-list" class="list-group">
+                                    <!-- Existing files will be populated here -->
+                                </ul>
+                            </div>
+                            <script>
+                                // when the modal is opened, call this function to populate the existing files
+                                document.getElementById('edit__form').addEventListener('show.bs.modal', function (event) {
+                                    const pane = event.relatedTarget.closest(".tab-pane");
+                                    // get pane's id number
+
+                                    const id = pane.id.split("--")[1];
+                                    const title = document.getElementById(`tab__title--${id}`);
+                                    const description = document.getElementById(`tab__subject--${id}`);
+                                    const opentime = document.getElementById(`tab__time--${id}`);
+                                    const duetime = document.getElementById(`pane__due--${id}`);
+                                    const closetime = document.getElementById(`pane__close--${id}`);
+                                    const existingFiles = pane.querySelectorAll("a[href^='/injects/']");
+                                    const existingFilesList = document.getElementById("existing-files-list");
+
+                                    document.getElementById("edit-inject-title").value = title.textContent;
+                                    document.getElementById("edit-inject-description").value = description.textContent;
+                                    const formatDateTimeLocal = (dateString) => {
+                                        const date = new Date(dateString);
+                                        const tzOffset = date.getTimezoneOffset() * 60000;
+                                        const localISOTime = (new Date(date - tzOffset)).toISOString().slice(0, 16);
+                                        return localISOTime;
+                                    };
+
+                                    document.getElementById("edit-inject-opentime").value = formatDateTimeLocal(opentime.textContent);
+                                    document.getElementById("edit-inject-duetime").value = formatDateTimeLocal(duetime.textContent);
+                                    document.getElementById("edit-inject-closetime").value = formatDateTimeLocal(closetime.textContent);
+
+                                    existingFilesList.innerHTML = "";
+
+                                    existingFiles.forEach((fileLink) => {
+                                        const li = document.createElement("li");
+                                        li.className = "list-group-item d-flex justify-content-between align-items-center";
+                                        const a = document.createElement("a");
+                                        a.href = fileLink.href;
+                                        a.textContent = fileLink.textContent;
+                                        a.target = "_blank";
+                                        li.appendChild(a);
+                                        const checkbox = document.createElement("input");
+                                        checkbox.type = "checkbox";
+                                        checkbox.className = "form-check-input";
+                                        checkbox.checked = true;
+                                        li.appendChild(checkbox);
+                                        existingFilesList.appendChild(li);
+                                    });
+
+                                    document.getElementById("edit-inject-form").setAttribute("data-inject-id", id);
+                                });
+                            </script>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" form="edit-inject-form">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            const formEdit = (event) => {
+                event.preventDefault();
+                const FORM = event.target.closest("form");
+                const TITLE = FORM.querySelector("#edit-inject-title");
+                const DESCRIPTION = FORM.querySelector("#edit-inject-description");
+                const OPENTIME = FORM.querySelector("#edit-inject-opentime");
+                const DUETIME = FORM.querySelector("#edit-inject-duetime");
+                const CLOSETIME = FORM.querySelector("#edit-inject-closetime");
+                const FILES = FORM.querySelector("#edit-inject-files");
+                const EXISTING_FILES_LIST = FORM.querySelector("#existing-files-list");
+
+                // get id from event
+                const ID = FORM.getAttribute("data-inject-id");
+
+                if (new Date(OPENTIME.value) > new Date(DUETIME.value)) {
+                    alert("Open time must be before or equal to due time.");
+                    return false;
+                }
+                if (new Date(DUETIME.value) > new Date(CLOSETIME.value)) {
+                    alert("Due time must be before or equal to close time.");
+                    return false;
+                }
+
+                const PAYLOAD = new FormData();
+                PAYLOAD.append("title", TITLE.value);
+                PAYLOAD.append("description", DESCRIPTION.value);
+                PAYLOAD.append("open-time", new Date(OPENTIME.value).toISOString());
+                PAYLOAD.append("due-time", new Date(DUETIME.value).toISOString());
+                PAYLOAD.append("close-time", new Date(CLOSETIME.value).toISOString());
+                for (const file of FILES.files) {
+                    PAYLOAD.append("files", file);
+                }
+
+                EXISTING_FILES_LIST.querySelectorAll("li").forEach((li) => {
+                    const CHECKBOX = li.querySelector("input[type='checkbox']");
+                    if (CHECKBOX.checked) {
+                        const LINK = li.querySelector("a");
+                        PAYLOAD.append("keep-files", LINK.textContent);
+                    }
+                });
+
+                fetch(`/api/injects/${ID}`, {
+                    method: "POST",
+                    body: PAYLOAD,
+                }).then((response) => {
+                    return response.json();
+                }).then((data) => {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    } else {
+                        console.log(data);
+                        window.location.reload();
+                    }
+                });
+            };
+        </script>
+        <div class="modal fade" id="delete__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+            aria-labelledby="delete__form--label" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="delete__form--label">Delete Inject</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>This action cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger" onclick="deleteInject(event)">Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            document.getElementById('delete__form').addEventListener('show.bs.modal', function (event) {
+                const pane = event.relatedTarget.closest(".tab-pane");
+                // get pane's id number
+                const id = pane.id.split("--")[1];
+                document.getElementById("delete__form").setAttribute("data-inject-id", id);
+            });
+
+            const deleteInject = (event) => {
+                const ID = document.getElementById("delete__form").getAttribute("data-inject-id");
+                fetch(`/api/injects/${ID}`, {
+                    method: "DELETE",
+                }).then((response) => {
+                    return response.json();
+                }).then((data) => {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    } else {
+                        console.log(data);
+                        window.location.reload();
+                    }
+                });
+            };
+        </script>
+        {{ end }}
+        <button class="active nav-link w-100 text-start bg-body rounded-0 border placeholder-glow" id="tab--placeholder"
+            data-bs-toggle="pill" data-bs-target="#pane--placeholder" type="button" role="tab"
+            aria-controls="pane--placeholder" aria-selected="true">
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-10">
+                        <div class="d-flex flex-column">
+                            <span class="text-nowrap overflow-hidden text-truncate">
+                                <span id="tab__title--placeholder" class="placeholder placeholder-xs col-12"></span>
+                            </span>
+                            <span class="text-nowrap overflow-hidden text-truncate">
+                                <span id="tab__subject--placeholder" class="placeholder placeholder-xs col-12"></span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-2">
+                        <span id="tab__status--placeholder" class="d-flex justify-content-center"></span>
+                    </div>
+                </div>
+                <div class="row justify-content-center align-items-center text-center">
+                    <span id="tab__time--placeholder" style="font-size: 10px;"
+                        class="placeholder placeholder-xs col-4 mb-1"></span>
+                </div>
+            </div>
+        </button>
+    </div>
+    <div class="tab-content d-flex flex-column flex-grow-1 justify-content-start align-items-center overflow-y-scroll"
+        id="pane-container">
+        <div class="active placeholder-glow w-100 tab-pane p-4 show position-relative h-100" tabindex="0"
+            role="tabpanel" data-bs-toggle="pill" id="pane--placeholder">
+            <div class="d-flex flex-column h-100">
+                <div class="d-flex flex-column">
+                    <span id="pane__from--placeholder" class="placeholder col-4"></span>
+                    <span id="pane__subject--placeholder" class="placeholder col-6"></span>
+                    <hr class="my-4">
+                    {{ if contains .roles "admin" }}
+                    <div class="d-flex">
+                        <button class="btn btn-outline-secondary rounded-1 m-2" data-bs-toggle="modal"
+                            data-bs-target="#edit__form">
+                            Edit
+                        </button>
+                        <button class="btn btn-outline-danger rounded-1 m-2" data-bs-toggle="modal"
+                            data-bs-target="#delete__form">
+                            Delete
+                        </button>
+                    </div>
+                    {{ end }}
+                    <div class="h-100 p-4 overflow-auto">
+                        <div>
+                            <p id="pane__description--placeholder" class="placeholder col-12"></p>
+                        </div>
+                        {{ if contains .roles "team" }}
+                        <div class="d-flex flex-column mb-3">
+                            <h5>Submit Inject</h5>
+                            <form id="submit-inject-form" onsubmit="return formSubmit(event)">
+                                <div class="mb-3">
+                                    <label for="submit-inject-files" class="form-label">Files</label>
+                                    <input type="file" class="form-control" id="submit-inject-files">
+                                </div>
+                                <button type="submit" class="btn btn-primary">Submit</button>
+                            </form>
+                            <script>
+                                const formSubmit = (event) => {
+                                    event.preventDefault();
+                                    const FORM = event.target.closest("form");
+                                    const FILES = FORM.querySelector("#submit-inject-files");
+
+                                    const ID = FORM.closest(".tab-pane").id.split("--")[1];
+
+                                    const PAYLOAD = new FormData();
+                                    PAYLOAD.append("file", FILES.files[0]);
+
+                                    fetch(`/api/injects/${ID}/submit`, {
+                                        method: "POST",
+                                        body: PAYLOAD,
+                                    }).then((response) => {
+                                        return response.json();
+                                    }).then((data) => {
+                                        if (data.error) {
+                                            console.error(data.error);
+                                            return;
+                                        } else {
+                                            console.log(data);
+                                            window.location.reload();
+                                        }
+                                    });
+                                };
+                            </script>
+                        </div>
+                        {{ end }}
+                        <div class="d-flex flex-column">
+                            <h5>Submissions</h5>
+                            <table id="pane__submissions--placeholder"
+                                class="table table-bordered w-100 display submission-table">
+                                <thead>
+                                    <tr>
+                                        <th>
+                                            Team
+                                        </th>
+                                        <th>
+                                            Submisssion Number
+                                        </th>
+                                        <th>
+                                            Submission Time
+                                        </th>
+                                        <th>
+                                            Attachment
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    const TAB_CONTAINER = document.getElementById("tab-container")
+    const PANE_CONTAINER = document.getElementById("pane-container")
+    const PLACEHOLDER_TAB = document.getElementById("tab--placeholder")
+    const PLACEHOLDER_PANE = document.getElementById("pane--placeholder")
+
+    fetch("/api/injects")
+        .then((response) => {
+            if (!response.ok) {
+                Promise.reject(response)
+            }
+            return response.json()
+        })
+        .then((data) => {
+            let tabs = [];
+            let panes = [];
+            for (const inject of data) {
+                inject.OpenTime = (new Date(inject.OpenTime))
+                inject.DueTime = (new Date(inject.DueTime))
+                inject.CloseTime = (new Date(inject.CloseTime))
+                let tab = PLACEHOLDER_TAB.cloneNode(true)
+                let pane = PLACEHOLDER_PANE.cloneNode(true)
+                tab.classList.remove("active", "placeholder-glow")
+                pane.classList.remove("active", "placeholder-glow")
+
+
+                let title = tab.querySelector("#tab__title--placeholder")
+                let a = tab.querySelector("#tab__subject--placeholder")
+                let time = tab.querySelector("#tab__time--placeholder")
+                let status = tab.querySelector("#tab__status--placeholder")
+
+                title.className = ""
+                a.className = ""
+                time.className = ""
+                if (inject.Submissions && inject.Submissions.length > 0) {
+                    status.innerHTML = `<i class="bi bi-check2-circle text-success-emphasis" data-bs-toggle="tooltip"
+                        data-bs-title="Submitted"></i>`
+
+                    let table = pane.querySelector("#pane__submissions--placeholder")
+                    let tbody = table.querySelector("tbody")
+                    for (const submission of inject.Submissions) {
+                        let tr = document.createElement("tr")
+                        let team = document.createElement("td")
+                        let number = document.createElement("td")
+                        let time = document.createElement("td")
+                        let attachment = document.createElement("td")
+                        let a = document.createElement("a")
+                        a.href = `/injects/${inject.ID}/submissions/${submission.Team.ID}/${submission.Version}`
+                        a.textContent = submission.SubmissionFileName
+                        a.target = "_blank"
+                        attachment.appendChild(a)
+                        team.textContent = submission.Team.Name
+                        number.textContent = submission.Version
+                        time.textContent = new Date(submission.SubmissionTime).toLocaleString()
+                        tr.appendChild(team)
+                        tr.appendChild(number)
+                        tr.appendChild(time)
+                        tr.appendChild(attachment)
+                        tbody.appendChild(tr)
+                    }
+                } else if (inject.CloseTime < new Date()) {
+                    status.innerHTML = `<i class="bi bi-lock text-danger-emphasis" data-bs-toggle="tooltip"
+                        data-bs-title="Closed from submissions"></i>`
+                } else if (inject.DueTime < new Date()) {
+                    status.innerHTML = `<i class="bi bi-alarm text-warning" data-bs-toggle="tooltip"
+                        data-bs-title="Accepting late submissions"></i>`
+                } else {
+                    status.innerHTML = `<i class="bi bi-unlock text-success-emphasis" data-bs-toggle="tooltip"
+                        data-bs-title="Open for submissions"></i>`
+                }
+                title.textContent = inject.Title
+                a.textContent = inject.Title
+                time.textContent = inject.OpenTime.toLocaleString()
+
+                let from = pane.querySelector("#pane__from--placeholder")
+                let subject = pane.querySelector("#pane__subject--placeholder")
+                let description = pane.querySelector("#pane__description--placeholder")
+
+                from.className = ""
+                subject.className = ""
+                description.className = ""
+
+                from.textContent = inject.Title
+                subject.textContent = inject.Title
+                description.innerHTML = `
+                    <p>${inject.Description}</p>
+                    <h5>Inject Details</h5>
+                    <ul>
+                        <li id="pane__due--${inject.ID}"><p><strong>Due Time:</strong> ${inject.DueTime.toLocaleString()}</p></li>
+                        <li id="pane__close--${inject.ID}"><p><strong>Close Time:</strong> ${inject.CloseTime.toLocaleString()}</p></li>
+                    </ul>
+                `
+
+                if (inject.InjectFileNames != null && inject.InjectFileNames.length > 0) {
+                    let files = document.createElement("div")
+                    files.className = "d-flex flex-column"
+                    let header = document.createElement("h5")
+                    header.textContent = "Inject Attachments"
+                    files.appendChild(header)
+                    let ul = document.createElement("ul")
+                    files.appendChild(ul)
+                    for (const file of inject.InjectFileNames) {
+                        let li = document.createElement("li")
+                        let a = document.createElement("a")
+                        a.href = `/injects/${inject.ID}/${file}`
+                        a.textContent = file
+                        a.target = "_blank"
+                        li.appendChild(a)
+                        ul.appendChild(li)
+                    }
+                    description.appendChild(files)
+                }
+
+                tab.setHTMLUnsafe(tab.outerHTML.replaceAll("placeholder", inject.ID))
+                pane.setHTMLUnsafe(pane.outerHTML.replaceAll("placeholder", inject.ID))
+                tabs.push(tab.firstChild)
+                panes.push(pane.firstChild)
+            }
+            PLACEHOLDER_TAB.classList.add("d-none")
+            PLACEHOLDER_PANE.classList.add("d-none")
+            for (let i = 0; i < tabs.length; i++) {
+                TAB_CONTAINER.appendChild(tabs[i])
+                PANE_CONTAINER.appendChild(panes[i])
+            }
+        })
+        .then(() => {
+            const TOOLTIPS = new bootstrap.Tooltip(document.body, {
+                selector: '[data-bs-toggle="tooltip"]'
+            });
+            const table = new DataTable('.submission-table', {
+                order: [[2, 'desc']], // Sort by the third column (Submission Time) in descending order
+            })
+        })
+        .catch((error) => {
+            console.error(error)
+        });
+</script>
+{{ end }}

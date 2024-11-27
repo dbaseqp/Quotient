@@ -1,0 +1,256 @@
+{{ define "page" }}
+<div class="d-flex w-100 h-100">
+    <div class="nav-pills d-flex flex-column h-100 overflow-y-scroll justify-content-start align-items-center bg-body-secondary"
+        role="tablist" id="tab-container">
+        {{ if contains .roles "admin" }}
+        <button class="btn btn-primary rounded-0 w-100" data-bs-toggle="modal" data-bs-target="#create__form">
+            Create Announcement
+        </button>
+
+        <div class="modal fade" id="create__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+            aria-labelledby="create__form--label" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-fullscreen-lg-down">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="create__form--label">Create announcement</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="create-announcement-form" onsubmit="return formCreate(event)">
+                            <div class="mb-3">
+                                <label for="announcement-title" class="form-label required">Title</label>
+                                <input type="text" class="form-control" id="announcement-title" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="announcement-description" class="form-label required">Description</label>
+                                <textarea class="form-control" id="announcement-description" rows="3"
+                                    required></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="announcement-opentime" class="form-label required">Announcement Release
+                                    Time</label>
+                                <input type="datetime-local" class="form-control" id="announcement-opentime" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="announcement-files" class="form-label">Files</label>
+                                <input type="file" class="form-control" id="announcement-files" multiple>
+                            </div>
+
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" form="create-announcement-form">Create</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            const formCreate = (event) => {
+                event.preventDefault();
+                const FORM = event.target.closest("form");
+                const TITLE = FORM.querySelector("#announcement-title");
+                const DESCRIPTION = FORM.querySelector("#announcement-description");
+                const OPENTIME = FORM.querySelector("#announcement-opentime");
+                const FILES = FORM.querySelector("#announcement-files");
+                const PAYLOAD = new FormData();
+                PAYLOAD.append("title", TITLE.value);
+                PAYLOAD.append("description", DESCRIPTION.value);
+                PAYLOAD.append("open-time", new Date(OPENTIME.value).toISOString());
+                for (const file of FILES.files) {
+                    PAYLOAD.append("files", file);
+                }
+
+                fetch("/api/announcements/create", {
+                    method: "POST",
+                    body: PAYLOAD,
+                }).then((response) => {
+                    return response.json();
+                }).then((data) => {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    } else {
+                        window.location.reload();
+                    }
+                });
+            };
+        </script>
+
+        <div class="modal fade" id="delete__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+            aria-labelledby="delete__form--label" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="delete__form--label">Delete Announcement</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>This action cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger" onclick="deleteAnnouncement(event)">Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            document.getElementById('delete__form').addEventListener('show.bs.modal', function (event) {
+                const pane = event.relatedTarget.closest(".tab-pane");
+                // get pane's id number
+                const id = pane.id.split("--")[1];
+                document.getElementById("delete__form").setAttribute("data-announcement-id", id);
+            });
+
+            const deleteAnnouncement = (event) => {
+                const ID = document.getElementById("delete__form").getAttribute("data-announcement-id");
+                fetch(`/api/announcements/${ID}`, {
+                    method: "DELETE",
+                }).then((response) => {
+                    return response.json();
+                }).then((data) => {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    } else {
+                        console.log(data);
+                        window.location.reload();
+                    }
+                });
+            };
+        </script>
+        {{ end }}
+        <button class="active nav-link w-100 text-start bg-body rounded-0 border placeholder-glow" id="tab--placeholder"
+            data-bs-toggle="pill" data-bs-target="#pane--placeholder" type="button" role="tab"
+            aria-controls="pane--placeholder" aria-selected="true">
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-10">
+                        <div class="d-flex flex-column">
+                            <span class="text-nowrap overflow-hidden text-truncate">
+                                <span id="tab__title--placeholder" class="placeholder placeholder-xs col-12"></span>
+                            </span>
+                            <span class="text-nowrap overflow-hidden text-truncate">
+                                <span id="tab__subject--placeholder" class="placeholder placeholder-xs col-12"></span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="row justify-content-center align-items-center text-center">
+                    <span id="tab__time--placeholder" style="font-size: 10px;"
+                        class="placeholder placeholder-xs col-4 mb-1"></span>
+                </div>
+            </div>
+        </button>
+    </div>
+    <div class="tab-content d-flex flex-column flex-grow-1 justify-content-start align-items-center"
+        id="pane-container">
+        <div class="active placeholder-glow w-100 tab-pane p-4 show position-relative h-100" tabindex="0"
+            role="tabpanel" data-bs-toggle="pill" id="pane--placeholder">
+            <div class="d-flex flex-column h-100">
+                <div class="d-flex flex-column">
+                    <span id="pane__from--placeholder" class="placeholder col-4"></span>
+                    <span id="pane__subject--placeholder" class="placeholder col-6"></span>
+                    <hr class="my-4">
+                    {{ if contains .roles "admin" }}
+                    <div class="d-flex">
+                        <button class="btn btn-outline-danger rounded-1 m-2" data-bs-toggle="modal"
+                            data-bs-target="#delete__form">
+                            Delete
+                        </button>
+                    </div>
+                    {{ end }}
+                    <div class="h-100 p-4 overflow-auto">
+                        <div>
+                            <p id="pane__description--placeholder" class="placeholder col-12"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    const TAB_CONTAINER = document.getElementById("tab-container")
+    const PANE_CONTAINER = document.getElementById("pane-container")
+    const PLACEHOLDER_TAB = document.getElementById("tab--placeholder")
+    const PLACEHOLDER_PANE = document.getElementById("pane--placeholder")
+
+    fetch("/api/announcements")
+        .then((response) => {
+            if (!response.ok) {
+                Promise.reject(response)
+            }
+            return response.json()
+        })
+        .then((data) => {
+            let tabs = [];
+            let panes = [];
+
+            for (const announcement of data) {
+                announcement.OpenTime = (new Date(announcement.OpenTime)).toLocaleString()
+                let tab = PLACEHOLDER_TAB.cloneNode(true)
+                let pane = PLACEHOLDER_PANE.cloneNode(true)
+                tab.classList.remove("active", "placeholder-glow")
+                pane.classList.remove("active", "placeholder-glow")
+
+
+                let title = tab.querySelector("#tab__title--placeholder")
+                let a = tab.querySelector("#tab__subject--placeholder")
+                let time = tab.querySelector("#tab__time--placeholder")
+
+                title.className = ""
+                a.className = ""
+                time.className = ""
+
+                title.textContent = announcement.Title
+                a.textContent = announcement.Title
+                time.textContent = announcement.OpenTime
+
+                let from = pane.querySelector("#pane__from--placeholder")
+                let subject = pane.querySelector("#pane__subject--placeholder")
+                let description = pane.querySelector("#pane__description--placeholder")
+
+                from.className = ""
+                subject.className = ""
+                description.className = ""
+
+                from.textContent = announcement.Title
+                subject.textContent = announcement.Title
+                description.textContent = announcement.Description
+
+                if (announcement.AnnouncementFileNames != null && announcement.AnnouncementFileNames.length > 0) {
+                    let files = document.createElement("div")
+                    files.className = "d-flex flex-column"
+                    let header = document.createElement("h5")
+                    header.textContent = "Announcement Attachments"
+                    files.appendChild(header)
+                    let ul = document.createElement("ul")
+                    files.appendChild(ul)
+                    for (const file of announcement.AnnouncementFileNames) {
+                        let li = document.createElement("li")
+                        let a = document.createElement("a")
+                        a.href = `/announcements/${announcement.ID}/${file}`
+                        a.textContent = file
+                        a.target = "_blank"
+                        li.appendChild(a)
+                        files.appendChild(li)
+                    }
+                    description.appendChild(files)
+                }
+
+                tab.setHTMLUnsafe(tab.outerHTML.replaceAll("placeholder", announcement.ID))
+                pane.setHTMLUnsafe(pane.outerHTML.replaceAll("placeholder", announcement.ID))
+                tabs.push(tab.firstChild)
+                panes.push(pane.firstChild)
+            }
+            PLACEHOLDER_TAB.classList.add("d-none")
+            PLACEHOLDER_PANE.classList.add("d-none")
+            for (let i = 0; i < tabs.length; i++) {
+                TAB_CONTAINER.appendChild(tabs[i])
+                PANE_CONTAINER.appendChild(panes[i])
+            }
+        })
+</script>
+{{ end }}

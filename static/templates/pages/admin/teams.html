@@ -1,0 +1,124 @@
+{{ define "page" }}
+<div class="d-flex w-100 h-100">
+    <div class="pt-4 w-100 h-100 overflow-y-scroll">
+        <div class="container">
+            <div class="row">
+                <h3>Set Team Identifiers</h3>
+                <form onsubmit="return formSubmit(event)">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Team Name</th>
+                                <th>Identifier</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2">
+                                    <div class="d-flex justify-content-end">
+                                        <button class="btn btn-primary px-5" type="submit">Save</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </form>
+            </div>
+            <script>
+                fetch('/api/teams')
+                    .then(response => response.json())
+                    .then(data => {
+                        const TBODY = document.querySelector('tbody');
+                        data.forEach(team => {
+                            const ROW = document.createElement('tr');
+                            const NAME_CELL = document.createElement('td');
+                            NAME_CELL.textContent = team.Name;
+                            const ID_CELL = document.createElement('td');
+
+                            const INPUT_GROUP = document.createElement('div');
+                            INPUT_GROUP.classList.add('input-group', 'mb-3');
+
+                            const ID_INPUT = document.createElement('input');
+                            ID_INPUT.type = 'text';
+                            ID_INPUT.classList.add('form-control');
+                            ID_INPUT.value = team.Identifier;
+                            ID_INPUT.setAttribute('aria-label', 'Team Identifier');
+                            ID_INPUT.setAttribute('aria-describedby', `button-addon-${team.ID}`);
+                            const ACTIVE_BUTTON = document.createElement('button');
+                            ACTIVE_BUTTON.classList.add('btn', 'btn-secondary');
+                            ACTIVE_BUTTON.type = 'button';
+                            ACTIVE_BUTTON.textContent = 'Active';
+                            ACTIVE_BUTTON.disabled = team.Active;
+
+                            const INACTIVE_BUTTON = document.createElement('button');
+                            INACTIVE_BUTTON.classList.add('btn', 'btn-secondary');
+                            INACTIVE_BUTTON.type = 'button';
+                            INACTIVE_BUTTON.textContent = 'Inactive';
+                            INACTIVE_BUTTON.disabled = !team.Active;
+
+                            ACTIVE_BUTTON.addEventListener('click', () => {
+                                if (!ACTIVE_BUTTON.disabled) {
+                                    ACTIVE_BUTTON.disabled = true;
+                                    INACTIVE_BUTTON.disabled = false;
+                                }
+                            });
+
+                            INACTIVE_BUTTON.addEventListener('click', () => {
+                                if (!INACTIVE_BUTTON.disabled) {
+                                    INACTIVE_BUTTON.disabled = true;
+                                    ACTIVE_BUTTON.disabled = false;
+                                }
+                            });
+
+                            INPUT_GROUP.appendChild(ID_INPUT);
+                            INPUT_GROUP.appendChild(ACTIVE_BUTTON);
+                            INPUT_GROUP.appendChild(INACTIVE_BUTTON);
+                            ID_CELL.appendChild(INPUT_GROUP);
+
+                            ROW.appendChild(NAME_CELL);
+                            ROW.appendChild(ID_CELL);
+                            TBODY.appendChild(ROW);
+                        });
+                    })
+                    .catch(error => console.error('Error fetching teams:', error));
+
+                const formSubmit = (event) => {
+                    event.preventDefault();
+                    const teamsData = [];
+                    const rows = document.querySelectorAll('tbody tr');
+                    rows.forEach(row => {
+                        const teamID = parseInt(row.querySelector('input').getAttribute('aria-describedby').split('-')[2]);
+                        const identifier = row.querySelector('input').value;
+                        const active = row.querySelector('button:nth-child(2)').disabled;
+                        teamsData.push({ ID: teamID, Identifier: identifier, Active: active });
+                    });
+                    fetch(`/api/admin/teams`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ "teams": teamsData }),
+                    })
+                        .then((response) => {
+                            if (!response.ok) {
+                                throw new Error(response.status);
+                            }
+                            return response.json();
+                        })
+                        .then((data) => {
+                            window.location.reload()
+                        })
+                        .catch(error => {
+                            console.error('Error updating team:', error)
+                        });
+                }
+            </script>
+            <div class="row">
+
+            </div>
+        </div>
+    </div>
+</div>
+{{ end }}

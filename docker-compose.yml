@@ -1,10 +1,34 @@
-version: '3.3'
 services:
   db:
-    container_name: database
+    container_name: quotient_database
     image: postgres
     restart: always
     env_file:
       - .env
+    networks:
+      - quotient_network
+
+  server:
+    container_name: quotient_server
+    image: quotient_server
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env
     ports:
-      - 5432:5432
+      - 80:80
+    depends_on:
+      - db
+    networks:
+      - quotient_network
+    volumes:
+      - ./submissions:/app/submissions
+      - ./config:/app/config
+      - ./engine:/app/engine
+      - ./static:/app/static
+
+networks:
+  quotient_network:
+    driver: bridge

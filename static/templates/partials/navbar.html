@@ -1,0 +1,62 @@
+{{ define "navbar" }}
+<div id="navbar" class="d-flex flex-column w-100 h-md-100 bg-body border-bottom sticky-top">
+    <nav class="navbar flex-row flex-md-column navbar-expand-md bg-body h-md-100 p-0">
+        <button class="navbar-toggler p-2 border-0" type="button" data-bs-toggle="offcanvas"
+            data-bs-target="#navbarOffcanvasLg" aria-controls="navbarOffcanvasLg" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="d-flex justify-content-center align-items-center w-md-100 py-md-2 bg-primary">
+            <a class="navbar-brand m-2" href="/">
+                <img src="/static/assets/quotient.svg" width="40px" height="40px">
+            </a>
+        </div>
+        <div class="offcanvas offcanvas-start" style="width: 100% !important;" tabindex="-1" id="navbarOffcanvasLg"
+            aria-labelledby="navbarOffcanvasLgLabel">
+            <div class="d-flex d-md-none align-items-center">
+                <button type="button" class="btn p-4" data-bs-dismiss="offcanvas" aria-label="Close">
+                    <i class="bi bi-arrow-left"></i>
+                </button>
+                <h1 class="m-0 fs-3">Navigation</h1>
+            </div>
+            {{ template "themeswitcher" . }}
+            {{ if not (and (contains .roles "red") (not .config.UISettings.ShowAnnouncementsForRedTeam)) }}
+            {{ template "navbutton" (dict "pipe" . "title" "Announcements" "href" "/announcements" "icon"
+            "bi-broadcast-pin") }}
+            {{ end }}
+            {{ if or (and (contains .roles "team") (not .config.UISettings.DisableGraphsForBlueTeam) ) (contains .roles "admin") }}
+            {{ template "navbutton" (dict "pipe" . "title" "Graphs" "href" "/graphs" "icon" "bi-graph-up") }}
+            {{ end }}
+            {{ if or (contains .roles "team") (contains .roles "admin") }}
+            {{ template "navbutton" (dict "pipe" . "title" "Services" "href" "/services" "icon" "bi-speedometer2") }}
+            {{ template "navbutton" (dict "pipe" . "title" "Injects" "href" "/injects" "icon" "bi-envelope") }}
+            {{ template "navbutton" (dict "pipe" . "title" "PCRs" "href" "/pcr" "icon" "bi-key") }}
+            {{ end }}
+
+            {{ if contains .roles "admin" }}
+            {{ template "navbutton" (dict "pipe" . "title" "Admin" "href" "/admin" "icon" "bi-display") }}
+            {{ end }}
+        </div>
+        <div class="d-none d-md-block mt-auto"></div>
+        <div class="d-flex justify-content-center align-items-center mb-md-3">
+            {{ $role := ""}}
+            {{ if contains .roles "admin" }}
+            {{ $role = "text-success" }}
+            {{ else if contains .roles "red" }}
+            {{ $role = "text-danger" }}
+            {{ else if contains .roles "team" }}
+            {{ $role = "text-info" }}
+            {{ end }}
+            <div class="btn-group dropup-md">
+                <button type="button" class="btn dropdown-toggle d-flex justify-content-center align-items-center" data-bs-toggle="dropdown"
+                    aria-expanded="false">
+                        <i class="bi bi-circle-fill me-2 {{ $role }}"></i>
+                        <p class="m-0">{{ .username }}</p>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-md-start">
+                    <li><a class="dropdown-item" href="/logout">Logout</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+</div>
+{{ end }}

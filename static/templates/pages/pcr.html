@@ -1,0 +1,125 @@
+{{ define "page" }}
+<div class="d-flex w-100 h-100">
+    <div class="pt-4 w-100 h-100 overflow-y-scroll">
+        <div class="container">
+            <div class="row mb-3">
+                <div class="d-flex p-0">
+                    <div>
+                        <select class="form-select" id="team-select">
+                        </select>
+                    </div>
+                    <div>
+                        <select class="form-select" id="credlist-select">
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="row" id="pcr-container">
+                <div class="my-2 p-0">
+                    <button class="btn btn-primary" type="button" data-bs-toggle="collapse"
+                        data-bs-target="#instructions" aria-expanded="false" aria-controls="instructions">
+                        How do PCRs work?
+                    </button>
+                    <div class="collapse" id="instructions">
+                        <div class="card card-body my-2 bg-body-secondary">
+                            <h5>Instructions for Password Change Requests (PCRs):</h5>
+                            <ol>
+                                <li>Select a list from the "List" dropdown menu.</li>
+                                <li>Enter the usernames in the left column.</li>
+                                <li>Enter the passwords in the right column.</li>
+                                <li>Click the submit button.</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+                <form id="pcr__form" class="p-0" onsubmit="return formSubmit(event)">
+                    <div class="d-flex">
+                        <textarea class="form-control me-2" id="pcr__credentials" rows="10"
+                            placeholder="username,password"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-2">Submit</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    fetch("/api/teams")
+        .then((response) => {
+            if (!response.ok) {
+                Promise.reject(response)
+            }
+            return response.json()
+        })
+        .then((data) => {
+            let teams = data
+            let team_select = document.getElementById("team-select")
+            for (const i in teams) {
+                let team = teams[i]
+                let option = document.createElement("option")
+                option.value = team.ID
+                option.textContent = team.Name
+                team_select.appendChild(option)
+            }
+            // team_select.addEventListener("change", (source) => {
+            //     SERVICE_CONTAINER.innerHTML = ""
+            //     const TEAM_ID = source.currentTarget.value
+            //     fetchServices(TEAM_ID)
+            // })
+        })
+    // .then(() => {
+    //     const TEAM_ID = document.getElementById("team-select").value
+    //     fetchServices(TEAM_ID)
+    // })
+
+    fetch("/api/credlists")
+        .then((response) => {
+            if (!response.ok) {
+                Promise.reject(response)
+            }
+            return response.json()
+        })
+        .then((data) => {
+            let credlists = data
+            let credlist_select = document.getElementById("credlist-select")
+            for (const credlist of credlists) {
+                let option = document.createElement("option")
+                option.value = credlist
+                option.textContent = credlist
+                credlist_select.appendChild(option)
+            }
+        })
+
+    const formSubmit = (event) => {
+        event.preventDefault()
+        const newcreds = document.getElementById("pcr__credentials").value.split("\n")
+        const usernames = newcreds.map(cred => cred.split(/,(.+)/)[0])
+        const passwords = newcreds.map(cred => cred.split(/,(.+)/)[1])
+        const team_id = document.getElementById("team-select").value
+        const credlist_id = document.getElementById("credlist-select").value
+        const data = {
+            usernames: usernames,
+            passwords: passwords,
+            team_id: team_id,
+            credlist_id: credlist_id
+        }
+        fetch("/api/pcrs/submit", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(data)
+        })
+            .then((response) => {
+                if (!response.ok) {
+                    Promise.reject(response)
+                }
+                return response.json()
+            })
+            .then((data) => {
+                window.location.reload();
+            })
+    }
+</script>
+{{ end }}

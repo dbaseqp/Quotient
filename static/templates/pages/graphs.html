@@ -1,0 +1,489 @@
+{{ define "page" }}
+<div class="d-flex w-100 h-100">
+    <div class="pt-4 w-100 h-100 overflow-y-scroll">
+        <div class="container">
+            <div class="row">
+                <p>Last updated graphs at: <span id="updatedAt"></span></p>
+            </div>
+            <div class="row gy-4 mb-4">
+                <div class="col col-12">
+                    <div class="card overflow-y-scroll">
+                        <div class="card-img-top graph" id="service-status"></div>
+                        <script>
+                            let options = {
+                                series: [],
+                                chart: {
+                                    type: 'heatmap',
+                                },
+                                stroke: {
+                                    width: 1
+                                },
+                                legend: {
+                                    show: false,
+                                },
+                                tooltip: {
+                                    enabled: false,
+                                },
+                                plotOptions: {
+                                    heatmap: {
+                                        // radius: 30,
+                                        enableShades: true,
+                                        colorScale: {
+                                            ranges: [
+                                                {
+                                                    from: 0,
+                                                    to: 0,
+                                                    color: '#777777'
+                                                },
+                                                {
+                                                    from: 1,
+                                                    to: 1,
+                                                    color: '#3D9970'
+                                                },
+                                                {
+                                                    from: 2,
+                                                    to: 2,
+                                                    color: '#AA0707'
+                                                },
+                                            ],
+                                        },
+
+                                    }
+                                },
+                                theme: {
+                                    mode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+                                },
+                                dataLabels: {
+                                    enabled: false
+                                },
+                                xaxis: {
+                                    labels: {
+                                        rotate: -55,
+                                        rotateAlways: true,
+                                    }
+                                },
+                                title: {
+                                    text: 'Service Status',
+                                },
+                            };
+
+                            const UPIMG = "/static/assets/services/up.png"
+                            const DOWNIMG = "/static/assets/services/down.png"
+                            const UNKIMG = "/static/assets/services/pending.png"
+                            const STATUSCHART = new ApexCharts(document.querySelector("#service-status"), options);
+                            STATUSCHART.render()
+                            async function fetchStatus() {
+                                let series;
+
+                                await fetch("/api/graphs/services")
+                                    .then((response) => {
+                                        if (!response.ok) {
+                                            Promise.reject(response)
+                                        }
+                                        return response.json()
+                                    })
+                                    .then((data) => {
+                                        console.log(data)
+                                        series = data.series.map((service) => {
+                                            return {
+                                                name: service.Name,
+                                                data: service.Data.map((status) => {
+                                                    return {
+                                                        x: status.X,
+                                                        y: status.Y,
+                                                    }
+                                                }).sort((a, b) => {
+                                                    return a.x.localeCompare(b.x)
+                                                })
+                                            }
+                                        }).sort((a, b) => {
+                                            return b.name.localeCompare(a.name)
+                                        })
+                                    })
+                                categories = series[0].data.map((status) => {
+                                    return status.x
+                                }).sort((a, b) => {
+                                    return a.localeCompare(b)
+                                })
+
+                                STATUSCHART.updateOptions({
+                                    chart: {
+                                        height: 170+17*series.length,
+                                    },
+                                    series: series,
+                                    xaxis: {
+                                        categories: categories,
+                                    }
+                                })
+                                // y value is based on y value for some reason, so manually setting y value to
+                                // consistent value for all series to make sure the images are at a consistent height
+                                for (let i = 0; i < series.length; i++) {
+                                    for (let j = 0; j < series[i].data.length; j++) {
+                                        let status = series[i].data[j]
+                                        let img;
+                                        if (status.y === 1) {
+                                            img = UPIMG
+                                        } else if (status.y == 2) {
+                                            img = DOWNIMG
+                                        } else {
+                                            img = UNKIMG
+                                        }
+                                        let point = {
+                                            x: status.x,
+                                            y: STATUSCHART.w.globals.yRange[0],
+                                            seriesIndex: i,
+                                            image: {
+                                                path: img,
+                                                offsetY: (5+(series.length-1)*17)-i*17,
+                                            },
+                                        }
+
+                                        STATUSCHART.addPointAnnotation(point)
+                                    }
+                                }
+                            }
+
+                            fetchStatus()
+                        </script>
+                        <div class="card-body">
+                            <p class="card-text">Current Service Status</p>
+                            <button class="btn btn-primary fullscreen">Fullscreen</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col col-12">
+                    <div class="card overflow-y-scroll">
+                        <div class="card-img-top graph" id="score-status"></div>
+                        <div class="card-body">
+                            <p class="card-text">Scores Over Time</p>
+                            <button class="btn btn-primary fullscreen">Fullscreen</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col col-12">
+                    <div class="card overflow-y-scroll">
+                        <div class="card-img-top graph" id="uptime-status"></div>
+                        <script>
+                            let options3 = {
+                                series: [],
+                                chart: {
+                                    type: 'heatmap',
+                                },
+                                stroke: {
+                                    width: 1
+                                },
+                                legend: {
+                                    show: false,
+                                },
+                                tooltip: {
+                                    enabled: true,
+                                    y: {
+                                        formatter: function (value) {
+                                            if (value === -1) {
+                                                return "N/A"
+                                            }
+                                            return value + "%"
+                                        }
+                                    }
+                                },
+                                plotOptions: {
+                                    heatmap: {
+                                        // radius: 30,
+                                        enableShades: true,
+                                        colorScale: {
+                                            ranges: [
+                                                {
+                                                    from: -1,
+                                                    to: -1,
+                                                    color: '#777777'
+                                                },
+                                                {
+                                                    from: 0,
+                                                    to: 50,
+                                                    color: '#AA0707'
+                                                },
+                                                {
+                                                    from: 50,
+                                                    to: 80,
+                                                    color: '#FFB200'
+                                                },
+                                                {
+                                                    from: 80,
+                                                    to: 100,
+                                                    color: '#3D9970'
+                                                },
+                                            ],
+                                        },
+
+                                    }
+                                },
+                                theme: {
+                                    mode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+                                },
+                                dataLabels: {
+                                    enabled: true,
+                                    formatter: function (value) {
+                                        if (value === -1) {
+                                            return "N/A"
+                                        }
+                                        return value + "%"
+                                    }
+                                },
+                                xaxis: {
+                                    labels: {
+                                        rotate: -55,
+                                        rotateAlways: true,
+                                    }
+                                },
+                                title: {
+                                    text: 'Uptime Status',
+                                },
+                            };
+
+                            let UPTIMECHART = new ApexCharts(document.querySelector("#uptime-status"), options3);
+                            UPTIMECHART.render();
+
+                            async function fetchUptime() {
+                                let series;
+
+                                await fetch("/api/graphs/uptimes")
+                                    .then((response) => {
+                                        if (!response.ok) {
+                                            Promise.reject(response)
+                                        }
+                                        return response.json()
+                                    })
+                                    .then((data) => {
+                                        console.log(data)
+                                        series = data.series.map((service) => {
+                                            return {
+                                                name: service.Name,
+                                                data: service.Data.sort((a, b) => { return a.Service.localeCompare(b.Service) }).map((status) => {
+                                                    if (status.Uptime === null) {
+                                                        return {
+                                                            x: status.Service,
+                                                            y: -0.01,
+                                                        }
+                                                    }
+                                                    return {
+                                                        x: status.Service,
+                                                        y: Math.round(status.Uptime * 100),
+                                                    }
+                                                })
+                                            }
+                                        }).sort((a, b) => {
+                                            return b.name.localeCompare(a.name)
+                                        })
+                                    })
+
+                                categories = series[0].data.map((status) => {
+                                    return status.x
+                                }).sort((a, b) => {
+                                    return a.localeCompare(b)
+                                })
+
+                                UPTIMECHART.updateOptions({
+                                    series: series,
+                                    xaxis: {
+                                        categories: categories,
+                                    }
+                                })
+                            }
+
+                            fetchUptime()
+                        </script>
+                        <div class="card-body">
+                            <p class="card-text">Uptime</p>
+                            <button class="btn btn-primary fullscreen">Fullscreen</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col col-12">
+                    <div class="card overflow-y-scroll">
+                        <div class="card-img-top graph" id="leaderboard-status"></div>
+                        <script>
+                            let options1 = {
+                                series: [],
+                                chart: {
+                                    type: 'line',
+                                    animations: {
+                                        enabled: false,
+                                    },
+                                    zoom: {
+                                        enabled: false,
+                                    },
+                                },
+                                stroke: {
+                                    curve: 'straight',
+                                },
+                                legend: {
+                                    show: false,
+                                },
+                                tooltip: {
+                                    enabled: true,
+                                },
+                                theme: {
+                                    mode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+                                },
+                                dataLabels: {
+                                    enabled: false
+                                },
+                                title: {
+                                    text: 'Scores Over Time',
+                                },
+                            };
+
+                            const SCORECHART = new ApexCharts(document.querySelector("#score-status"), options1);
+                            SCORECHART.render();
+
+                            let options2 = {
+                                series: [{ data: [] }],
+                                chart: {
+                                    type: 'bar',
+                                    animations: {
+                                        enabled: false,
+                                    },
+                                    zoom: {
+                                        enabled: false,
+                                    },
+                                },
+                                theme: {
+                                    mode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+                                },
+                                plotOptions: {
+                                    bar: {
+                                        horizontal: true,
+                                    }
+                                },
+                                dataLabels: {
+                                    enabled: true,
+                                },
+                                title: {
+                                    text: 'Leaderboard',
+                                },
+                            };
+
+                            const LEADERBOARDCHART = new ApexCharts(document.querySelector("#leaderboard-status"), options2);
+                            LEADERBOARDCHART.render();
+                            async function fetchScores() {
+                                let series;
+
+                                await fetch("/api/graphs/scores")
+                                    .then((response) => {
+                                        if (!response.ok) {
+                                            Promise.reject(response)
+                                        }
+                                        return response.json()
+                                    })
+                                    .then((data) => {
+                                        console.log(data)
+                                        series = data.series.map((team) => {
+                                            if (team.Data === null) {
+                                                return {
+                                                    name: team.Name,
+                                                    data: []
+                                                }
+                                            }
+                                            return {
+                                                name: team.Name,
+                                                data: team.Data.map((point) => {
+                                                    return {
+                                                        x: point.Round,
+                                                        y: point.Total,
+                                                    }
+                                                })
+                                            }
+                                        })
+                                    })
+
+                                categories = series[0].data.map((status) => {
+                                    return status.x
+                                })
+
+                                SCORECHART.updateOptions({
+                                    series: series,
+                                    xaxis: {
+                                        categories: categories,
+                                    }
+                                })
+
+                                // reusing data for leaderboard bar chart
+                                let leaderboard_series = series.map((team) => {
+                                    if (team.data.length === 0) {
+                                        return {
+                                            name: team.name,
+                                            data: 0
+                                        }
+                                    }
+                                    return {
+                                        name: team.name,
+                                        data: team.data[team.data.length - 1].y
+                                    }
+                                }).sort((a, b) => {
+                                    return b.data - a.data
+                                })
+
+                                LEADERBOARDCHART.updateOptions({
+                                    series: [{
+                                        name: 'Service Score',
+                                        data: leaderboard_series.reduce((acc, team) => {
+                                            acc.push(team.data)
+                                            return acc
+                                        }, [])
+                                    }],
+                                    xaxis: {
+                                        categories: leaderboard_series.map((team) => {
+                                            return team.name
+                                        }),
+                                    }
+                                })
+                            }
+
+                            fetchScores()
+                        </script>
+                        <div class="card-body">
+                            <p class="card-text">Leaderboard</p>
+                            <button class="btn btn-primary fullscreen">Fullscreen</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    document.querySelectorAll(".fullscreen").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            card = button.closest(".card")
+            if (card.requestFullscreen) {
+                card.requestFullscreen();
+            }
+            else if (card.mozRequestFullScreen) {
+                card.mozRequestFullScreen();
+            }
+            else if (card.webkitRequestFullscreen) {
+                card.webkitRequestFullscreen();
+            }
+            else if (card.msRequestFullscreen) {
+                card.msRequestFullscreen();
+            }
+
+        })
+    })
+    document.addEventListener("fullscreenchange", (event) => {
+        // pause on exit
+        if (!document.fullscreenElement) {
+            bscarousel.pause()
+        }
+    });
+
+    document.addEventListener("DOMContentLoaded", (event) => {
+        document.getElementById("updatedAt").innerText = new Date().toLocaleString()
+        setInterval(() => {
+            console.log("fetching data and updating graphs")
+            window.location.reload()
+            // document.getElementById("updatedAt").innerText = new Date().toLocaleString()
+        }, 30000)
+    });
+</script>
+{{ end }}

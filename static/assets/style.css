@@ -1,0 +1,46 @@
+html {
+    height: 100%;
+}
+
+body {
+    font-family: 'Rubik', sans-serif;
+    height: 0px;
+    min-height: 100%;
+}
+
+.splash__title {
+    font-weight: 450;
+    letter-spacing: 13px;
+}
+
+#splash {
+    position: relative;
+}
+
+#splash img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+
+    transform: translate(-50%, -50%);
+    z-index: -1;
+}
+
+#tab-container {
+    min-width: 210px;
+    max-width: 210px;
+}
+
+table td {
+    vertical-align: middle;
+}
+
+#tab-container {
+    scrollbar-width: thin;
+}
+
+.required:after {
+    content: '*';
+    color: red;
+    margin-left: 5px;
+}

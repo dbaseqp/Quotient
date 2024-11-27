@@ -1,0 +1,50 @@
+{{ block "base" . }}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <!-- Metadata and resources
+    –––––––––––––––––––––––––––––––––––––––––––––––––– -->
+    <title>{{ if .title }}{{ .title }} - {{ end }}{{ .name }}</title>
+    <link rel="icon" type="image/ico" href="/static/assets/favicon.svg" />
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet" href="/static/assets/bootstrap-icons-1.11.3/font/bootstrap-icons.min.css">
+
+    <!-- Popperjs -->
+    <script src="/static/assets/popper-2.11.8/popper.min.js"></script>
+
+    <!-- Bootstrap -->
+    <script src="/static/assets/bootstrap-5.3.3-dist/js/bootstrap.bundle.min.js"></script>
+    <link rel="stylesheet" href="/static/assets/css/main.css">
+
+    <!-- Datatables -->
+    <script src="https://code.jquery.com/jquery-3.7.1.slim.min.js"
+        integrity="sha256-kmHvs0B+OpCW5GVHUNjv9rOmY0IvSIRcf7zGUDTDQM8=" crossorigin="anonymous"></script>
+
+    <link rel="stylesheet" href="https://cdn.datatables.net/2.1.8/css/dataTables.dataTables.css" />
+    <link rel="stylesheet" href="https://cdn.datatables.net/2.1.8/css/dataTables.bootstrap5.css" />
+    <script src="https://cdn.datatables.net/2.1.8/js/dataTables.js"></script>
+    <script src="https://cdn.datatables.net/2.1.8/js/dataTables.bootstrap5.js"></script>
+
+    <!-- ApexCharts -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+    <!-- Custom -->
+    <script src="/static/assets/custom.js"></script>
+    <link rel="stylesheet" href="/static/assets/style.css">
+</head>
+
+<body>
+    {{ template "content" . }}
+</body>
+
+</html>
+{{ end }}

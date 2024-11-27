@@ -1,0 +1,265 @@
+{{ define "page" }}
+<div class="d-flex w-100 h-100">
+    <div class="pt-4 w-100 h-100 overflow-y-scroll">
+        <div class="container">
+            <div class="row mb-3">
+                <div class="d-flex p-0">
+                    <div>
+                        <select class="form-select" id="team-select">
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="row" id="service-container">
+                <button
+                    class="d-none d-flex flex-grow-1 nav-link service-button text-start border rounded-1 mb-3 p-4 w-100"
+                    type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvas" data-service-id="placeholder"
+                    aria-controls="offcanvas" id="service--placeholder">
+                    <div class="container">
+                        <div class="row">
+                            <div class="col">
+                                <div class="d-flex flex-column h-100">
+                                    <b>Name</b>
+                                    <div class="d-flex flex-grow-1 align-items-center w-100"
+                                        id="service__name--placeholder">
+                                        Template
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-block d-md-none w-100"></div>
+                            <div class="col">
+                                <div class="d-flex flex-column h-100 ">
+                                    <b>Uptime</b>
+                                    <div class="d-flex flex-grow-1 align-items-center w-100">
+                                        <div class="progress text-center w-100 position-relative" role="progressbar">
+                                            <div class="position-absolute d-flex w-100 justify-content-center"
+                                                id="service__uptime__text--placeholder">
+                                            </div>
+                                            <div class="progress-bar" id="service__uptime--placeholder"
+                                                style="width:80%">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-block d-md-none w-100"></div>
+                            <div class="col-1">
+                                <div class="d-flex flex-column h-100 ">
+                                    <b>SLAs</b>
+                                    <div class="d-flex flex-grow-1 align-items-center w-100">
+                                        <span class="badge text-bg-secondary" id="service__slas--placeholder"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-block d-md-none w-100"></div>
+                            <div class="col">
+                                <div class="d-flex flex-column h-100">
+                                    <b> Last 10 Rounds</b>
+                                    <div class="d-flex flex-grow-1 align-items-center w-100"
+                                        id="service__checks--placeholder">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="offcanvas offcanvas-bottom" tabindex="-1" id="offcanvas" aria-labelledby="drilldown__label"
+    style="height:100vh">
+    <div class="offcanvas-header">
+        <button type="button" class="btn p-4" data-bs-dismiss="offcanvas" aria-label="Close">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+        <h5 class="offcanvas-title" id="drilldown__label">Title</h5>
+    </div>
+    <div class="offcanvas-body small">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Round</th>
+                    <th>Time</th>
+                    <th>Result</th>
+                    <th>Debug</th>
+                    <th>Error</th>
+                </tr>
+            </thead>
+            <tbody id="drilldown__list">
+                <tr class="placeholder-glow" id="drilldown__row--placeholder">
+                    <td width="10%"><span class="placeholder col-12"></span></td>
+                    <td width="20%"><span class="placeholder col-12"></span></td>
+                    <td width="10%"><span class="placeholder col-12"></span></td>
+                    <td width="30%"><span class="placeholder col-12"></span></td>
+                    <td width="30%"><span class="placeholder col-12"></span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const SERVICE_CONTAINER = document.getElementById("service-container")
+    const PLACEHOLDER_SERVICE = document.getElementById("service--placeholder")
+    const DRILLDOWN_TITLE = document.getElementById("drilldown__label")
+    const DRILLDOWN_PLACEHOLDER = document.getElementById("drilldown__row--placeholder")
+    const DRILLDOWN_LIST = document.getElementById("drilldown__list")
+
+    fetch("/api/teams")
+        .then((response) => {
+            if (!response.ok) {
+                Promise.reject(response)
+            }
+            return response.json()
+        })
+        .then((data) => {
+            let teams = data
+            let team_select = document.getElementById("team-select")
+            for (const i in teams) {
+                let team = teams[i]
+                let option = document.createElement("option")
+                option.value = team.ID
+                option.textContent = team.Name
+                team_select.appendChild(option)
+            }
+            team_select.addEventListener("change", (source) => {
+                SERVICE_CONTAINER.innerHTML = ""
+                const TEAM_ID = source.currentTarget.value
+                fetchServices(TEAM_ID)
+            })
+        })
+        .then(() => {
+            const TEAM_ID = document.getElementById("team-select").value
+            fetchServices(TEAM_ID)
+        })
+
+    function fetchServices(team_id) {
+
+        fetch(`/api/services/${team_id}`)
+            .then((response) => {
+                if (!response.ok) {
+                    Promise.reject(response)
+                }
+                return response.json()
+            })
+            .then((data) => {
+                const SERVICENAMES = data["service_names"]
+                const LAST10 = data["last_10_rounds"]
+                const SLACOUNTS = data["sla_counts"]
+                const UPTIMES = data["uptimes"]
+                let services = [];
+                for (const servicename of SERVICENAMES) {
+                    let nservice = PLACEHOLDER_SERVICE.cloneNode(true)
+                    nservice.classList.remove("placeholder-glow", "d-none")
+
+                    let name = nservice.querySelector("#service__name--placeholder")
+                    let uptime = nservice.querySelector("#service__uptime--placeholder")
+                    let uptime_text = nservice.querySelector("#service__uptime__text--placeholder")
+                    let slas = nservice.querySelector("#service__slas--placeholder")
+                    let checks = nservice.querySelector("#service__checks--placeholder")
+
+                    name.className = ""
+                    // uptime.className = ""
+                    checks.className = ""
+
+                    const UPTIME = Math.round(UPTIMES[servicename].PassedChecks / UPTIMES[servicename].TotalChecks * 100)
+
+                    name.textContent = servicename
+                    uptime_text.textContent = UPTIME + "%"
+                    uptime.style.width = UPTIME + "%"
+                    if (UPTIME >= 80) {
+                        uptime.classList.add("bg-success")
+                    } else if (UPTIME >= 50) {
+                        uptime.classList.add("bg-warning")
+                    } else {
+                        uptime.classList.add("bg-danger")
+                    }
+
+                    slas.textContent = SLACOUNTS[servicename]
+
+                    for (const round of LAST10) {
+                        let checkFoundInRound = false
+                        for (const check of round.Checks) {
+                            if (servicename == check.ServiceName) {
+                                checkFoundInRound = true
+                                let icon = document.createElement("img")
+                                if (check.Result) {
+                                    icon.src = "/static/assets/services/up.png"
+                                } else {
+                                    icon.src = "/static/assets/services/down.png"
+                                }
+                                icon.height = 25
+                                icon.width = 25
+                                icon.setAttribute("data-bs-toggle", "tooltip")
+                                icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString())
+                                checks.appendChild(icon)
+                            }
+                        }
+                        if (!checkFoundInRound) {
+                            let icon = document.createElement("img")
+                            icon.src = "/static/assets/services/pending.png"
+                            icon.height = 25
+                            icon.width = 25
+                            icon.setAttribute("data-bs-toggle", "tooltip")
+                            icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString())
+                            checks.appendChild(icon)
+                        }
+                    }
+
+                    nservice.setHTMLUnsafe(nservice.outerHTML.replaceAll("placeholder", servicename))
+                    nservice.setAttribute("data-service-id", servicename)
+                    services.push(nservice.firstChild)
+                }
+                for (let i = 0; i < services.length; i++) {
+                    SERVICE_CONTAINER.appendChild(services[i])
+                }
+
+                if (services.length == 0) {
+                    const message = document.createElement("div")
+                    message.classList.add("alert", "alert-warning")
+                    message.textContent = "No services found for this team."
+                    SERVICE_CONTAINER.appendChild(message)
+                }
+            })
+            .then(() => {
+                const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
+                const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
+            })
+            .then(() => {
+                document.querySelectorAll(".service-button").forEach((button) => {
+                    button.addEventListener("click", (source) => {
+                        const SERVICE_ID = source.currentTarget.getAttribute("data-service-id")
+                        const TEAM_ID = document.getElementById("team-select").value
+                        DRILLDOWN_TITLE.textContent = "Service: " + SERVICE_ID
+                        DRILLDOWN_LIST.textContent = ""
+                        DRILLDOWN_LIST.appendChild(DRILLDOWN_PLACEHOLDER.cloneNode(true))
+                        fetch(`/api/services/${TEAM_ID}/${SERVICE_ID}`)
+                            .then((response) => {
+                                if (!response.ok) {
+                                    Promise.reject(response)
+                                }
+                                return response.json()
+                            })
+                            .then((data) => {
+                                for (const a of data) {
+                                    let row = DRILLDOWN_PLACEHOLDER.cloneNode(true)
+                                    row.id = ""
+                                    row.childNodes[1].textContent = a.Round.ID
+                                    row.childNodes[3].textContent = (new Date(a.Round.StartTime)).toLocaleString()
+                                    row.childNodes[5].textContent = a.Result
+                                    row.childNodes[7].textContent = a.Debug
+                                    row.childNodes[9].textContent = a.Error
+
+                                    DRILLDOWN_LIST.appendChild(row)
+                                }
+                                DRILLDOWN_LIST.removeChild(DRILLDOWN_LIST.childNodes[0])
+                            })
+                    })
+                })
+            })
+    }
+
+</script>
+{{ end }}
