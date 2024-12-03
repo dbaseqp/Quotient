@@ -4,12 +4,14 @@ import (
 	"github.com/knadh/go-pop3"
 )
 
+// Pop3 represents a service check for the POP3 protocol.
 type Pop3 struct {
 	Service
 	Domain    string
 	Encrypted bool
 }
 
+// Run executes the POP3 service check for the given team and sends the result to the results channel.
 func (c Pop3) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		// Create a dialer so we can set timeouts
@@ -71,6 +73,8 @@ func (c Pop3) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the Pop3 service with the provided parameters and ensures
+// that all required fields are set. It also sets default values for missing fields.
 func (c *Pop3) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err

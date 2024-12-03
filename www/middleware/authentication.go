@@ -1,3 +1,9 @@
+/*
+Package middleware provides reusable HTTP middleware components for the application.
+
+This package includes functionality such as authentication, logging, and other
+common middleware patterns to be used across the application.
+*/
 package middleware
 
 import (
@@ -9,17 +15,28 @@ import (
 	"strings"
 )
 
+type contextKey string
+
+const (
+	usernameKey contextKey = "username"
+	rolesKey    contextKey = "roles"
+)
+
 // load in authentication sources
 
 // keycloak?
 // ldap
 // from config
 
-// middleware requiring authentication to even hit
+/*
+Authentication is a middleware function that ensures the user is authenticated
+and has the required roles to access the endpoint. If the user is not authenticated
+or does not have the necessary roles, it returns an appropriate HTTP status code.
+*/
 func Authentication(roles ...string) Middleware {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			username, user_roles := api.Authenticate(w, r)
+			username, userRoles := api.Authenticate(w, r)
 
 			if username == "" {
 				if slices.Contains(roles, "anonymous") {
@@ -37,11 +54,11 @@ func Authentication(roles ...string) Middleware {
 			}
 
 			// need to refactor for multi-roles
-			for _, user_role := range user_roles {
-				for _, allowed_role := range roles {
-					if user_role == allowed_role {
-						ctx := context.WithValue(r.Context(), "username", username)
-						ctx = context.WithValue(ctx, "roles", user_roles)
+			for _, userRole := range userRoles {
+				for _, allowedRole := range roles {
+					if userRole == allowedRole {
+						ctx := context.WithValue(r.Context(), contextKey(usernameKey), username)
+						ctx = context.WithValue(ctx, contextKey(rolesKey), userRoles)
 						next(w, r.WithContext(ctx))
 						return
 					}

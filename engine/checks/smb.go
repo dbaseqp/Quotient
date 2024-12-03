@@ -10,6 +10,7 @@ import (
 	"github.com/hirochachacha/go-smb2"
 )
 
+// Smb represents an SMB service check configuration and logic.
 type Smb struct {
 	Service
 	Domain string
@@ -23,6 +24,7 @@ type smbFile struct {
 	Regex string
 }
 
+// Run executes the SMB service check for the given team and sends the result to the results channel.
 func (c Smb) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		var username, password string
@@ -151,6 +153,7 @@ func (c Smb) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the SMB service check with the provided parameters and ensures defaults are set.
 func (c *Smb) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err

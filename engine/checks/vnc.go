@@ -8,10 +8,12 @@ import (
 	"github.com/mitchellh/go-vnc"
 )
 
+// Vnc represents a service check for a VNC server.
 type Vnc struct {
 	Service
 }
 
+// Run executes the VNC service check for a given team and sends the result to the results channel.
 func (c Vnc) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 
@@ -58,6 +60,7 @@ func (c Vnc) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the VNC service with the provided parameters and ensures defaults are set.
 func (c *Vnc) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err

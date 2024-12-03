@@ -1,3 +1,8 @@
+/*
+Package www provides the web interface for the application, including
+handlers for rendering pages, managing templates, and handling user
+authentication and session management.
+*/
 package www
 
 import (
@@ -55,10 +60,13 @@ func (router *Router) pageData(r *http.Request, unique map[string]any) map[strin
 	return data
 }
 
+// HomePage redirects users to the login page.
 func (router *Router) HomePage(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusPermanentRedirect)
 }
 
+// LoginPage handles the login functionality. It redirects authenticated users to the announcements page
+// and renders the login page for unauthenticated users.
 func (router *Router) LoginPage(w http.ResponseWriter, r *http.Request) {
 	if username, _ := api.Authenticate(w, r); username != "" {
 		http.Redirect(w, r, "/announcements", http.StatusTemporaryRedirect)
@@ -71,11 +79,13 @@ func (router *Router) LoginPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// LogoutPage handles user logout by clearing session data and redirecting to the login page.
 func (router *Router) LogoutPage(w http.ResponseWriter, r *http.Request) {
 	api.Logout(w, r)
 	http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
 }
 
+// AnnouncementsPage renders the announcements page for authenticated users.
 func (router *Router) AnnouncementsPage(w http.ResponseWriter, r *http.Request) {
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/announcements.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Announcements"})); err != nil {
@@ -83,6 +93,7 @@ func (router *Router) AnnouncementsPage(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// ServicesPage renders the services page for authenticated users.
 func (router *Router) ServicesPage(w http.ResponseWriter, r *http.Request) {
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/services.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Services"})); err != nil {
@@ -90,6 +101,7 @@ func (router *Router) ServicesPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// InjectsPage renders the injects page for authenticated users.
 func (router *Router) InjectsPage(w http.ResponseWriter, r *http.Request) {
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/injects.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Injects"})); err != nil {
@@ -97,6 +109,7 @@ func (router *Router) InjectsPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// PcrPage renders the PCRs page for authenticated users.
 func (router *Router) PcrPage(w http.ResponseWriter, r *http.Request) {
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/pcr.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "PCRs"})); err != nil {
@@ -104,6 +117,7 @@ func (router *Router) PcrPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// AdminPage renders the admin page for authenticated users.
 func (router *Router) AdminPage(w http.ResponseWriter, r *http.Request) {
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/admin/admin.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Admin"})); err != nil {
@@ -111,6 +125,7 @@ func (router *Router) AdminPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// AdministrateTeamsPage renders the team management page for admin users.
 func (router *Router) AdministrateTeamsPage(w http.ResponseWriter, r *http.Request) {
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/admin/teams.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Admin"})); err != nil {
@@ -118,6 +133,7 @@ func (router *Router) AdministrateTeamsPage(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// AdministrateEnginePage renders the engine management page for admin users.
 func (router *Router) AdministrateEnginePage(w http.ResponseWriter, r *http.Request) {
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/admin/engine.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Admin"})); err != nil {
@@ -125,6 +141,7 @@ func (router *Router) AdministrateEnginePage(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// GraphPage renders the graphs page for authenticated users.
 func (router *Router) GraphPage(w http.ResponseWriter, r *http.Request) {
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/graphs.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Graphs"})); err != nil {

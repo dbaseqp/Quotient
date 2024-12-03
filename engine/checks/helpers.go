@@ -40,6 +40,8 @@ func StringHash(fileContent string) (string, error) {
 	return hexEncode(string(hasher.Sum(nil))), nil
 }
 
+// GetFile reads the content of a file from the "scoredfiles" directory
+// and returns it as a string. It assumes the file exists and is readable.
 func GetFile(fileName string) (string, error) {
 	// TODO: fix insecure file path handling
 	// this isn't really an issue since if you can

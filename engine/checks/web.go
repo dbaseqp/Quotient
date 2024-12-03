@@ -14,6 +14,7 @@ import (
 	"github.com/corpix/uarand"
 )
 
+// Web represents a web service check configuration and logic.
 type Web struct {
 	Service
 	Url    []urlData
@@ -28,6 +29,8 @@ type urlData struct {
 	CompareFile string `toml:",omitempty"` // TODO implement
 }
 
+// Run executes the web service check logic for the given configuration.
+// It sends the result of the check to the provided results channel.
 func (c Web) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		u := c.Url[rand.Intn(len(c.Url))]
@@ -92,12 +95,11 @@ func (c Web) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 				checkResult.Debug = "couldn't find regex \"" + u.Regex + "\" for " + u.Path
 				response <- checkResult
 				return
-			} else {
-				checkResult.Status = true
-				checkResult.Debug = "matched regex \"" + u.Regex + "\" for " + u.Path
-				response <- checkResult
-				return
 			}
+			checkResult.Status = true
+			checkResult.Debug = "matched regex \"" + u.Regex + "\" for " + u.Path
+			response <- checkResult
+			return
 		}
 
 		checkResult.Status = true
@@ -107,6 +109,7 @@ func (c Web) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the Web service check with the provided parameters and validates its setup.
 func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
@@ -129,7 +132,7 @@ func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty 
 		}
 	}
 	if len(c.Url) == 0 {
-		return errors.New("no urls defined")
+		return errors.New("no URLs defined")
 	}
 	if c.Scheme == "" {
 		c.Scheme = "http"

@@ -1,3 +1,8 @@
+/*
+Package checks provides functionality for running service checks, managing service configurations,
+and processing results for a competitive environment. It includes definitions for service runners,
+result structures, and utility methods for handling credentials and service configurations.
+*/
 package checks
 
 import (
@@ -12,13 +17,17 @@ import (
 	"github.com/lib/pq"
 )
 
-// checks for each service
+/* Runner defines the interface for service checks. Each service check must implement
+   the Run method to execute the check and the Runnable method to determine if the check
+   can be executed. */
 type Runner interface {
 	Run(teamID uint, identifier string, resultsChan chan Result)
 	Runnable() bool
 }
 
-// services will inherit Service so that config.Config can be read from file, but will not be used after initial read
+/* Service represents a service configuration and its associated metadata.
+   services inherit Service so that config.Config can be read from file,
+   but will not be used after initial read */
 type Service struct {
 	Name         string         `toml:"-"`          // Name is the box name plus the service (ex. lunar-dns)
 	Display      string         `toml:",omitempty"` // Display is the name of the service (ex. dns)
@@ -34,6 +43,9 @@ type Service struct {
 	Target       string         `toml:",omitempty"`
 }
 
+/* Result represents the outcome of a service check, including details such as
+   the service name, target, team ID, status, debug information, error messages,
+   and points awarded for the check. */
 type Result struct {
 	ServiceName string `json:"name,omitempty"`
 	Target      string `json:"target,omitempty"`
@@ -80,6 +92,8 @@ func (service *Service) getCreds(teamID uint) (string, string, error) {
 	return username, password, nil
 }
 
+/* Configure sets up the service with the provided parameters, such as IP, points, timeout, SLA penalty, 
+   and SLA threshold. It also validates the credential list names to ensure they have the correct format. */
 func (service *Service) Configure(ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if service.Target == "" {
 		service.Target = ip
@@ -105,6 +119,8 @@ func (service *Service) Configure(ip string, points int, timeout int, slapenalty
 	return nil
 }
 
+/* Runnable determines if the service is ready to run based on its configuration,
+   including whether it is disabled, its launch time, and its stop time. */
 func (service Service) Runnable() bool {
 	if service.Disabled {
 		return false
@@ -118,6 +134,10 @@ func (service Service) Runnable() bool {
 	return true
 }
 
+/* Run executes the service check for a specific team. It replaces placeholders in the target string
+   with the team identifier, initializes a Result object, and invokes the provided definition function
+   to perform the check. The result is sent to the results channel, and a timeout is applied to ensure
+   the check does not exceed the configured duration. */
 func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan Result, definition func(teamID uint, teamIdentifier string, checkResult Result, response chan Result)) {
 	service.Target = strings.Replace(service.Target, "_", teamIdentifier, -1)
 

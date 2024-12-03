@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// InjectSchema represents the schema for an inject in the database.
 type InjectSchema struct {
 	ID              uint
 	Title           string `gorm:"unique"` // also used as directory name
@@ -41,7 +42,7 @@ func GetInjects() ([]InjectSchema, error) {
 	return injects, nil
 }
 
-// UpdateInject
+// UpdateInject updates an existing inject in the database
 func UpdateInject(inject InjectSchema) (InjectSchema, error) {
 	result := db.Table("inject_schemas").Save(&inject)
 	if result.Error != nil {

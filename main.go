@@ -1,3 +1,7 @@
+/*
+Package main is the entry point for the application. It initializes the configuration,
+sets up the scoring engine, connects to the database, and starts the web server.
+*/
 package main
 
 import (

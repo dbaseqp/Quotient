@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// TeamSchema represents the structure of a team in the database.
 type TeamSchema struct {
 	ID                uint
 	Name              string                   `gorm:"unique"` // https://www.postgresql.org/docs/current/functions-sequence.html#:~:text=Caution,of%20assigned%20values
@@ -18,6 +19,7 @@ type TeamSchema struct {
 	SubmissionData    []SubmissionSchema       `gorm:"foreignKey:TeamID"` // get inject submissions who belong to this team
 }
 
+// CreateTeam creates a new team in the database.
 func CreateTeam(team TeamSchema) (TeamSchema, error) {
 	result := db.Table("team_schemas").Create(&team)
 	if result.Error != nil {
@@ -26,32 +28,36 @@ func CreateTeam(team TeamSchema) (TeamSchema, error) {
 	return team, nil
 }
 
+// GetTeams retrieves all teams from the database, ordered by their ID.
 func GetTeams() ([]TeamSchema, error) {
 	var teams []TeamSchema
 	result := db.Table("team_schemas").Order("id").Find(&teams)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return teams, nil
-		} else {
-			return nil, result.Error
 		}
+		return nil, result.Error
 	}
 	return teams, nil
 }
 
+// GetTeamByUsername retrieves a team from the database by its name.
 func GetTeamByUsername(name string) (TeamSchema, error) {
 	var team TeamSchema
 	result := db.Table("team_schemas").Where("name = ?", name).First(&team)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return team, nil
-		} else {
-			return TeamSchema{}, result.Error
 		}
+		return TeamSchema{}, result.Error
 	}
 	return team, nil
 }
 
+/*
+GetTeamSummary retrieves a summary of a team's service names, SLA counts per service, 
+and the last 10 rounds for the team.
+*/
 func GetTeamSummary(teamID uint) ([]string, map[string]int, []RoundSchema, error) {
 	namePerService := []string{}
 	slaCountPerService := make(map[string]int)
@@ -61,12 +67,9 @@ func GetTeamSummary(teamID uint) ([]string, map[string]int, []RoundSchema, error
 	if result := db.Table("service_check_schemas").Select("DISTINCT(service_name)").Where("team_id = ?", teamID).Find(&namePerService); result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return namePerService, slaCountPerService, last10RoundsPerService, nil
-		} else {
-			return nil, nil, nil, result.Error
 		}
+		return nil, nil, nil, result.Error
 	}
-
-	// get uptime per service for this team
 
 	// get sla counts per service for this team
 	for _, name := range namePerService {
@@ -81,7 +84,9 @@ func GetTeamSummary(teamID uint) ([]string, map[string]int, []RoundSchema, error
 	for rows.Next() {
 		var name string
 		var count int
-		rows.Scan(&name, &count)
+		if err := rows.Scan(&name, &count); err != nil {
+			return nil, nil, nil, err
+		}
 		slaCountPerService[name] = count
 	}
 
@@ -89,14 +94,13 @@ func GetTeamSummary(teamID uint) ([]string, map[string]int, []RoundSchema, error
 	if result := db.Table("round_schemas").Preload("Checks", "team_id = ?", teamID).Order("id desc").Limit(10).Find(&last10RoundsPerService); result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return namePerService, slaCountPerService, last10RoundsPerService, nil
-		} else {
-			return nil, nil, nil, result.Error
 		}
+		return nil, nil, nil, result.Error
 	}
-
 	return namePerService, slaCountPerService, last10RoundsPerService, nil
 }
 
+// UpdateTeam updates the identifier and active status of a team in the database.
 func UpdateTeam(teamID uint, identifier string, active bool) error {
 	result := db.Table("team_schemas").Where("id = ?", teamID).Updates(map[string]interface{}{"identifier": identifier, "active": active})
 	if result.Error != nil {
@@ -105,6 +109,7 @@ func UpdateTeam(teamID uint, identifier string, active bool) error {
 	return nil
 }
 
+// GetTeamScore takes a teamid and returns service points and sla violations
 func GetTeamScore(teamID uint) (int, int, int, error) {
 	// get service points
 	servicePoints := 0
@@ -122,9 +127,8 @@ func GetTeamScore(teamID uint) (int, int, int, error) {
 	if result := db.Table("sla_schemas").Where("team_id = ?", teamID).Find(&slas); result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return servicePoints, 0, servicePoints, nil
-		} else {
-			return 0, 0, 0, result.Error
 		}
+		return 0, 0, 0, result.Error
 	}
 
 	slaPoints := 0

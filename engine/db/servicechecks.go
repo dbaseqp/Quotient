@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// ServiceCheckSchema represents the schema for service checks in the database.
 type ServiceCheckSchema struct {
 	TeamID      uint
 	RoundID     uint
@@ -17,6 +18,7 @@ type ServiceCheckSchema struct {
 	Debug       string // informational
 }
 
+// GetServiceCheckSumByTeam calculates the sum of points for each team where the result is true.
 func GetServiceCheckSumByTeam() (map[uint]any, error) {
 	result := make(map[uint]any)
 	rows, err := db.Model(ServiceCheckSchema{}).Select("team_id, sum(points) as total").Group("team_id").Having("result = ?", true).Rows()
@@ -39,6 +41,12 @@ func GetServiceCheckSumByTeam() (map[uint]any, error) {
 	return result, nil
 }
 
+/*
+GetServiceCheckSumByRound calculates the cumulative sum of points for each team
+across all rounds, taking into account penalties from SLAs. It returns a slice
+of maps, where each map corresponds to a round and contains team IDs as keys
+and their respective cumulative points as values.
+*/
 func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 	var last RoundSchema
 
@@ -120,11 +128,22 @@ func GetServiceAllChecksByTeam(teamID uint, serviceID string) ([]ServiceCheckSch
 	return checks, nil
 }
 
+/*
+Uptime represents the uptime statistics for a service, including the number
+of passed checks and the total number of checks.
+*/
 type Uptime struct {
 	PassedChecks int
 	TotalChecks  int
 }
 
+/*
+LoadUptimes populates the uptime statistics for each service and team.
+
+It calculates the number of passed checks and total checks for each service
+and stores the results in the provided `uptimePerService` map, which is
+organized by team ID and service name.
+*/
 func LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
 	rows, err := db.Raw(`
 		SELECT team_id, service_name, 
@@ -160,6 +179,14 @@ func LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
 	return nil
 }
 
+/*
+LoadSLAs populates SLA penalties for each service and team.
+
+It calculates the number of consecutive failed checks for each service and team.
+If the number of failures reaches the SLA threshold, a penalty is applied.
+The results are stored in the provided `slaPerService` map, organized by team ID
+and service name.
+*/
 func LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) error {
 	rows, err := db.Table("service_check_schemas").Select("team_id, service_name, result").Rows()
 	if err != nil {

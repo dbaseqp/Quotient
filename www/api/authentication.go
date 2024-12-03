@@ -20,10 +20,11 @@ import (
 var (
 	hashKey       []byte
 	blockKey      []byte
+	// CookieEncoder is used to encode and decode secure cookies for authentication.
 	CookieEncoder *securecookie.SecureCookie
 )
 
-const COOKIENAME = "quotient"
+const COOKIENAME = "quotient" // COOKIENAME is the name of the cookie used for authentication.
 
 func init() {
 	if _, err := os.Stat("config/COOKIEKEY"); err != nil {
@@ -58,6 +59,7 @@ func init() {
 	CookieEncoder = securecookie.New(hashKey, blockKey)
 }
 
+// Login handles user authentication by validating credentials and setting a secure cookie.
 func Login(w http.ResponseWriter, r *http.Request) {
 	type Form struct {
 		Username string `json:"username"`
@@ -103,6 +105,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Successful login", "username", form.Username)
 }
 
+// Logout clears the authentication cookie and logs out the user.
 func Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     COOKIENAME,
@@ -115,8 +118,7 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Successful logout", "username", r.Context().Value("username"))
 }
 
-// helper func
-// should return value
+// Authenticate validates the authentication cookie and returns the username and roles.
 func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 	token, err := r.Cookie(COOKIENAME)
 	if err != nil {

@@ -7,10 +7,13 @@ import (
 	// why are there no good rdp libraries?
 )
 
+// Rdp represents a Remote Desktop Protocol (RDP) service check.
 type Rdp struct {
 	Service
 }
 
+// Run executes the RDP service check by attempting to establish a TCP connection
+// to the target host and port within the specified timeout.
 func (c Rdp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		_, err := net.DialTimeout("tcp", c.Target+":"+strconv.Itoa(c.Port), time.Duration(c.Timeout)*time.Second)
@@ -27,6 +30,8 @@ func (c Rdp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the RDP service with the provided parameters and ensures
+// that default values are set for display name, service name, and port if not specified.
 func (c *Rdp) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
