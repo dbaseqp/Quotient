@@ -1,3 +1,10 @@
+/*
+Package engine provides the core functionality for the scoring engine.
+
+It manages configuration, state, and operations for scoring rounds, tracking uptime,
+and SLA statistics. The engine supports multiple event types such as "koth" and "rvb",
+and handles team credentials, service checks, and round management.
+*/
 package engine
 
 import (
@@ -17,11 +24,23 @@ import (
 	"quotient/engine/db"
 )
 
+// Package engine provides the core functionality for the scoring engine.
+
+// ScoringEngine represents the core structure of the scoring engine, managing configuration,
+// state, and operations for scoring rounds and tracking uptime/SLA statistics.
 type ScoringEngine struct {
+	// Config holds the configuration settings for the scoring engine.
 	Config                *config.ConfigSettings
+
+	// CredentialsMutex ensures thread-safe access to team credentials.
 	CredentialsMutex      map[uint]*sync.Mutex
+
+	// UptimePerService tracks uptime statistics for each service by team.
 	UptimePerService      map[uint]map[string]db.Uptime
+
+	// SLAPerService tracks SLA violations for each service by team.
 	SlaPerService         map[uint]map[string]int
+
 	EnginePauseWg         *sync.WaitGroup
 	IsEnginePaused        bool
 	CurrentRound          int
@@ -32,6 +51,7 @@ type ScoringEngine struct {
 	ResetChan chan struct{}
 }
 
+// NewEngine initializes a new ScoringEngine with the provided configuration.
 func NewEngine(conf *config.ConfigSettings) *ScoringEngine {
 	return &ScoringEngine{
 		Config:           conf,
@@ -42,6 +62,7 @@ func NewEngine(conf *config.ConfigSettings) *ScoringEngine {
 	}
 }
 
+// Start begins the scoring engine's main loop.
 func (se *ScoringEngine) Start() {
 	if t, err := db.GetLastRound(); err != nil {
 		log.Fatalf("failed to get last round: %v", err)
@@ -105,10 +126,13 @@ func (se *ScoringEngine) Start() {
 	// this return should kill any running goroutines by breaking the loop
 }
 
+// GetUptimePerService returns the uptime statistics for each service by team.
 func (se *ScoringEngine) GetUptimePerService() map[uint]map[string]db.Uptime {
 	return se.UptimePerService
 }
 
+// GetCredlists retrieves a list of credential list filenames from the "config/credlists/" directory.
+// It filters files with the ".credlist" extension and returns their names.
 func (se *ScoringEngine) GetCredlists() []string {
 	var credlists []string
 
@@ -127,6 +151,8 @@ func (se *ScoringEngine) GetCredlists() []string {
 	return credlists
 }
 
+// PauseEngine pauses the scoring engine by incrementing the wait group counter.
+// This prevents the engine loop from proceeding until ResumeEngine is called.
 func (se *ScoringEngine) PauseEngine() {
 	if !se.IsEnginePaused {
 		se.EnginePauseWg.Add(1)
@@ -134,6 +160,8 @@ func (se *ScoringEngine) PauseEngine() {
 	}
 }
 
+// ResumeEngine resumes the scoring engine by decrementing the wait group counter.
+// This allows the engine loop to proceed if it was previously paused.
 func (se *ScoringEngine) ResumeEngine() {
 	if se.IsEnginePaused {
 		se.EnginePauseWg.Done()
@@ -141,7 +169,7 @@ func (se *ScoringEngine) ResumeEngine() {
 	}
 }
 
-// ResetEngine resets the engine to the initial state and stops the engine
+ // ResetScores resets the engine to the initial state and stops the engine
 func (se *ScoringEngine) ResetScores() error {
 	slog.Info("resetting scores")
 	se.ResetChan <- struct{}{}
@@ -213,14 +241,14 @@ func (se *ScoringEngine) rvb() {
 			Error:       result.Error,
 			Debug:       result.Debug,
 		})
-		slog.Debug("service check finished", "team_id", result.TeamID, "service_name", result.ServiceName, "result", result.Status)
+		slog.Debug(fmt.Sprintf("Service check finished: Team %d, Service %s: Success=%t", result.TeamID, result.ServiceName, result.Status))
 		runners--
 	}
 
 	round.Checks = results
-	slog.Debug("finished all service checks")
+	slog.Debug("Finished all service checks")
 	if _, err := db.CreateRound(round); err != nil {
-		slog.Error("failed to create round", "error", err.Error())
+		slog.Error("Failed to create round", "error", err.Error())
 	} else {
 		for _, check := range results {
 			// make sure uptime map is initialized
@@ -264,6 +292,9 @@ func (se *ScoringEngine) rvb() {
 	}
 }
 
+// LoadCredentials loads credential files into the scoring engine for each team.
+// It ensures that each team's credential files are properly initialized and copied
+// from the configuration directory to the submissions directory.
 func (se *ScoringEngine) LoadCredentials() error {
 	credlistFiles, err := os.ReadDir("config/credlists/")
 	if err != nil {
@@ -312,6 +343,8 @@ func (se *ScoringEngine) LoadCredentials() error {
 	return nil
 }
 
+ // UpdateCredentials updates the credentials for a specific team and credential list.
+ // It ensures thread-safe updates and writes the updated credentials back to the file.
 func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string) error {
 	se.CredentialsMutex[teamID].Lock()
 

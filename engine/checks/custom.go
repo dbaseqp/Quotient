@@ -10,6 +10,7 @@ import (
 	"al.essio.dev/pkg/shellescape"
 )
 
+// Custom represents a custom service check that executes a command and validates its output.
 type Custom struct {
 	Service
 	Command string
@@ -25,6 +26,7 @@ func commandOutput(cmd string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// Run executes the custom service check by forming a command, running it, and validating the output.
 func (c Custom) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 
@@ -87,6 +89,7 @@ func (c Custom) Run(teamID uint, teamIdentifier string, resultsChan chan Result)
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the Custom check with the provided parameters and ensures all required fields are set.
 func (c *Custom) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err

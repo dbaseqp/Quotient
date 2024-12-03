@@ -8,9 +8,11 @@ import (
 	"regexp"
 	"strings"
 
+	// Blank import to register the MySQL driver with the database/sql package.
 	_ "github.com/go-sql-driver/mysql"
 )
 
+// Sql represents a service that performs SQL-based checks.
 type Sql struct {
 	Service
 	Kind  string
@@ -24,6 +26,7 @@ type queryData struct {
 	Output   string `toml:",omitempty"`
 }
 
+// Run executes the SQL check for the given team and sends the result to the results channel.
 func (c Sql) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		username, password, err := c.getCreds(teamID)
@@ -117,6 +120,7 @@ func (c Sql) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the SQL service with the provided parameters and validates its setup.
 func (c *Sql) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err

@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// BoxSchema represents the schema for a box in the database.
 type BoxSchema struct {
 	ID       uint
 	IP       string        `gorm:"unique"`
@@ -18,6 +19,8 @@ type BoxSchema struct {
 	Attacks  []AttackSchema `gorm:"foreignKey:BoxID"`
 }
 
+// LoadBoxes loads box configurations into the database.
+// It uses a transaction to ensure atomicity and avoids duplicate entries with OnConflict.
 func LoadBoxes(config *config.ConfigSettings) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		for _, box := range config.Box {
@@ -35,20 +38,21 @@ func LoadBoxes(config *config.ConfigSettings) error {
 	return nil
 }
 
+// GetBoxes retrieves all box records from the database.
+// Returns a slice of BoxSchema and an error if any occurs during the query.
 func GetBoxes() ([]BoxSchema, error) {
 	var boxes []BoxSchema
 	result := db.Table("box_schemas").Find(&boxes)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return boxes, nil
-		} else {
-			return nil, result.Error
 		}
+		return nil, result.Error
 	}
 	return boxes, nil
 }
 
-// Sets the default value for Ports to an empty slice so that it is not nil
+// AfterFind sets the default value for Ports to an empty slice so that it is not nil
 func (box *BoxSchema) AfterFind(*gorm.DB) error {
 	if box.Ports == nil {
 		box.Ports = []int32{}
@@ -56,7 +60,7 @@ func (box *BoxSchema) AfterFind(*gorm.DB) error {
 	return nil
 }
 
-// update a box
+// UpdateBox updates a box record in the database
 func UpdateBox(box BoxSchema) (BoxSchema, error) {
 	result := db.Table("box_schemas").Save(&box)
 	if result.Error != nil {

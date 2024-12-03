@@ -15,6 +15,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// Ssh represents the configuration and behavior for an SSH service check.
 type Ssh struct {
 	Service
 	PrivKey     string `toml:",omitempty"`
@@ -29,6 +30,7 @@ type commandData struct {
 	Output   string `toml:",omitempty"`
 }
 
+// Run executes the SSH check for the given team and sends the result to the results channel.
 func (c Ssh) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 
@@ -195,6 +197,7 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the SSH service check with the provided parameters and validates its setup.
 func (c *Ssh) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err

@@ -8,12 +8,14 @@ import (
 	ldap "github.com/go-ldap/ldap/v3"
 )
 
+// Ldap represents a service check for LDAP authentication.
 type Ldap struct {
 	Service
 	Domain    string
 	Encrypted bool
 }
 
+// Run executes the LDAP service check for a given team and sends the result to the results channel.
 func (c Ldap) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		// Set timeout
@@ -68,6 +70,7 @@ func (c Ldap) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the LDAP service with the provided parameters and ensures defaults are set.
 func (c *Ldap) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
