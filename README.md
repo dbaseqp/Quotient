@@ -9,6 +9,8 @@ docker build ./ -t quotient_server
 docker-compose up --detach
 ```
 
+Through the Admin UI you will have to specify the "Identifier" for each team. This is the unique part of the target address. Also, you will need to mark the team as "Active" so that the team can start scoring.
+
 If you want to rotate the IP, use the following script:
 
 ```bash
