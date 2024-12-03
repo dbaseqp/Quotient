@@ -26,7 +26,22 @@ IP rotation is still currently under development.
 
 #### Basics
 
-The configuration file is a TOML file that is used to configure the scoring engine. The configuration file is located in the `./config` directory and is named `event.conf`. 
+The `config` directory contains the configurations for the scoring engine. The primarily uses a TOML file to configure the engine. The configuration file is broken up into sections.
+
+```
+/quotient
+└── config
+    ├── certs/
+    ├── credlists/
+    ├── injects/
+    ├── scoredfiles/
+    ├── COOKIEKEY
+    └── event.conf
+```
+
+#### Configuration File
+
+The configuration file is a TOML file that is used to configure the scoring engine. The configuration file is located in the `./config` directory and is named `event.conf`. `COOKIEKEY` is auto-generated and is used to encrypt the session cookie. The `certs` directory is used to store any SSL certificates that are used by the scoring engine such as potential LDAPS certificates for the Docker container (since it won't inherit from the system). The `injects` directory is used to store any files that are uploaded for inject definitions (note: inject submissions will go in `/submissions`). The `scoredfiles` directory is used to store any files that are uploaded for scoring purposes (like SSH private keys). 
 
 The configuration file is broken up into sections. Only the `RequiredSettings` section is required. The other sections are optional and can be omitted if not needed.
 
@@ -38,6 +53,17 @@ Cred lists need to be CSVs specified in the `./config/credlists` directory with 
 joe,s3cret
 robby,mypass
 johndoe,helloworld
+```
+
+They should be specified for each check that requires a credlist. The `credlists` field expects an array of strings of the exact file name of credlist to be used.
+
+```
+[[box]]
+name = "example"
+ip = "10.100.1_.2"
+
+    [[box.ssh]]
+    credlists = ["web01.credlist"]
 ```
 
 ### Configuration Sections
@@ -122,10 +148,13 @@ pw = "password"
 
 #### Environment Configuration
 
+The IP address of the target box should be the IP the scoring engine will use. To templatize the IP address, use an underscore `_` in place of the part of the IP address that will be unique per team. This is the "Identifier" that you must specify through the Admin UI per team. The scoring engine will replace the underscore with the "Identifier" to create the unique target address for each team. If the target should use a DNS name, you can specify that by setting `ip` field to the DNS name (which will be used for all checks under the box) or using the `target` field at the individual check level. Template the DNS name with an underscore `_` in place of the part of the DNS name that will be unique per team.
+
 ```toml
 [[box]]
 name = "web01"
 ip = "10.100.1_.2"
+# ip = "team_.example.tld"
 ```
 
 Each service check is defined beneath a box.
@@ -135,8 +164,12 @@ Each service check is defined beneath a box.
 name = "web01"
 ip = "10.100.1_.2"
 
-    [[box.web]]
-    display = "web01"
+    [[box.web]] # type of check you want
+    display = "web01" # name of the check that gets appended to the box name
+    # target = "team_.example.tld" # if you want to use a DNS name
 
-        [[box.web.url]]
+        [[box.web.url]] # some checks have components you need to include
         path = "/index.html"
+```
+
+Custom checks can be added to the `./engine/checks/custom/` directory. It is very common to make the custom check simply run some other script that you have written that has the necessary logic to check the service. The script should return a 0 if the service is up and anything else if it is down. The script should be executable.
