@@ -7,6 +7,7 @@ import (
 	"github.com/go-ping/ping"
 )
 
+// Ping represents a service that performs ICMP ping checks.
 type Ping struct {
 	Service
 	Count           int
@@ -14,6 +15,7 @@ type Ping struct {
 	Percent         int
 }
 
+// Run executes the ICMP ping check for the Ping service.
 func (c Ping) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		// Create pinger
@@ -62,6 +64,8 @@ func (c Ping) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the Ping service with the provided parameters and ensures
+// that all required fields are set. It also sets default values for missing fields.
 func (c *Ping) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err

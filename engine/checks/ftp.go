@@ -12,17 +12,20 @@ import (
 	"github.com/jlaffaye/ftp"
 )
 
+// Ftp represents an FTP service check configuration and logic.
 type Ftp struct {
 	Service
 	File []FtpFile
 }
 
+// FtpFile represents a file to be checked on an FTP server, with options for hash or regex validation.
 type FtpFile struct {
 	Name  string
 	Hash  string
 	Regex string
 }
 
+// Run executes the FTP service check for the given team ID and sends the result to the results channel.
 func (c Ftp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		conn, err := ftp.Dial(c.Target+":"+strconv.Itoa(c.Port), ftp.DialWithTimeout(time.Duration(c.Timeout)*time.Second))
@@ -111,6 +114,8 @@ func (c Ftp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the FTP service check with the provided parameters and validates the configuration.
+// It ensures that the service is properly set up and that no conflicting file checks (regex and hash) exist.
 func (c *Ftp) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err

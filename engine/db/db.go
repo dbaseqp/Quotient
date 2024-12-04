@@ -19,6 +19,8 @@ var (
 	db *gorm.DB
 )
 
+// Connect establishes a connection to the database using the provided connection URL.
+// It also performs auto-migration for the defined schemas.
 func Connect(connectURL string) {
 	var err error
 
@@ -48,6 +50,8 @@ func Connect(connectURL string) {
 	}
 }
 
+// AddTeams adds teams to the database from the configuration settings.
+// It supports adding teams from both the configuration file and an LDAP source.
 func AddTeams(conf *config.ConfigSettings) error {
 	for _, team := range conf.Team {
 		t := TeamSchema{Name: team.Name}
@@ -108,6 +112,7 @@ func AddTeams(conf *config.ConfigSettings) error {
 	return nil
 }
 
+// ResetScores truncates the service_check_schemas, round_schemas, and sla_schemas tables with cascade.
 func ResetScores() error {
 	// truncate servicecheckschemas, slaschemas, and roundschemas with cascade
 	if err := db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas CASCADE").Error; err != nil {

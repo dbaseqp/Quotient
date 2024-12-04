@@ -11,6 +11,7 @@ import (
 	"github.com/masterzen/winrm"
 )
 
+// WinRM represents a service check for Windows Remote Management (WinRM).
 type WinRM struct {
 	Service
 	Encrypted   bool
@@ -24,6 +25,7 @@ type winCommandData struct {
 	Output   string
 }
 
+// Run executes the WinRM service check for the specified team and sends the result to the results channel.
 func (c WinRM) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		username, password, err := c.getCreds(teamID)
@@ -100,6 +102,7 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, resultsChan chan Result) 
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the WinRM service with the provided parameters and validates its setup.
 func (c *WinRM) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err

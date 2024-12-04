@@ -15,6 +15,10 @@ import (
 	"gorm.io/gorm"
 )
 
+/*
+GetAnnouncements handles the HTTP request to retrieve all announcements.
+It filters announcements based on the user's roles and whether the announcements are open.
+*/
 func GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 	data, err := db.GetAnnouncements()
 	if err != nil {
@@ -26,9 +30,9 @@ func GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// if not admin filter out announcements that are not open yet
-	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
-		if slices.Contains(req_roles, "red") && !conf.UISettings.ShowAnnouncementsForRedTeam {
+	reqRoles := r.Context().Value("roles").([]string)
+	if !slices.Contains(reqRoles, "admin") {
+		if slices.Contains(reqRoles, "red") && !conf.UISettings.ShowAnnouncementsForRedTeam {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
@@ -46,6 +50,11 @@ func GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 	w.Write(d)
 }
 
+/*
+DownloadAnnouncementFile handles the HTTP request to download a specific file
+associated with an announcement. It validates the announcement ID, file name,
+and user permissions before serving the file.
+*/
 func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 	// get the announcement id from the request
 	announcementID := r.PathValue("id")
@@ -94,9 +103,9 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// if not admin check if the announcement is open
-	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
-		if slices.Contains(req_roles, "red") && !conf.UISettings.ShowAnnouncementsForRedTeam {
+	reqRoles := r.Context().Value("roles").([]string)
+	if !slices.Contains(reqRoles, "admin") {
+		if slices.Contains(reqRoles, "red") && !conf.UISettings.ShowAnnouncementsForRedTeam {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
@@ -145,6 +154,11 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+/*
+CreateAnnouncement handles the HTTP request to create a new announcement.
+It validates the input, saves the announcement to the database, and uploads
+associated files to the filesystem.
+*/
 func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -252,10 +266,18 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 	w.Write(d)
 }
 
+/*
+UpdateAnnouncement handles the HTTP request to update an existing announcement.
+Currently, this function is a placeholder and needs implementation.
+*/
 func UpdateAnnouncement(w http.ResponseWriter, r *http.Request) {
 
 }
 
+/*
+DeleteAnnouncement handles the HTTP request to delete an existing announcement.
+It removes the announcement from the database and deletes associated files from the filesystem.
+*/
 func DeleteAnnouncement(w http.ResponseWriter, r *http.Request) {
 	announcementID := r.PathValue("id")
 	if announcementID == "" {

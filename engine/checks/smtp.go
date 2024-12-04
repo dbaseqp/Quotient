@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+ // Smtp represents a service that performs SMTP checks, including sending emails
+ // with optional encryption and custom authentication.
 type Smtp struct {
 	Service
 	Encrypted bool
@@ -30,6 +32,8 @@ func (a unencryptedAuth) Start(server *smtp.ServerInfo) (string, []byte, error) 
 	return a.Auth.Start(&s)
 }
 
+// Run executes the SMTP check for the given team ID and sends the result to the results channel.
+// It performs actions such as connecting to the SMTP server, authenticating, and sending an email.
 func (c Smtp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		fortunes, err := os.ReadFile("/usr/share/games/fortunes/fortunes")
@@ -182,6 +186,9 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the SMTP service with the provided parameters and ensures
+// that all required fields are set. It sets default values for missing fields
+// like Display, Name, and Port.
 func (c *Smtp) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err

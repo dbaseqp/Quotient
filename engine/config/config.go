@@ -1,3 +1,8 @@
+/*
+Package config provides structures and methods for loading, validating, and managing
+the configuration settings of the engine. It supports TOML-based configuration files
+and includes validation logic to ensure proper setup of required and optional settings.
+*/
 package config
 
 import (
@@ -18,6 +23,7 @@ var (
 	supportedEvents = []string{"rvb", "koth"} // golang doesn't have constant arrays :/
 )
 
+// ConfigSettings holds the configuration settings for the engine, including required, optional, and team-specific configurations.
 type ConfigSettings struct {
 	// General engine settings
 	RequiredSettings RequiredConfig `toml:"RequiredSettings,omitempty" json:"RequiredSettings,omitempty"`
@@ -39,6 +45,10 @@ type ConfigSettings struct {
 	Box   []Box
 }
 
+/*
+RequiredConfig holds the mandatory configuration settings for the engine.
+These settings are essential for the engine to function correctly.
+*/
 type RequiredConfig struct {
 	EventName    string
 	EventType    string
@@ -46,6 +56,10 @@ type RequiredConfig struct {
 	BindAddress  string
 }
 
+/*
+LdapAuthConfig holds the configuration settings for LDAP authentication.
+It includes connection details, bind credentials, and group DNs for different roles.
+*/
 type LdapAuthConfig struct {
 	LdapConnectUrl   string
 	LdapBindDn       string
@@ -56,11 +70,16 @@ type LdapAuthConfig struct {
 	LdapTeamGroupDn  string
 }
 
+// SslConfig holds the configuration settings for SSL/TLS, including the certificate and key file paths.
 type SslConfig struct {
 	HttpsCert string `toml:"httpscert,omitempty" json:"httpscert,omitempty"`
 	HttpsKey  string `toml:"httpskey,omitempty" json:"httpskey,omitempty"`
 }
 
+/*
+MiscConfig holds miscellaneous configuration settings for the engine.
+These include settings for debugging, UI, round delays, and default check parameters.
+*/
 type MiscConfig struct {
 	EasyPCR             bool
 	ShowDebugToBlueTeam bool
@@ -81,21 +100,35 @@ type MiscConfig struct {
 	SlaPenalty   int
 }
 
+/*
+UIConfig holds the configuration settings for the user interface (UI).
+It includes options to enable or disable specific UI features.
+*/
 type UIConfig struct {
 	DisableInfoPage             bool
 	DisableGraphsForBlueTeam    bool
 	ShowAnnouncementsForRedTeam bool
 }
 
+/*
+User represents a user in the system, which can be an Admin, Red, or Team user.
+It includes a Name and a Password (Pw) for authentication purposes.
+*/
 type User struct {
 	Name string
 	Pw   string
 }
 
+// Admin represents an administrative user in the system.
 type Admin User
+
+//Red represents a user in the Red Team.
 type Red User
+
+// Team represents a Blue Team user in the system.
 type Team User
 
+// Box represents a configuration for a specific blue team service box in the system.
 type Box struct {
 	Name string
 	IP   string
@@ -121,7 +154,10 @@ type Box struct {
 	WinRM  []checks.WinRM  `toml:"Winrm,omitempty" json:"winrm,omitempty"`
 }
 
-// Load in a config
+/*
+SetConfig loads the configuration from the specified file path into the Settings structure.
+It validates the configuration and sets default values for missing optional settings.
+*/
 func (conf *ConfigSettings) SetConfig(path string) error {
 	tempConf := ConfigSettings{}
 	fileContent, err := os.ReadFile(path)
@@ -129,12 +165,12 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 		return fmt.Errorf("configuration file ("+path+") not found:", err)
 	}
 
-	if md, err := toml.Decode(string(fileContent), &tempConf); err != nil {
+	md, err := toml.Decode(string(fileContent), &tempConf)
+	if err != nil {
 		return err
-	} else {
-		for _, undecoded := range md.Undecoded() {
-			slog.Warn("undecoded configuration key \"" + undecoded.String() + "\" will not be used.")
-		}
+	}
+	for _, undecoded := range md.Undecoded() {
+		slog.Warn("undecoded configuration key \"" + undecoded.String() + "\" will not be used.")
 	}
 
 	// check the configuration and set defaults

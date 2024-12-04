@@ -15,6 +15,11 @@ import (
 	"gorm.io/gorm"
 )
 
+/*
+GetInjects handles the HTTP request to retrieve a list of injects.
+It filters injects based on the user's roles and includes submissions
+for each inject, further filtering submissions for non-admin users.
+*/
 func GetInjects(w http.ResponseWriter, r *http.Request) {
 	data, err := db.GetInjects()
 	if err != nil {
@@ -26,8 +31,8 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// if not admin filter out injects that are not open yet
-	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
+	reqRoles := r.Context().Value("roles").([]string)
+	if !slices.Contains(reqRoles, "admin") {
 		openInjects := make([]db.InjectSchema, 0)
 		for _, a := range data {
 			if time.Now().After(a.OpenTime) {
@@ -46,7 +51,7 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 			w.Write(d)
 			return
 		}
-		if !slices.Contains(req_roles, "admin") {
+		if !slices.Contains(reqRoles, "admin") {
 			var mySubmissions []db.SubmissionSchema
 			for _, submission := range data[i].Submissions {
 				if submission.Team.Name == r.Context().Value("username") {
@@ -61,6 +66,11 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 	w.Write(d)
 }
 
+/*
+DownloadInjectFile handles the HTTP request to download a specific file
+associated with an inject. It validates the inject ID, file name, and
+user permissions before serving the file.
+*/
 func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	// get the inject id from the request
 	injectID := r.PathValue("id")
@@ -117,8 +127,8 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// if not admin check if the inject is open
-	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") && time.Now().Before(inject.OpenTime) {
+	reqRoles := r.Context().Value("roles").([]string)
+	if !slices.Contains(reqRoles, "admin") && time.Now().Before(inject.OpenTime) {
 		w.WriteHeader(http.StatusNotFound)
 		data := map[string]any{"error": "Inject not found"} // don't leak if inject is not open
 		d, _ := json.Marshal(data)
@@ -162,6 +172,10 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+/*
+CreateInject handles the HTTP request to create a new inject.
+It validates the input, saves the inject to the database, and uploads associated files.
+*/
 func CreateInject(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -308,6 +322,10 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 	w.Write(d)
 }
 
+/*
+UpdateInject handles the HTTP request to update an existing inject.
+It validates the input, updates the inject in the database, and manages associated files.
+*/
 func UpdateInject(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -438,12 +456,12 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 				d, _ := json.Marshal(data)
 				w.Write(d)
 				return
-			} else {
-				// Remove the file from the database
-				inject.InjectFileNames = slices.DeleteFunc(inject.InjectFileNames, func(filename string) bool {
-					return filename == dirFile.Name()
-				})
 			}
+
+			// Remove the file from the database
+			inject.InjectFileNames = slices.DeleteFunc(inject.InjectFileNames, func(filename string) bool {
+				return filename == dirFile.Name()
+			})
 		}
 	}
 
@@ -530,6 +548,11 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 	w.Write(d)
 }
 
+/*
+DeleteInject handles the HTTP request to delete an inject.
+It validates the inject ID, deletes the inject from the database,
+and removes associated files from the filesystem.
+*/
 func DeleteInject(w http.ResponseWriter, r *http.Request) {
 	injectID := r.PathValue("id")
 	if injectID == "" {

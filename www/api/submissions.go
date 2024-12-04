@@ -13,6 +13,10 @@ import (
 	"time"
 )
 
+/*
+CreateSubmission handles the creation of a new submission for an inject.
+It validates the request, processes the uploaded file, and stores the submission details in the database.
+*/
 func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 	temp, err := strconv.ParseUint(r.PathValue("id"), 10, 32)
 	if err != nil {
@@ -135,6 +139,10 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 	w.Write(d)
 }
 
+/*
+DownloadSubmissionFile handles the downloading of a specific submission file.
+It validates the request, checks permissions, and streams the file to the client.
+*/
 func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 	temp, err := strconv.ParseUint(r.PathValue("id"), 10, 32)
 	if err != nil {
@@ -176,8 +184,8 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") && team.ID != teamID {
+	reqRoles := r.Context().Value("roles").([]string)
+	if !slices.Contains(reqRoles, "admin") && team.ID != teamID {
 		w.WriteHeader(http.StatusForbidden)
 		data := map[string]any{"error": "Forbidden"}
 		d, _ := json.Marshal(data)

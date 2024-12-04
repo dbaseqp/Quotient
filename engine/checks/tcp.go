@@ -7,10 +7,13 @@ import (
 	"time"
 )
 
+// Tcp represents a TCP service check.
 type Tcp struct {
 	Service
 }
 
+// Run executes the TCP service check by attempting to establish a connection
+// to the specified target and port within the given timeout.
 func (c Tcp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		_, err := net.DialTimeout("tcp", c.Target+":"+strconv.Itoa(c.Port), time.Duration(c.Timeout)*time.Second)
@@ -28,6 +31,7 @@ func (c Tcp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify checks the configuration of the Tcp service and ensures all required fields are set.
 func (c *Tcp) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if c.Display == "" {
 		c.Display = "tcp"

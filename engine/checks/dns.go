@@ -11,17 +11,20 @@ import (
 	"github.com/miekg/dns"
 )
 
+// Dns represents a DNS service check with its associated records.
 type Dns struct {
 	Service
 	Record []DnsRecord
 }
 
+// DnsRecord represents a DNS record with its type, domain, and expected answers.
 type DnsRecord struct {
 	Kind   string
 	Domain string
 	Answer []string
 }
 
+// Run executes the DNS check for the given team identifier and sends the result to the results channel.
 func (c Dns) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		// Pick a record
@@ -84,6 +87,7 @@ func (c Dns) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }
 
+// Verify configures the DNS check with the provided parameters and validates its setup.
 func (c *Dns) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err

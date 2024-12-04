@@ -7,12 +7,15 @@ import (
 	"slices"
 )
 
+// Service status constants
 const (
+	// Unknown represents an unknown service status.
 	Unknown = iota
-	Up
-	Down
+	Up             // Up indicates the service is operational
+	Down           // Down indicates the service is not operational
 )
 
+// GetServiceStatus retrieves the status of services for the last round and returns it as a JSON response.
 func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 	round, err := db.GetLastRound()
 	if err != nil {
@@ -86,6 +89,7 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 	w.Write(d)
 }
 
+// GetScoreStatus retrieves the score status for all teams and returns it as a JSON response.
 func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 	scores, err := db.GetServiceCheckSumByRound()
 	if err != nil {
@@ -122,24 +126,24 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for round, allTeamsThisRound := range scores {
-		for team_id := range allTeamsThisRound {
+		for teamID := range allTeamsThisRound {
 			for i, team := range teams {
-				if team.ID == team_id {
-					series[i].Data = append(series[i].Data, Point{Round: round + 1, Total: allTeamsThisRound[team_id]})
+				if team.ID == teamID {
+					series[i].Data = append(series[i].Data, Point{Round: round + 1, Total: allTeamsThisRound[teamID]})
 				}
 			}
 		}
 	}
 
 	if r.Context().Value("roles") != nil {
-		req_roles := r.Context().Value("roles").([]string)
-		if !slices.Contains(req_roles, "admin") {
-			for i, _ := range series {
+		reqRoles := r.Context().Value("roles").([]string)
+		if !slices.Contains(reqRoles, "admin") {
+			for i := range series {
 				series[i].Name = "Team"
 			}
 		}
 	} else {
-		for i, _ := range series {
+		for i := range series {
 			series[i].Name = "Team"
 		}
 	}
@@ -160,6 +164,7 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 	w.Write(d)
 }
 
+// GetUptimeStatus retrieves the uptime status for all teams and services and returns it as a JSON response.
 func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	teams, err := db.GetTeams()
 	if err != nil {
@@ -212,14 +217,14 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Context().Value("roles") != nil {
-		req_roles := r.Context().Value("roles").([]string)
-		if !slices.Contains(req_roles, "admin") {
-			for i, _ := range series {
+		reqRoles := r.Context().Value("roles").([]string)
+		if !slices.Contains(reqRoles, "admin") {
+			for i := range series {
 				series[i].Name = "Team"
 			}
 		}
 	} else {
-		for i, _ := range series {
+		for i := range series {
 			series[i].Name = "Team"
 		}
 	}

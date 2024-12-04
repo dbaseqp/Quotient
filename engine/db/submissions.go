@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// SubmissionSchema represents a submission made by a team for a specific inject.
 type SubmissionSchema struct {
 	TeamID             uint
 	InjectID           uint
@@ -16,6 +17,8 @@ type SubmissionSchema struct {
 	Team               TeamSchema `gorm:"foreignKey:TeamID"`
 }
 
+// GetSubmissionsForInject retrieves all submissions for a specific inject ID.
+// It preloads the associated Team data, selecting only the ID and name fields.
 func GetSubmissionsForInject(injectID uint) ([]SubmissionSchema, error) {
 	var submissions []SubmissionSchema
 	result := db.Table("submission_schemas").Preload("Team", func(db *gorm.DB) *gorm.DB {
@@ -30,7 +33,7 @@ func GetSubmissionsForInject(injectID uint) ([]SubmissionSchema, error) {
 	return submissions, nil
 }
 
-// gorm hook to set the version of the submission
+// BeforeCreate is a GORM hook that sets the version of the submission
 func (submission *SubmissionSchema) BeforeCreate(tx *gorm.DB) error {
 	var existingSubmission SubmissionSchema
 	result := tx.Where("inject_id = ? AND team_id = ?", submission.InjectID, submission.TeamID).Order("version desc").First(&existingSubmission)
@@ -47,6 +50,7 @@ func (submission *SubmissionSchema) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// CreateSubmission creates a new blue team submission record in the database.
 func CreateSubmission(submission SubmissionSchema) (SubmissionSchema, error) {
 	result := db.Create(&submission)
 	if result.Error != nil {

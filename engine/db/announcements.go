@@ -1,3 +1,4 @@
+// Package db provides database models and operations for managing announcements and other entities.
 package db
 
 import (
@@ -8,6 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// AnnouncementSchema represents the schema for announcements stored in the database.
 type AnnouncementSchema struct {
 	ID                    uint
 	Title                 string `gorm:"unique"` // also used as directory name
@@ -38,7 +40,7 @@ func GetAnnouncements() ([]AnnouncementSchema, error) {
 	return announcements, nil
 }
 
-// delete an announcement from the database
+ // DeleteAnnouncement deletes an announcement from the database
 func DeleteAnnouncement(announcement AnnouncementSchema) error {
 	result := db.Table("announcement_schemas").Delete(&announcement)
 	if result.Error != nil {
