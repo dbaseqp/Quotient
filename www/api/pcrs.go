@@ -11,8 +11,8 @@ import (
 )
 
 func GetCredlists(w http.ResponseWriter, r *http.Request) {
-	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") && !conf.MiscSettings.EasyPCR {
+	reqRoles := r.Context().Value("roles").([]string)
+	if !slices.Contains(reqRoles, "admin") && !conf.MiscSettings.EasyPCR {
 		w.WriteHeader(http.StatusForbidden)
 		data := map[string]any{"error": "PCR self service not allowed"}
 		d, _ := json.Marshal(data)
@@ -42,10 +42,13 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var form Form
+	username, _ := r.Context().Value("username").(string)
+	slog.Info("Received PCR creation request", "username", username)
 
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&form)
 	if err != nil {
+		slog.Error("Failed to decode PCR creation request", "error", err.Error(), "username", username)
 		w.WriteHeader(http.StatusBadRequest)
 		slog.Error(err.Error())
 		return
@@ -53,7 +56,7 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") && !conf.MiscSettings.EasyPCR {
-		me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
+		me, err := db.GetTeamByUsername(username)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -73,6 +76,7 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := eng.UpdateCredentials(uint(id), form.CredlistID, form.Usernames, form.Passwords); err != nil {
+		slog.Error("Failed to update credentials", "error", err.Error(), "username", username, "teamID", form.TeamID)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
