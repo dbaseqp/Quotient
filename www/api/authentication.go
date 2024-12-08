@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,7 +28,7 @@ func init() {
 	if _, err := os.Stat("config/COOKIEKEY"); err != nil {
 		w, err := os.Create("config/COOKIEKEY")
 		if err != nil {
-			log.Fatalln(err)
+			slog.Error("Failed to create COOKIEKEY file", "error", err)
 		}
 		defer w.Close()
 
@@ -41,7 +40,7 @@ func init() {
 	} else {
 		f, err := os.Open("config/COOKIEKEY")
 		if err != nil {
-			log.Fatalln(err)
+			slog.Error("Failed to open COOKIEKEY file", "error", err)
 		}
 		defer f.Close()
 
@@ -70,7 +69,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&form)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		slog.Error(err.Error())
+		slog.Error("Failed to decode login form", "error", err)
 		return
 	}
 
@@ -87,7 +86,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	cookie, err := CookieEncoder.Encode(COOKIENAME, auth)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		slog.Error(err.Error())
+		slog.Error("Failed to encode cookie", "error", err)
 		return
 	}
 
@@ -123,14 +122,14 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 		if err == http.ErrNoCookie {
 			return "", nil
 		}
-		slog.Error(err.Error())
+		slog.Error("Failed to retrieve cookie", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return "", nil
 	}
 
 	var value map[string]any
 	if err := CookieEncoder.Decode(COOKIENAME, token.Value, &value); err != nil {
-		slog.Error(err.Error())
+		slog.Error("Failed to decode cookie", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return "", nil
 	}
@@ -139,7 +138,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 	roles, err := findRolesByUsername(username)
 
 	if err != nil {
-		slog.Error(err.Error())
+		slog.Error("Failed to find roles by username", "username", username, "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return "", nil
 	}
@@ -179,6 +178,7 @@ func auth(username string, password string) (map[string]any, error) {
 	if conf.LdapSettings != (config.LdapAuthConfig{}) {
 		conn, err := ldap.DialURL(conf.LdapSettings.LdapConnectUrl)
 		if err != nil {
+			slog.Error("Failed to connect to LDAP", "error", err)
 			return nil, err
 		}
 		defer conn.Close()
@@ -189,10 +189,11 @@ func auth(username string, password string) (map[string]any, error) {
 			return nil, err
 		}
 
+		escapedUsername := ldap.EscapeFilter(username)
 		searchRequest := ldap.NewSearchRequest(
 			conf.LdapSettings.LdapSearchBaseDn,
 			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", username),
+			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", escapedUsername),
 			[]string{"dn"},
 			nil,
 		)
@@ -203,6 +204,7 @@ func auth(username string, password string) (map[string]any, error) {
 		}
 
 		if len(sr.Entries) != 1 {
+			slog.Warn("LDAP search returned unexpected number of entries", "entries", len(sr.Entries))
 			return nil, errors.New("user does not exist or too many entries returned")
 		}
 
@@ -210,6 +212,7 @@ func auth(username string, password string) (map[string]any, error) {
 
 		err = conn.Bind(userDN, password)
 		if err != nil {
+			slog.Warn("Invalid LDAP credentials", "userDN", userDN)
 			return nil, errors.New("invalid credentials")
 		}
 
@@ -217,7 +220,7 @@ func auth(username string, password string) (map[string]any, error) {
 		roleSearchRequest := ldap.NewSearchRequest(
 			conf.LdapSettings.LdapSearchBaseDn,
 			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", username),
+			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", escapedUsername),
 			[]string{"memberOf"},
 			nil,
 		)
