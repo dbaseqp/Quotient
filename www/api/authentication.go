@@ -29,6 +29,7 @@ func init() {
 		w, err := os.Create("config/COOKIEKEY")
 		if err != nil {
 			slog.Error("Failed to create COOKIEKEY file", "error", err)
+			panic(err)
 		}
 		defer w.Close()
 
@@ -41,6 +42,7 @@ func init() {
 		f, err := os.Open("config/COOKIEKEY")
 		if err != nil {
 			slog.Error("Failed to open COOKIEKEY file", "error", err)
+			panic(err)
 		}
 		defer f.Close()
 
