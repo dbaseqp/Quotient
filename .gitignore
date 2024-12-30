@@ -5,6 +5,7 @@
 *.exe
 *.log
 quotient
+runner/runner
 
 /config/*
 !/config/**/

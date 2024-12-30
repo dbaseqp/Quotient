@@ -8,21 +8,21 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/lib/pq"
 )
 
 // checks for each service
 type Runner interface {
 	Run(teamID uint, identifier string, resultsChan chan Result)
 	Runnable() bool
+	Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error
+	GetType() string
 }
 
 // services will inherit Service so that config.Config can be read from file, but will not be used after initial read
 type Service struct {
 	Name         string         `toml:"-"`          // Name is the box name plus the service (ex. lunar-dns)
 	Display      string         `toml:",omitempty"` // Display is the name of the service (ex. dns)
-	CredLists    pq.StringArray `toml:",omitempty"`
+	CredLists    []string       `toml:",omitempty"`
 	Port         int            `toml:",omitzero"` // omitzero because custom checks might not specify port, and shouldn't be assigned 0
 	Points       int            `toml:",omitempty"`
 	Timeout      int            `toml:",omitempty"`
@@ -31,7 +31,8 @@ type Service struct {
 	LaunchTime   time.Time      `toml:",omitempty"`
 	StopTime     time.Time      `toml:",omitempty"`
 	Disabled     bool           `toml:",omitempty"`
-	Target       string         `toml:",omitempty"`
+	Target       string         `toml:",omitempty"` // Target is the IP address or hostname for the box
+	ServiceType  string         `toml:",omitempty"` // ServiceType is the name of the Runner that checks the service
 }
 
 type Result struct {
@@ -42,6 +43,11 @@ type Result struct {
 	Debug       string `json:"debug,omitempty"`
 	Error       string `json:"error,omitempty"`
 	Points      int    `json:"points,omitempty"`
+	ServiceType string `json:"service_type,omitempty"`
+}
+
+func (service *Service) GetType() string {
+	return service.ServiceType
 }
 
 func (service *Service) getCreds(teamID uint) (string, string, error) {
@@ -81,6 +87,7 @@ func (service *Service) getCreds(teamID uint) (string, string, error) {
 }
 
 func (service *Service) Configure(ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	// Set defaults if they're unset for a service
 	if service.Target == "" {
 		service.Target = ip
 	}
@@ -105,7 +112,7 @@ func (service *Service) Configure(ip string, points int, timeout int, slapenalty
 	return nil
 }
 
-func (service Service) Runnable() bool {
+func (service *Service) Runnable() bool {
 	if service.Disabled {
 		return false
 	}
@@ -127,6 +134,7 @@ func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan
 		Target:      service.Target,
 		Points:      service.Points,
 		Status:      false,
+		ServiceType: service.ServiceType,
 	}
 
 	response := make(chan Result)

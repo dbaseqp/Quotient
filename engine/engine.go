@@ -2,9 +2,10 @@ package engine
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"context"
 	"log/slog"
 	"math/rand"
 	"os"
@@ -15,7 +16,16 @@ import (
 	"quotient/engine/checks"
 	"quotient/engine/config"
 	"quotient/engine/db"
+
+	"github.com/redis/go-redis/v9"
 )
+
+type Task struct {
+	TeamID         uint            `json:"team_id"`         // Numeric identifier for the team
+	TeamIdentifier string          `json:"team_identifier"` // Human-readable identifier for the team
+	ServiceType    string          `json:"service_type"`
+	CheckData      json.RawMessage `json:"check_data"`
+}
 
 type ScoringEngine struct {
 	Config                *config.ConfigSettings
@@ -27,40 +37,49 @@ type ScoringEngine struct {
 	CurrentRound          int
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
+	RedisClient           *redis.Client
 
 	// signals
 	ResetChan chan struct{}
 }
 
 func NewEngine(conf *config.ConfigSettings) *ScoringEngine {
+	rdb := redis.NewClient(&redis.Options{
+		Addr: "quotient_redis:6379",
+	})
+	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		panic(fmt.Sprintf("Failed to connect to Redis: %v", err))
+	}
+
 	return &ScoringEngine{
 		Config:           conf,
 		CredentialsMutex: make(map[uint]*sync.Mutex),
 		UptimePerService: make(map[uint]map[string]db.Uptime),
 		SlaPerService:    make(map[uint]map[string]int),
 		ResetChan:        make(chan struct{}),
+		RedisClient:      rdb,
 	}
 }
 
 func (se *ScoringEngine) Start() {
 	if t, err := db.GetLastRound(); err != nil {
-		log.Fatalf("failed to get last round: %v", err)
+		slog.Error("failed to get last round: %v", err)
 	} else {
 		se.CurrentRound = int(t.ID) + 1
 	}
 
 	if err := db.LoadUptimes(&se.UptimePerService); err != nil {
-		log.Fatalf("failed to load uptimes: %v", err)
+		slog.Error("failed to load uptimes: %v", err)
 	}
 
 	if err := db.LoadSLAs(&se.SlaPerService, se.Config.MiscSettings.SlaThreshold); err != nil {
-		log.Fatalf("failed to load SLAs: %v", err)
+		slog.Error("failed to load SLAs: %v", err)
 	}
 
 	// load credentials
 	err := se.LoadCredentials()
 	if err != nil {
-		log.Fatalf("failed to load credential files into teams: %v", err)
+		slog.Error("failed to load credential files into teams: %v", err)
 	}
 
 	// start paused if configured
@@ -89,7 +108,7 @@ func (se *ScoringEngine) Start() {
 			case "rvb":
 				se.rvb()
 			default:
-				log.Fatalf("Unknown event type: %s", se.Config.RequiredSettings.EventType)
+				slog.Error("Unknown event type: %s", se.Config.RequiredSettings.EventType)
 			}
 
 			slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
@@ -181,30 +200,91 @@ func (se *ScoringEngine) rvb() {
 	}
 
 	runners := 0
-	resultsChan := make(chan checks.Result)
-	results := make([]db.ServiceCheckSchema, 0)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Until(se.NextRoundStartTime))
+	defer cancel()
 
-	slog.Debug("Starting service checks...")
-	for _, box := range se.Config.Box {
-		for _, runner := range box.Runners {
-			if runner.Runnable() {
-				for _, team := range teams {
-					if team.Active {
-						go runner.Run(team.ID, team.Identifier, resultsChan)
-						runners++
-					}
-				}
+	slog.Debug("Starting service checks", "round", se.CurrentRound)
+	allRunners := se.Config.AllChecks()
+
+	// 1) Enqueue
+	for _, team := range teams {
+		if !team.Active {
+			continue
+		}
+		for _, r := range allRunners {
+			if !r.Runnable() {
+				continue
 			}
+			// serialize the entire check definition to JSON
+			data, err := json.Marshal(r)
+			if err != nil {
+				slog.Error("failed to marshal check definition", "error", err)
+				continue
+			}
+
+			task := Task{
+				TeamID:         team.ID,
+				TeamIdentifier: team.Identifier,
+				ServiceType:    r.GetType(),
+				CheckData:      data, // the entire specialized struct
+			}
+
+			payload, err := json.Marshal(task)
+			if err != nil {
+				slog.Error("failed to marshal service task", "error", err)
+				continue
+			}
+			se.RedisClient.RPush(ctx, "tasks", payload)
+			runners++
 		}
 	}
+	slog.Info("Enqueued checks", "count", runners)
 
-	round := db.RoundSchema{
-		ID:        uint(se.CurrentRound),
-		StartTime: se.CurrentRoundStartTime,
+	// Collect results from Redis
+	results := make([]checks.Result, 0, runners)
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(se.Config.MiscSettings.Delay)*time.Second)
+	defer cancel()
+
+	for i := 0; i < runners; i++ {
+		val, err := se.RedisClient.BRPop(timeoutCtx, 10*time.Second, "results").Result()
+		if err == redis.Nil {
+			slog.Warn("Timeout waiting for results", "remaining", runners-i)
+			break
+		} else if err != nil {
+			slog.Error("Failed to fetch results from Redis:", "error", err)
+			continue
+		}
+
+		// val[0] = "results", val[1] = JSON checks.Result
+		if len(val) < 2 {
+			slog.Warn("Malformed result from Redis", "val", val)
+			continue
+		}
+		raw := val[1]
+
+		var res checks.Result
+		if err := json.Unmarshal([]byte(raw), &res); err != nil {
+			slog.Error("Failed to unmarshal check result", "error", err)
+			continue
+		}
+		results = append(results, res)
+		slog.Debug("service check finished", "team_id", res.TeamID, "service_name", res.ServiceName, "result", res.Status, "debug", res.Debug, "error", res.Error)
 	}
-	for runners > 0 {
-		result := <-resultsChan
-		results = append(results, db.ServiceCheckSchema{
+
+	// Process all collected results
+	se.processCollectedResults(results)
+}
+
+func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
+	if len(results) == 0 {
+		slog.Warn("No results collected for round", "round", se.CurrentRound)
+		return
+	}
+
+	dbResults := []db.ServiceCheckSchema{}
+
+	for _, result := range results {
+		dbResults = append(dbResults, db.ServiceCheckSchema{
 			TeamID:      result.TeamID,
 			RoundID:     uint(se.CurrentRound),
 			ServiceName: result.ServiceName,
@@ -213,55 +293,60 @@ func (se *ScoringEngine) rvb() {
 			Error:       result.Error,
 			Debug:       result.Debug,
 		})
-		slog.Debug("service check finished", "team_id", result.TeamID, "service_name", result.ServiceName, "result", result.Status)
-		runners--
-	}
 
-	round.Checks = results
-	slog.Debug("finished all service checks")
-	if _, err := db.CreateRound(round); err != nil {
-		slog.Error("failed to create round", "error", err.Error())
-	} else {
-		for _, check := range results {
-			// make sure uptime map is initialized
-			if _, ok := se.UptimePerService[check.TeamID]; !ok {
-				se.UptimePerService[check.TeamID] = make(map[string]db.Uptime)
-			}
-			if _, ok := se.UptimePerService[check.TeamID][check.ServiceName]; !ok {
-				se.UptimePerService[check.TeamID][check.ServiceName] = db.Uptime{}
-			}
-			newUptime := se.UptimePerService[check.TeamID][check.ServiceName]
-			if check.Result {
-				newUptime.PassedChecks++
-			}
-			newUptime.TotalChecks++
-			se.UptimePerService[check.TeamID][check.ServiceName] = newUptime
+		// Update uptime and SLA maps
+		if _, ok := se.UptimePerService[result.TeamID]; !ok {
+			se.UptimePerService[result.TeamID] = make(map[string]db.Uptime)
+		}
+		if _, ok := se.UptimePerService[result.TeamID][result.ServiceName]; !ok {
+			se.UptimePerService[result.TeamID][result.ServiceName] = db.Uptime{}
+		}
+		newUptime := se.UptimePerService[result.TeamID][result.ServiceName]
+		if result.Status {
+			newUptime.PassedChecks++
+		}
+		newUptime.TotalChecks++
+		se.UptimePerService[result.TeamID][result.ServiceName] = newUptime
 
-			// make sure sla map is initialized
-			if _, ok := se.SlaPerService[check.TeamID]; !ok {
-				se.SlaPerService[check.TeamID] = make(map[string]int)
-			}
-			if _, ok := se.SlaPerService[check.TeamID][check.ServiceName]; !ok {
-				se.SlaPerService[check.TeamID][check.ServiceName] = 0
-			}
-			if check.Result {
-				se.SlaPerService[check.TeamID][check.ServiceName] = 0
-			} else {
-				se.SlaPerService[check.TeamID][check.ServiceName]++
-				if se.SlaPerService[check.TeamID][check.ServiceName] >= se.Config.MiscSettings.SlaThreshold {
-					sla := db.SLASchema{
-						TeamID:      check.TeamID,
-						ServiceName: check.ServiceName,
-						RoundID:     uint(se.CurrentRound),
-						Penalty:     se.Config.MiscSettings.SlaPenalty,
-					}
-					db.CreateSLA(sla)
-
-					se.SlaPerService[check.TeamID][check.ServiceName] = 0
+		if _, ok := se.SlaPerService[result.TeamID]; !ok {
+			se.SlaPerService[result.TeamID] = make(map[string]int)
+		}
+		if _, ok := se.SlaPerService[result.TeamID][result.ServiceName]; !ok {
+			se.SlaPerService[result.TeamID][result.ServiceName] = 0
+		}
+		if result.Status {
+			se.SlaPerService[result.TeamID][result.ServiceName] = 0
+		} else {
+			se.SlaPerService[result.TeamID][result.ServiceName]++
+			if se.SlaPerService[result.TeamID][result.ServiceName] >= se.Config.MiscSettings.SlaThreshold {
+				sla := db.SLASchema{
+					TeamID:      result.TeamID,
+					ServiceName: result.ServiceName,
+					RoundID:     uint(se.CurrentRound),
+					Penalty:     se.Config.MiscSettings.SlaPenalty,
 				}
+				db.CreateSLA(sla)
+				se.SlaPerService[result.TeamID][result.ServiceName] = 0
 			}
 		}
 	}
+
+	if len(dbResults) == 0 {
+		slog.Warn("No results to process for the current round", "round", se.CurrentRound)
+		return
+	}
+
+	// Save results to database
+	round := db.RoundSchema{
+		ID:        uint(se.CurrentRound),
+		StartTime: se.CurrentRoundStartTime,
+		Checks:    dbResults,
+	}
+	if _, err := db.CreateRound(round); err != nil {
+		slog.Error("failed to create round:", "round", se.CurrentRound, "error", err)
+	}
+
+	slog.Debug("Successfully processed results for round", "round", se.CurrentRound, "total", len(dbResults))
 }
 
 func (se *ScoringEngine) LoadCredentials() error {
@@ -314,6 +399,7 @@ func (se *ScoringEngine) LoadCredentials() error {
 
 func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string) error {
 	se.CredentialsMutex[teamID].Lock()
+	defer se.CredentialsMutex[teamID].Unlock()
 
 	slog.Debug("updating credentials", "teamID", teamID, "credlistName", credlistName)
 

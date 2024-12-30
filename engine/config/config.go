@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"quotient/engine/checks"
@@ -103,22 +102,22 @@ type Box struct {
 	// Internal use but not in config file
 	Runners []checks.Runner `toml:"-"`
 
-	Custom []checks.Custom `toml:"Custom,omitempty" json:"custom,omitempty"`
-	Dns    []checks.Dns    `toml:"Dns,omitempty" json:"dns,omitempty"`
-	Ftp    []checks.Ftp    `toml:"Ftp,omitempty" json:"ftp,omitempty"`
-	Imap   []checks.Imap   `toml:"Imap,omitempty" json:"imap,omitempty"`
-	Ldap   []checks.Ldap   `toml:"Ldap,omitempty" json:"ldap,omitempty"`
-	Ping   []checks.Ping   `toml:"Ping,omitempty" json:"ping,omitempty"`
-	Pop3   []checks.Pop3   `toml:"Pop3,omitempty" json:"pop3,omitempty"`
-	Rdp    []checks.Rdp    `toml:"Rdp,omitempty" json:"rdp,omitempty"`
-	Smb    []checks.Smb    `toml:"Smb,omitempty" json:"smb,omitempty"`
-	Smtp   []checks.Smtp   `toml:"Smtp,omitempty" json:"smtp,omitempty"`
-	Sql    []checks.Sql    `toml:"Sql,omitempty" json:"sql,omitempty"`
-	Ssh    []checks.Ssh    `toml:"Ssh,omitempty" json:"ssh,omitempty"`
-	Tcp    []checks.Tcp    `toml:"Tcp,omitempty" json:"tcp,omitempty"`
-	Vnc    []checks.Vnc    `toml:"Vnc,omitempty" json:"vnc,omitempty"`
-	Web    []checks.Web    `toml:"Web,omitempty" json:"web,omitempty"`
-	WinRM  []checks.WinRM  `toml:"Winrm,omitempty" json:"winrm,omitempty"`
+	Custom []*checks.Custom `toml:"Custom,omitempty" json:"custom,omitempty"`
+	Dns    []*checks.Dns    `toml:"Dns,omitempty" json:"dns,omitempty"`
+	Ftp    []*checks.Ftp    `toml:"Ftp,omitempty" json:"ftp,omitempty"`
+	Imap   []*checks.Imap   `toml:"Imap,omitempty" json:"imap,omitempty"`
+	Ldap   []*checks.Ldap   `toml:"Ldap,omitempty" json:"ldap,omitempty"`
+	Ping   []*checks.Ping   `toml:"Ping,omitempty" json:"ping,omitempty"`
+	Pop3   []*checks.Pop3   `toml:"Pop3,omitempty" json:"pop3,omitempty"`
+	Rdp    []*checks.Rdp    `toml:"Rdp,omitempty" json:"rdp,omitempty"`
+	Smb    []*checks.Smb    `toml:"Smb,omitempty" json:"smb,omitempty"`
+	Smtp   []*checks.Smtp   `toml:"Smtp,omitempty" json:"smtp,omitempty"`
+	Sql    []*checks.Sql    `toml:"Sql,omitempty" json:"sql,omitempty"`
+	Ssh    []*checks.Ssh    `toml:"Ssh,omitempty" json:"ssh,omitempty"`
+	Tcp    []*checks.Tcp    `toml:"Tcp,omitempty" json:"tcp,omitempty"`
+	Vnc    []*checks.Vnc    `toml:"Vnc,omitempty" json:"vnc,omitempty"`
+	Web    []*checks.Web    `toml:"Web,omitempty" json:"web,omitempty"`
+	WinRM  []*checks.WinRM  `toml:"Winrm,omitempty" json:"winrm,omitempty"`
 }
 
 // Load in a config
@@ -129,17 +128,18 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 		return fmt.Errorf("configuration file ("+path+") not found:", err)
 	}
 
-	if md, err := toml.Decode(string(fileContent), &tempConf); err != nil {
+	md, err := toml.Decode(string(fileContent), &tempConf)
+	if err != nil {
 		return err
-	} else {
-		for _, undecoded := range md.Undecoded() {
-			slog.Warn("undecoded configuration key \"" + undecoded.String() + "\" will not be used.")
-		}
+	}
+
+	for _, undecoded := range md.Undecoded() {
+		slog.Warn("undecoded configuration key \"" + undecoded.String() + "\" will not be used.")
 	}
 
 	// check the configuration and set defaults
 	if err := checkConfig(&tempConf); err != nil {
-		log.Fatalln("configuration file ("+path+") is invalid:", err)
+		return fmt.Errorf("configuration file ("+path+") is invalid:", err)
 	}
 
 	// if we're here, the config is valid
@@ -150,12 +150,9 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 
 // general error checking
 func checkConfig(conf *ConfigSettings) error {
-	// check top level configs
-
-	// required settings
-
 	var errResult error
 
+	// required settings
 	if conf.RequiredSettings.EventName == "" {
 		errResult = errors.Join(errResult, errors.New("event title blank or not specified"))
 	}
@@ -172,6 +169,7 @@ func checkConfig(conf *ConfigSettings) error {
 		errResult = errors.Join(errResult, errors.New("no bind address specified"))
 	}
 
+	// check top level configs
 	for _, admin := range conf.Admin {
 		if admin.Name == "" || admin.Pw == "" {
 			errResult = errors.Join(errResult, errors.New("admin "+admin.Name+" missing required property"))
@@ -188,8 +186,7 @@ func checkConfig(conf *ConfigSettings) error {
 		}
 	}
 
-	// optional settings
-
+	// optional settings, set defaults
 	if conf.MiscSettings.Delay == 0 {
 		conf.MiscSettings.Delay = 60
 	}
@@ -216,6 +213,7 @@ func checkConfig(conf *ConfigSettings) error {
 		}
 	}
 
+	// validate times and scoring info
 	if conf.MiscSettings.Jitter >= conf.MiscSettings.Delay {
 		errResult = errors.Join(errResult, errors.New("jitter must be smaller than delay"))
 	}
@@ -241,232 +239,77 @@ func checkConfig(conf *ConfigSettings) error {
 
 	// =======================================
 	// prepare for box config checking
-	// sort boxes
+	// sort boxes by IP
 	sort.SliceStable(conf.Box, func(i, j int) bool {
 		return conf.Box[i].IP < conf.Box[j].IP
 	})
 
 	// check for duplicate box names
 	dupeBoxMap := make(map[string]bool)
-	for _, b := range conf.Box {
-		if b.Name == "" {
-			errResult = errors.Join(errResult, errors.New("a box is missing a name"))
-		}
-		if _, ok := dupeBoxMap[b.Name]; ok {
-			errResult = errors.Join(errResult, errors.New("duplicate box name found: "+b.Name))
-		}
-	}
+	runnerNames := make(map[string]bool)
 
 	// ACTUALLY DO CHECKS FOR BOX AND SERVICE CONFIGURATION
-	runnerNames := make(map[string]bool)
-	for i, box := range conf.Box {
-		// Immediately fail if boxes aren't configured properly
-		if box.Name == "" {
+	for i := range conf.Box {
+		if conf.Box[i].Name == "" {
 			return fmt.Errorf("no name found for box %d", i)
 		}
-
-		if box.IP == "" {
-			return errors.New("no ip found for box " + box.Name)
+		if conf.Box[i].IP == "" {
+			return fmt.Errorf("no IP found for box %s", conf.Box[i].Name)
+		}
+		if _, ok := dupeBoxMap[conf.Box[i].Name]; ok {
+			errResult = errors.Join(errResult, errors.New("duplicate box name found: "+conf.Box[i].Name))
 		}
 
 		// Ensure TeamID replacement chars are lowercase
-		box.IP = strings.ToLower(box.IP)
-		conf.Box[i].IP = box.IP
+		conf.Box[i].IP = strings.ToLower(conf.Box[i].IP)
 
-		for j, c := range box.Custom {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("custom check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Custom[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
+		allChecks := []checks.Runner{}
+		checkSets := [][]checks.Runner{
+			getRunners(conf.Box[i].Custom), getRunners(conf.Box[i].Dns), getRunners(conf.Box[i].Ftp), getRunners(conf.Box[i].Imap),
+			getRunners(conf.Box[i].Ldap), getRunners(conf.Box[i].Ping), getRunners(conf.Box[i].Pop3), getRunners(conf.Box[i].Rdp),
+			getRunners(conf.Box[i].Smb), getRunners(conf.Box[i].Smtp), getRunners(conf.Box[i].Sql), getRunners(conf.Box[i].Ssh),
+			getRunners(conf.Box[i].Tcp), getRunners(conf.Box[i].Vnc), getRunners(conf.Box[i].Web), getRunners(conf.Box[i].WinRM),
 		}
-		for j, c := range box.Dns {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("dns check %s failed verification: %s", c.Name, err.Error()))
+		for _, checks := range checkSets {
+			for _, check := range checks {
+				if _, exists := runnerNames[conf.Box[i].Name]; exists {
+					errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", conf.Box[i].Name))
+				} else {
+					runnerNames[conf.Box[i].Name] = true
+				}
+				if err := check.Verify(
+					conf.Box[i].Name,
+					conf.Box[i].IP,
+					conf.MiscSettings.Points,
+					conf.MiscSettings.Timeout,
+					conf.MiscSettings.SlaPenalty,
+					conf.MiscSettings.SlaThreshold,
+				); err != nil {
+					errResult = errors.Join(errResult, err)
+				}
+				allChecks = append(allChecks, check)
 			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Dns[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
 		}
-		for j, c := range box.Ftp {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("ftp check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Ftp[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Imap {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("imap check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Imap[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Ldap {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("ldap check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Ldap[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Ping {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("ping check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Ping[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Pop3 {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("pop3 check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Pop3[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Rdp {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("rdp check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Rdp[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Smb {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("smb check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Smb[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Smtp {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("smtp check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Smtp[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Sql {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("sql check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Sql[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Ssh {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("ssh check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Ssh[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Tcp {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("tcp check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Tcp[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Vnc {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("vnc check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Vnc[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.Web {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("web check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].Web[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
-		for j, c := range box.WinRM {
-			if err := c.Verify(box.Name, box.IP, conf.MiscSettings.Points, conf.MiscSettings.Timeout, conf.MiscSettings.SlaPenalty, conf.MiscSettings.SlaThreshold); err != nil {
-				errResult = errors.Join(errResult, fmt.Errorf("winrm check %s failed verification: %s", c.Name, err.Error()))
-			}
-			if _, exists := runnerNames[c.Name]; exists {
-				errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", c.Name))
-			} else {
-				runnerNames[c.Name] = true
-			}
-			conf.Box[i].WinRM[j] = c
-			conf.Box[i].Runners = append(conf.Box[i].Runners, c)
-		}
+		conf.Box[i].Runners = allChecks
 	}
 
 	// errResult is nil by default if no errors occured
 	return errResult
+}
+
+func getRunners[T checks.Runner](arr []T) []checks.Runner {
+	out := make([]checks.Runner, len(arr))
+	for i, v := range arr {
+		out[i] = v
+	}
+	return out
+}
+
+// Returns a flat list of all checks across all boxes.
+func (conf *ConfigSettings) AllChecks() []checks.Runner {
+	var out []checks.Runner
+	for _, box := range conf.Box {
+		out = append(out, box.Runners...)
+	}
+	return out
 }

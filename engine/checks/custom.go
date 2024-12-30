@@ -88,6 +88,9 @@ func (c Custom) Run(teamID uint, teamIdentifier string, resultsChan chan Result)
 }
 
 func (c *Custom) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	if c.ServiceType == "" {
+		c.ServiceType = "Custom"
+	}
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}

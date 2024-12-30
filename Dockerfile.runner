@@ -1,0 +1,18 @@
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /src
+
+COPY . ./
+
+WORKDIR /src/runner
+RUN go mod download
+
+RUN go build
+
+
+# runner
+FROM alpine:3.10
+WORKDIR /app
+COPY --from=builder /src/runner/runner runner
+
+ENTRYPOINT ["/app/runner"]
