@@ -4,11 +4,11 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"os"
 	"strings"
 	"time"
-	"log/slog"
 )
 
 // checks for each service
@@ -22,19 +22,19 @@ type Runner interface {
 
 // services will inherit Service so that config.Config can be read from file, but will not be used after initial read
 type Service struct {
-	Name         string         `toml:"-"`          // Name is the box name plus the service (ex. lunar-dns)
-	Display      string         `toml:",omitempty"` // Display is the name of the service (ex. dns)
-	CredLists    []string       `toml:",omitempty"`
-	Port         int            `toml:",omitzero"` // omitzero because custom checks might not specify port, and shouldn't be assigned 0
-	Points       int            `toml:",omitempty"`
-	Timeout      int            `toml:",omitempty"`
-	SlaPenalty   int            `toml:",omitempty"`
-	SlaThreshold int            `toml:",omitempty"`
-	LaunchTime   time.Time      `toml:",omitempty"`
-	StopTime     time.Time      `toml:",omitempty"`
-	Disabled     bool           `toml:",omitempty"`
-	Target       string         `toml:",omitempty"` // Target is the IP address or hostname for the box
-	ServiceType  string         `toml:",omitempty"` // ServiceType is the name of the Runner that checks the service
+	Name         string    `toml:"-"`          // Name is the box name plus the service (ex. lunar-dns)
+	Display      string    `toml:",omitempty"` // Display is the name of the service (ex. dns)
+	CredLists    []string  `toml:",omitempty"`
+	Port         int       `toml:",omitzero"` // omitzero because custom checks might not specify port, and shouldn't be assigned 0
+	Points       int       `toml:",omitempty"`
+	Timeout      int       `toml:",omitempty"`
+	SlaPenalty   int       `toml:",omitempty"`
+	SlaThreshold int       `toml:",omitempty"`
+	LaunchTime   time.Time `toml:",omitempty"`
+	StopTime     time.Time `toml:",omitempty"`
+	Disabled     bool      `toml:",omitempty"`
+	Target       string    `toml:",omitempty"` // Target is the IP address or hostname for the box
+	ServiceType  string    `toml:",omitempty"` // ServiceType is the name of the Runner that checks the service
 }
 
 type Result struct {
@@ -143,7 +143,7 @@ func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan
 		ServiceType: service.ServiceType,
 	}
 
-	slog.Debug("Running %d %s with target %s", teamID, service.Name, service.Target)
+	slog.Debug("Running check", "teamID", teamID, "serviceName", service.Name, "target", service.Target)
 	response := make(chan Result)
 
 	go definition(teamID, teamIdentifier, checkResult, response)

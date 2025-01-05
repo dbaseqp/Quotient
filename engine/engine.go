@@ -1,11 +1,11 @@
 package engine
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
-	"context"
 	"log/slog"
 	"math/rand"
 	"os"
@@ -310,7 +310,6 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 		slog.Error("failed to create round:", "round", se.CurrentRound, "error", err)
 	}
 
-
 	for _, result := range results {
 		// Update uptime and SLA maps
 		if _, ok := se.UptimePerService[result.TeamID]; !ok {
@@ -461,8 +460,6 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 	if err := writer.Error(); err != nil {
 		return fmt.Errorf("failed to flush pcr writer: %v", err)
 	}
-
-	se.CredentialsMutex[teamID].Unlock()
 
 	return nil
 }
