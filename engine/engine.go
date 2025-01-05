@@ -293,7 +293,25 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 			Error:       result.Error,
 			Debug:       result.Debug,
 		})
+	}
 
+	if len(dbResults) == 0 {
+		slog.Warn("No results to process for the current round", "round", se.CurrentRound)
+		return
+	}
+
+	// Save results to database
+	round := db.RoundSchema{
+		ID:        uint(se.CurrentRound),
+		StartTime: se.CurrentRoundStartTime,
+		Checks:    dbResults,
+	}
+	if _, err := db.CreateRound(round); err != nil {
+		slog.Error("failed to create round:", "round", se.CurrentRound, "error", err)
+	}
+
+
+	for _, result := range results {
 		// Update uptime and SLA maps
 		if _, ok := se.UptimePerService[result.TeamID]; !ok {
 			se.UptimePerService[result.TeamID] = make(map[string]db.Uptime)
@@ -329,21 +347,6 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 				se.SlaPerService[result.TeamID][result.ServiceName] = 0
 			}
 		}
-	}
-
-	if len(dbResults) == 0 {
-		slog.Warn("No results to process for the current round", "round", se.CurrentRound)
-		return
-	}
-
-	// Save results to database
-	round := db.RoundSchema{
-		ID:        uint(se.CurrentRound),
-		StartTime: se.CurrentRoundStartTime,
-		Checks:    dbResults,
-	}
-	if _, err := db.CreateRound(round); err != nil {
-		slog.Error("failed to create round:", "round", se.CurrentRound, "error", err)
 	}
 
 	slog.Debug("Successfully processed results for round", "round", se.CurrentRound, "total", len(dbResults))

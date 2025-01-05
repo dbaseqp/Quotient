@@ -40,13 +40,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.runner
-    container_name: quotient_runner
+    deploy:
+      mode: replicated
+      replicas: 6 # adjust this based on the resources of the server
     restart: always
     depends_on:
       - redis
       - db
     networks:
       - quotient_network
+    volumes:
+      - ./submissions:/app/submissions
 
 networks:
   quotient_network:
