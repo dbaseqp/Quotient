@@ -29,6 +29,9 @@ func (c Tcp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 }
 
 func (c *Tcp) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	if c.ServiceType == "" {
+		c.ServiceType = "Tcp"
+	}
 	if c.Display == "" {
 		c.Display = "tcp"
 	}

@@ -29,6 +29,29 @@ services:
       - ./engine:/app/engine
       - ./static:/app/static
 
+  redis:
+    image: redis:alpine
+    container_name: quotient_redis
+    restart: always
+    networks:
+      - quotient_network
+
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    deploy:
+      mode: replicated
+      replicas: 6 # adjust this based on the resources of the server
+    restart: always
+    depends_on:
+      - redis
+      - db
+    networks:
+      - quotient_network
+    volumes:
+      - ./submissions:/app/submissions
+
 networks:
   quotient_network:
     driver: bridge

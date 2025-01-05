@@ -72,6 +72,9 @@ func (c Pop3) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 }
 
 func (c *Pop3) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	if c.ServiceType == "" {
+		c.ServiceType = "Pop3"
+	}
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}
