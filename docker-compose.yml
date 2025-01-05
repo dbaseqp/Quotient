@@ -51,6 +51,7 @@ services:
       - quotient_network
     volumes:
       - ./submissions:/app/submissions
+      - ./custom-checks:/app/checks
 
 networks:
   quotient_network:
