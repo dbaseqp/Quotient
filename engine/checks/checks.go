@@ -17,6 +17,7 @@ type Runner interface {
 	Runnable() bool
 	Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error
 	GetType() string
+	GetName() string
 }
 
 // services will inherit Service so that config.Config can be read from file, but will not be used after initial read
@@ -49,6 +50,10 @@ type Result struct {
 
 func (service *Service) GetType() string {
 	return service.ServiceType
+}
+
+func (service *Service) GetName() string {
+	return service.Name
 }
 
 func (service *Service) getCreds(teamID uint) (string, string, error) {

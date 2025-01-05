@@ -272,11 +272,6 @@ func checkConfig(conf *ConfigSettings) error {
 		}
 		for _, checks := range checkSets {
 			for _, check := range checks {
-				if _, exists := runnerNames[conf.Box[i].Name]; exists {
-					errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", conf.Box[i].Name))
-				} else {
-					runnerNames[conf.Box[i].Name] = true
-				}
 				if err := check.Verify(
 					conf.Box[i].Name,
 					conf.Box[i].IP,
@@ -286,6 +281,11 @@ func checkConfig(conf *ConfigSettings) error {
 					conf.MiscSettings.SlaThreshold,
 				); err != nil {
 					errResult = errors.Join(errResult, err)
+				}
+				if _, exists := runnerNames[check.GetName()]; exists {
+					errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", check.GetName()))
+				} else {
+					runnerNames[check.GetName()] = true
 				}
 				allChecks = append(allChecks, check)
 			}
