@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"log/slog"
 )
 
 // checks for each service
@@ -127,6 +128,7 @@ func (service *Service) Runnable() bool {
 
 func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan Result, definition func(teamID uint, teamIdentifier string, checkResult Result, response chan Result)) {
 	service.Target = strings.Replace(service.Target, "_", teamIdentifier, -1)
+	
 
 	checkResult := Result{
 		TeamID:      teamID,
@@ -137,6 +139,7 @@ func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan
 		ServiceType: service.ServiceType,
 	}
 
+	slog.Debug("Running %d %s with target %s", teamID, service.Name, service.Target)
 	response := make(chan Result)
 
 	go definition(teamID, teamIdentifier, checkResult, response)
