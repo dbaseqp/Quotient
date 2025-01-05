@@ -462,7 +462,5 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 		return fmt.Errorf("failed to flush pcr writer: %v", err)
 	}
 
-	se.CredentialsMutex[teamID].Unlock()
-
 	return nil
 }

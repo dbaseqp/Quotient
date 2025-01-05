@@ -143,7 +143,7 @@ func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan
 		ServiceType: service.ServiceType,
 	}
 
-	slog.Debug("Running %d %s with target %s", teamID, service.Name, service.Target)
+	slog.Debug("Running %s %s with target %s", teamID, service.Name, service.Target)
 	response := make(chan Result)
 
 	go definition(teamID, teamIdentifier, checkResult, response)
