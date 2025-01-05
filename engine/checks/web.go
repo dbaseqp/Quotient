@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strconv"
 	"time"
-	"log"
 
 	"github.com/corpix/uarand"
 )
@@ -30,9 +29,7 @@ type urlData struct {
 }
 
 func (c Web) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
-	log.Printf("WEB RUN invoked: teamID=%d, teamIdentifier=%s\n", teamID, teamIdentifier)
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		log.Println("DEBUG: Starting definition for Web check, about to do HTTP GET")
 		u := c.Url[rand.Intn(len(c.Url))]
 
 		// random user agent
@@ -57,7 +54,6 @@ func (c Web) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 
 		req.Header.Set("User-Agent", ua)
 
-		log.Printf("[Web] Making HTTP request to %s\n", req.URL.String())
 		resp, err := client.Do(req)
 		if err != nil {
 			checkResult.Error = "web request errored out"
@@ -107,7 +103,6 @@ func (c Web) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 		checkResult.Status = true
 		response <- checkResult
 	}
-	fmt.Printf("Web run created definition: %+v", definition)
 
 	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
 }

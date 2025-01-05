@@ -128,7 +128,6 @@ func (service *Service) Runnable() bool {
 
 func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan Result, definition func(teamID uint, teamIdentifier string, checkResult Result, response chan Result)) {
 	service.Target = strings.Replace(service.Target, "_", teamIdentifier, -1)
-	
 
 	checkResult := Result{
 		TeamID:      teamID,
