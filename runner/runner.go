@@ -7,9 +7,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-	"quotient/engine/checks"
 	"quotient/engine"
+	"quotient/engine/checks"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -26,13 +27,13 @@ func main() {
 
 	for {
 		// Block until we get a task from the "tasks" list (no timeout here).
-		val, err := rdb.BRPop(ctx, 0, "tasks").Result()
+		val, err := rdb.BLPop(ctx, 0, "tasks").Result()
 		if err != nil {
 			log.Fatalf("Failed to pop task from Redis: %v", err)
 		}
 		// val[0] = "tasks", val[1] = the JSON payload
 		if len(val) < 2 {
-			log.Println("Invalid BRPop response:", val)
+			log.Println("Invalid BLPop response:", val)
 			continue
 		}
 
@@ -220,7 +221,7 @@ func main() {
 		resultJSON, _ := json.Marshal(result)
 
 		// Push onto "results" list
-		if err := rdb.LPush(ctx, "results", resultJSON).Err(); err != nil {
+		if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
 			log.Printf("Failed to push result to Redis: %v", err)
 		} else {
 			log.Printf("Pushed result for service %s (TeamID=%d) to 'results'", task.ServiceType, task.TeamID)
