@@ -44,7 +44,6 @@ func main() {
 		}
 		log.Printf("[Runner] Received task: TeamID: %d TeamIdentifier: %s ServiceType: %s", task.TeamID, task.TeamIdentifier, task.ServiceType)
 
-		// Pick the correct check struct from runnerRegistry
 		var runnerInstance checks.Runner
 		var serviceName string
 		switch task.ServiceType {
