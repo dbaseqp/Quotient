@@ -162,7 +162,15 @@ func checkConfig(conf *ConfigSettings) error {
 	}
 
 	if conf.RequiredSettings.DBConnectURL == "" {
-		errResult = errors.Join(errResult, errors.New("no db connect url specified"))
+		dbUser := os.Getenv("POSTGRES_USER")
+		dbPassword := os.Getenv("POSTGRES_PASSWORD")
+		dbHost := os.Getenv("POSTGRES_HOST")
+		dbDatabase := os.Getenv("POSTGRES_DB")
+		if dbUser != "" && dbPassword != "" && dbHost != "" && dbDatabase != "" {
+			conf.RequiredSettings.DBConnectURL = fmt.Sprintf("postgres://%s:%s@%s:5432/%s", dbUser, dbPassword, dbHost, dbDatabase)
+		} else {
+			errResult = errors.Join(errResult, errors.New("no db connect url specified"))
+		}
 	}
 
 	if conf.RequiredSettings.BindAddress == "" {

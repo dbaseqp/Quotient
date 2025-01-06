@@ -44,8 +44,13 @@ type ScoringEngine struct {
 }
 
 func NewEngine(conf *config.ConfigSettings) *ScoringEngine {
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "quotient_redis:6379"
+	}
 	rdb := redis.NewClient(&redis.Options{
-		Addr: "quotient_redis:6379",
+		Addr: redisAddr,
+		Password: os.Getenv("REDIS_PASSWORD"),
 	})
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
 		panic(fmt.Sprintf("Failed to connect to Redis: %v", err))
