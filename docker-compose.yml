@@ -33,8 +33,11 @@ services:
     image: redis:alpine
     container_name: quotient_redis
     restart: always
+    env_file:
+      - .env
     networks:
       - quotient_network
+    command: ["redis-server", "--requirepass", '${REDIS_PASSWORD:?REDIS_PASSWORD variable is not set}']
 
   runner:
     build:
@@ -44,6 +47,9 @@ services:
       mode: replicated
       replicas: 6 # adjust this based on the resources of the server
     restart: always
+    privileged: true
+    env_file:
+      - .env
     depends_on:
       - redis
       - db
@@ -51,6 +57,7 @@ services:
       - quotient_network
     volumes:
       - ./submissions:/app/submissions
+      - ./custom-checks:/app/checks
 
 networks:
   quotient_network:

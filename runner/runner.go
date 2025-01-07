@@ -20,7 +20,10 @@ func main() {
 		redisAddr = "quotient_redis:6379"
 	}
 
-	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
+	rdb := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+		Password: os.Getenv("REDIS_PASSWORD"),
+	})
 	ctx := context.Background()
 
 	log.Println("Runner started, listening for tasks on Redis at:", redisAddr)
@@ -58,7 +61,6 @@ func main() {
 			}
 			log.Printf("[Runner] CheckData: %+v", runnerInstance)
 			serviceName = runnerInstance.(*checks.Custom).Service.Name
-
 		case "Dns":
 			runnerInstance = &checks.Dns{}
 			// Deserialize the check data into that runner instance

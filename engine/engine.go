@@ -44,8 +44,13 @@ type ScoringEngine struct {
 }
 
 func NewEngine(conf *config.ConfigSettings) *ScoringEngine {
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "quotient_redis:6379"
+	}
 	rdb := redis.NewClient(&redis.Options{
-		Addr: "quotient_redis:6379",
+		Addr: redisAddr,
+		Password: os.Getenv("REDIS_PASSWORD"),
 	})
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
 		panic(fmt.Sprintf("Failed to connect to Redis: %v", err))
@@ -272,7 +277,8 @@ func (se *ScoringEngine) rvb() {
 	}
 
 	// runners should be 0 if all results were collected successfully
-	if runners > 0 {
+	if runners > len(results) {
+		slog.Warn("Fewer results collected for round", "round", se.CurrentRound, "than", "runners", runners)
 		return
 	}
 

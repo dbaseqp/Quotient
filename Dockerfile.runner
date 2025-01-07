@@ -11,8 +11,17 @@ RUN go build
 
 
 # runner
-FROM alpine:3.10
+FROM alpine:3.20
 WORKDIR /app
 COPY --from=builder /src/runner/runner runner
+RUN apk add --no-cache wireguard-tools iproute2 iputils
+
+# custom python check scripts
+COPY custom-checks/requirements.txt /app
+ENV PYTHONUNBUFFERED=1
+ENV PIP_ROOT_USER_ACTION=ignore
+RUN apk add --update --no-cache python3 py3-pip && ln -sf python3 /usr/bin/python
+RUN pip install --break-system-packages setuptools
+RUN pip install --break-system-packages -r /app/requirements.txt
 
 ENTRYPOINT ["/app/runner"]
