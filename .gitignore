@@ -12,6 +12,7 @@ runner/runner
 /config/*/**
 /custom-checks/*
 !/custom-checks/.gitkeep
+!/custom-checks/example.sh
 
 /submissions/*
 !.gitkeep
