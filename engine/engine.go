@@ -24,6 +24,7 @@ type Task struct {
 	TeamID         uint            `json:"team_id"`         // Numeric identifier for the team
 	TeamIdentifier string          `json:"team_identifier"` // Human-readable identifier for the team
 	ServiceType    string          `json:"service_type"`
+	ServiceName    string          `json:"service_name"`
 	CheckData      json.RawMessage `json:"check_data"`
 }
 
@@ -231,6 +232,7 @@ func (se *ScoringEngine) rvb() {
 				TeamID:         team.ID,
 				TeamIdentifier: team.Identifier,
 				ServiceType:    r.GetType(),
+				ServiceName:    r.GetName(),
 				CheckData:      data, // the entire specialized struct
 			}
 
