@@ -1,11 +1,11 @@
 package engine
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
-	"context"
 	"log/slog"
 	"math/rand"
 	"os"
@@ -69,23 +69,23 @@ func NewEngine(conf *config.ConfigSettings) *ScoringEngine {
 
 func (se *ScoringEngine) Start() {
 	if t, err := db.GetLastRound(); err != nil {
-		slog.Error("failed to get last round: %v", err)
+		slog.Error("failed to get last round", "error", err)
 	} else {
 		se.CurrentRound = int(t.ID) + 1
 	}
 
 	if err := db.LoadUptimes(&se.UptimePerService); err != nil {
-		slog.Error("failed to load uptimes: %v", err)
+		slog.Error("failed to load uptimes", "error", err)
 	}
 
 	if err := db.LoadSLAs(&se.SlaPerService, se.Config.MiscSettings.SlaThreshold); err != nil {
-		slog.Error("failed to load SLAs: %v", err)
+		slog.Error("failed to load SLAs", "error", err)
 	}
 
 	// load credentials
 	err := se.LoadCredentials()
 	if err != nil {
-		slog.Error("failed to load credential files into teams: %v", err)
+		slog.Error("failed to load credential files into teams", "error", err)
 	}
 
 	// start paused if configured
@@ -114,7 +114,7 @@ func (se *ScoringEngine) Start() {
 			case "rvb":
 				se.rvb()
 			default:
-				slog.Error("Unknown event type: %s", se.Config.RequiredSettings.EventType)
+				slog.Error("Unknown event type", "eventType", se.Config.RequiredSettings.EventType)
 			}
 
 			slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
@@ -247,13 +247,13 @@ func (se *ScoringEngine) rvb() {
 	}
 	slog.Info("Enqueued checks", "count", runners)
 
-	// Collect results from Redis
+	// 2) Collect results from Redis
 	results := make([]checks.Result, 0, runners)
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(se.Config.MiscSettings.Delay)*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Until(se.NextRoundStartTime))
 	defer cancel()
 
 	for i := 0; i < runners; i++ {
-		val, err := se.RedisClient.BRPop(timeoutCtx, 10*time.Second, "results").Result()
+		val, err := se.RedisClient.BLPop(timeoutCtx, time.Until(se.NextRoundStartTime), "results").Result()
 		if err == redis.Nil {
 			slog.Warn("Timeout waiting for results", "remaining", runners-i)
 			break
@@ -269,16 +269,22 @@ func (se *ScoringEngine) rvb() {
 		}
 		raw := val[1]
 
-		var res checks.Result
-		if err := json.Unmarshal([]byte(raw), &res); err != nil {
+		var result checks.Result
+		if err := json.Unmarshal([]byte(raw), &result); err != nil {
 			slog.Error("Failed to unmarshal check result", "error", err)
 			continue
 		}
-		results = append(results, res)
-		slog.Debug("service check finished", "team_id", res.TeamID, "service_name", res.ServiceName, "result", res.Status, "debug", res.Debug, "error", res.Error)
+		results = append(results, result)
+		slog.Debug("service check finished", "team_id", result.TeamID, "service_name", result.ServiceName, "result", result.Status, "debug", result.Debug, "error", result.Error)
 	}
 
-	// Process all collected results
+	// runners should be 0 if all results were collected successfully
+	if runners > len(results) {
+		slog.Warn("Fewer results collected for round", "round", se.CurrentRound, "than", "runners", runners)
+		return
+	}
+
+	// 3) Process all collected results
 	se.processCollectedResults(results)
 }
 
@@ -315,8 +321,8 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 	}
 	if _, err := db.CreateRound(round); err != nil {
 		slog.Error("failed to create round:", "round", se.CurrentRound, "error", err)
+		return
 	}
-
 
 	for _, result := range results {
 		// Update uptime and SLA maps

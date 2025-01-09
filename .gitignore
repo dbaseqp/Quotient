@@ -10,8 +10,9 @@ runner/runner
 /config/*
 !/config/**/
 /config/*/**
-/engine/checks/custom/*
-!/engine/checks/custom/.gitkeep
+/custom-checks/*
+!/custom-checks/.gitkeep
+!/custom-checks/example.sh
 
 /submissions/*
 !.gitkeep

@@ -47,6 +47,7 @@ services:
       mode: replicated
       replicas: 6 # adjust this based on the resources of the server
     restart: always
+    privileged: true
     env_file:
       - .env
     depends_on:
