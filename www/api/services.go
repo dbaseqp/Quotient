@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"quotient/engine/db"
 	"slices"
@@ -57,11 +58,30 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 
 	summaries, err := db.GetTeamSummary(teamID)
 	if err != nil {
+		slog.Error("Failed to get team summary", "teamid", teamID, "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	d, _ := json.Marshal(summaries)
+	type summary struct {
+		ServiceName  string           `json:"ServiceName"`
+		SlaCount     int              `json:"SlaCount"`
+		Last10Rounds []db.RoundSchema `json:"Last10Rounds"`
+		Uptime       float64          `json:"Uptime"`
+	}
+
+	var s []summary
+	for _, v := range summaries {
+		uptime := eng.UptimePerService[teamID][v["ServiceName"].(string)]
+		s = append(s, summary{
+			ServiceName:  v["ServiceName"].(string),
+			SlaCount:     v["SlaCount"].(int),
+			Last10Rounds: v["Last10Rounds"].([]db.RoundSchema),
+			Uptime:       float64(uptime.PassedChecks) / float64(uptime.TotalChecks),
+		})
+	}
+
+	d, _ := json.Marshal(s)
 	w.Write(d)
 }
 

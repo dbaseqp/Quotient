@@ -83,7 +83,7 @@ func GetTeamSummary(teamID uint) ([]map[string]any, error) {
 
 		// get last 10 rounds for service
 		var last10Rounds []RoundSchema
-		if result := db.Table("round_schemas").Preload("Checks", "team_id = ?", teamID, "service_name = ?", name).Order("id desc").Limit(10).Find(&last10Rounds); result.Error != nil {
+		if result := db.Table("round_schemas").Preload("Checks", "team_id = ? AND service_name = ?", teamID, name).Order("id desc").Limit(10).Find(&last10Rounds); result.Error != nil {
 			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 				return serviceSummaries, nil
 			} else {

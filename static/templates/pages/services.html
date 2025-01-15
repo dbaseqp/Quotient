@@ -145,28 +145,35 @@
                 return response.json()
             })
             .then((data) => {
-                const SERVICENAMES = data["service_names"]
-                const LAST10 = data["last_10_rounds"]
-                const SLACOUNTS = data["sla_counts"]
-                const UPTIMES = data["uptimes"]
                 let services = [];
-                for (const servicename of SERVICENAMES) {
-                    let nservice = PLACEHOLDER_SERVICE.cloneNode(true)
-                    nservice.classList.remove("placeholder-glow", "d-none")
+                if (data === null) {
+                    const message = document.createElement("div")
+                    message.classList.add("alert", "alert-warning")
+                    message.textContent = "No services found for this team."
+                    SERVICE_CONTAINER.appendChild(message)
+                    return
+                }
+                for (const SUMMARY of data) {
+                    const SERVICENAME = SUMMARY.ServiceName
+                    const SLACOUNT = SUMMARY.SlaCount
+                    const LAST10ROUNDS = SUMMARY.Last10Rounds
+                    const UPTIME = Math.round(SUMMARY.Uptime * 100)
 
-                    let name = nservice.querySelector("#service__name--placeholder")
-                    let uptime = nservice.querySelector("#service__uptime--placeholder")
-                    let uptime_text = nservice.querySelector("#service__uptime__text--placeholder")
-                    let slas = nservice.querySelector("#service__slas--placeholder")
-                    let checks = nservice.querySelector("#service__checks--placeholder")
+                    let service = PLACEHOLDER_SERVICE.cloneNode(true)
+                    service.classList.remove("placeholder-glow", "d-none")
+
+                    let name = service.querySelector("#service__name--placeholder")
+                    let uptime = service.querySelector("#service__uptime--placeholder")
+                    let uptime_text = service.querySelector("#service__uptime__text--placeholder")
+                    let slas = service.querySelector("#service__slas--placeholder")
+                    let checks = service.querySelector("#service__checks--placeholder")
 
                     name.className = ""
                     // uptime.className = ""
                     checks.className = ""
 
-                    const UPTIME = Math.round(UPTIMES[servicename].PassedChecks / UPTIMES[servicename].TotalChecks * 100)
-
-                    name.textContent = servicename
+                    slas.textContent = SLACOUNT
+                    name.textContent = SERVICENAME
                     uptime_text.textContent = UPTIME + "%"
                     uptime.style.width = UPTIME + "%"
                     if (UPTIME >= 80) {
@@ -177,12 +184,10 @@
                         uptime.classList.add("bg-danger")
                     }
 
-                    slas.textContent = SLACOUNTS[servicename]
-
-                    for (const round of LAST10) {
+                    for (const round of LAST10ROUNDS) {
                         let checkFoundInRound = false
                         for (const check of round.Checks) {
-                            if (servicename == check.ServiceName) {
+                            if (SERVICENAME == check.ServiceName) {
                                 checkFoundInRound = true
                                 let icon = document.createElement("img")
                                 if (check.Result) {
@@ -208,19 +213,13 @@
                         }
                     }
 
-                    nservice.setHTMLUnsafe(nservice.outerHTML.replaceAll("placeholder", servicename))
-                    nservice.setAttribute("data-service-id", servicename)
-                    services.push(nservice.firstChild)
+                    service.setHTMLUnsafe(service.outerHTML.replaceAll("placeholder", SERVICENAME))
+                    service.setAttribute("data-service-id", SERVICENAME)
+                    services.push(service.firstChild)
                 }
+                
                 for (let i = 0; i < services.length; i++) {
                     SERVICE_CONTAINER.appendChild(services[i])
-                }
-
-                if (services.length == 0) {
-                    const message = document.createElement("div")
-                    message.classList.add("alert", "alert-warning")
-                    message.textContent = "No services found for this team."
-                    SERVICE_CONTAINER.appendChild(message)
                 }
             })
             .then(() => {

@@ -47,7 +47,7 @@ services:
       dockerfile: Dockerfile.runner
     deploy:
       mode: replicated
-      replicas: 30 # adjust this based on the resources of the server
+      replicas: 6 # adjust this based on the resources of the server
     restart: always
     privileged: true
     env_file:
