@@ -21,7 +21,7 @@ func main() {
 	}
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr: redisAddr,
+		Addr:     redisAddr,
 		Password: os.Getenv("REDIS_PASSWORD"),
 	})
 	ctx := context.Background()
@@ -35,92 +35,98 @@ func main() {
 			log.Println("Failed to pop task from Redis: ", "err", err)
 			continue
 		}
+
 		// val[0] = "tasks", val[1] = the JSON payload
 		if len(val) < 2 {
 			log.Println("Invalid BLPop response:", val)
-			continue
+			return
 		}
 
 		raw := val[1]
-		var task engine.Task
-		if err := json.Unmarshal([]byte(raw), &task); err != nil {
-			log.Println("Invalid task format:", "err", err)
-			continue
-		}
-		log.Println("[Runner] Received task: TeamID: %d TeamIdentifier: %s ServiceType: %s", task.TeamID, task.TeamIdentifier, task.ServiceType)
 
-		var runnerInstance checks.Runner
-		switch task.ServiceType {
-		case "Custom":
-			runnerInstance = &checks.Custom{}
-		case "Dns":
-			runnerInstance = &checks.Dns{}
-		case "Ftp":
-			runnerInstance = &checks.Ftp{}
-		case "Imap":
-			runnerInstance = &checks.Imap{}
-		case "Ldap":
-			runnerInstance = &checks.Ldap{}
-		case "Ping":
-			runnerInstance = &checks.Ping{}
-		case "Pop3":
-			runnerInstance = &checks.Pop3{}
-		case "Rdp":
-			runnerInstance = &checks.Rdp{}
-		case "Smb":
-			runnerInstance = &checks.Smb{}
-		case "Smtp":
-			runnerInstance = &checks.Smtp{}
-		case "Sql":
-			runnerInstance = &checks.Sql{}
-		case "Ssh":
-			runnerInstance = &checks.Ssh{}
-		case "Tcp":
-			runnerInstance = &checks.Tcp{}
-		case "Vnc":
-			runnerInstance = &checks.Vnc{}
-		case "Web":
-			runnerInstance = &checks.Web{}
-		case "WinRM":
-			runnerInstance = &checks.WinRM{}
-		default:
-			log.Printf("Unknown service type %s. Skipping.", task.ServiceType)
-			continue
-		}
+		// spawn a goroutine to handle the task without blocking the loop
+		go func(raw string) {
+			var task engine.Task
+			if err := json.Unmarshal([]byte(raw), &task); err != nil {
+				log.Println("Invalid task format:", "err", err)
+				return
+			}
+			log.Printf("[Runner] Received task: TeamID: %d TeamIdentifier: %s ServiceType: %s", task.TeamID, task.TeamIdentifier, task.ServiceType)
 
-		// Deserialize the check data into that runner instance
-		if err := json.Unmarshal(task.CheckData, runnerInstance); err != nil {
-			log.Println("Failed to unmarshal into", "task.ServiceType", task.ServiceType, "err", err)
-			continue
-		}
-		log.Printf("[Runner] CheckData: %+v", runnerInstance)
+			var runnerInstance checks.Runner
+			switch task.ServiceType {
+			case "Custom":
+				runnerInstance = &checks.Custom{}
+			case "Dns":
+				runnerInstance = &checks.Dns{}
+			case "Ftp":
+				runnerInstance = &checks.Ftp{}
+			case "Imap":
+				runnerInstance = &checks.Imap{}
+			case "Ldap":
+				runnerInstance = &checks.Ldap{}
+			case "Ping":
+				runnerInstance = &checks.Ping{}
+			case "Pop3":
+				runnerInstance = &checks.Pop3{}
+			case "Rdp":
+				runnerInstance = &checks.Rdp{}
+			case "Smb":
+				runnerInstance = &checks.Smb{}
+			case "Smtp":
+				runnerInstance = &checks.Smtp{}
+			case "Sql":
+				runnerInstance = &checks.Sql{}
+			case "Ssh":
+				runnerInstance = &checks.Ssh{}
+			case "Tcp":
+				runnerInstance = &checks.Tcp{}
+			case "Vnc":
+				runnerInstance = &checks.Vnc{}
+			case "Web":
+				runnerInstance = &checks.Web{}
+			case "WinRM":
+				runnerInstance = &checks.WinRM{}
+			default:
+				log.Printf("Unknown service type %s. Skipping.", task.ServiceType)
+				return
+			}
 
-		// Actually run the check
-		resultsChan := make(chan checks.Result)
-		go runnerInstance.Run(task.TeamID, task.TeamIdentifier, resultsChan)
-		var result checks.Result
+			// Deserialize the check data into that runner instance
+			if err := json.Unmarshal(task.CheckData, runnerInstance); err != nil {
+				log.Println("Failed to unmarshal into", "task.ServiceType", task.ServiceType, "err", err)
+				return
+			}
+			log.Printf("[Runner] CheckData: %+v", runnerInstance)
 
-		select {
-		case result = <-resultsChan:
-			// success or failure, we got a result
-		case <-time.After(30 * time.Second):
-			// in case the check never returns
-			result.Error = "runner internal timeout"
-			result.TeamID = task.TeamID
-			result.ServiceType = task.ServiceType
-			result.ServiceName = task.ServiceName
-			result.Status = false
-			log.Printf("Runner internal timeout for service type: %s", task.ServiceType)
-		}
+			// Actually run the check
+			resultsChan := make(chan checks.Result)
+			go runnerInstance.Run(task.TeamID, task.TeamIdentifier, resultsChan)
+			var result checks.Result
 
-		// Marshall the check result
-		resultJSON, _ := json.Marshal(result)
+			// wait for results or timeout
+			select {
+			case result = <-resultsChan:
+				// success or failure, we got a result
+			case <-time.After(30 * time.Second):
+				// in case the check never returns
+				result.Error = "runner internal timeout"
+				result.TeamID = task.TeamID
+				result.ServiceType = task.ServiceType
+				result.ServiceName = task.ServiceName
+				result.Status = false
+				log.Printf("Runner internal timeout for service type: %s", task.ServiceType)
+			}
 
-		// Push onto "results" list
-		if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
-			log.Printf("Failed to push result to Redis: %v", err)
-		} else {
-			log.Println("Pushed result for service %s (TeamID=%d) to 'results'", task.ServiceType, task.TeamID)
-		}
+			// Marshall the check result
+			resultJSON, _ := json.Marshal(result)
+
+			// Push onto "results" list
+			if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
+				log.Printf("Failed to push result to Redis: %v", err)
+			} else {
+				log.Printf("Pushed result for service %s (TeamID=%d) to 'results'", task.ServiceType, task.TeamID)
+			}
+		}(raw)
 	}
 }

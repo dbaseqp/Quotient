@@ -1,3 +1,4 @@
+version: '3.9'
 services:
   db:
     container_name: quotient_database
@@ -48,6 +49,9 @@ services:
     deploy:
       mode: replicated
       replicas: 6 # adjust this based on the resources of the server
+      resources:
+        limits:
+          memory: 1024M
     restart: always
     privileged: true
     env_file:
