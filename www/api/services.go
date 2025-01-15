@@ -55,18 +55,13 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	namePerService, slaCountPerService, last10RoundsPerService, err := db.GetTeamSummary(teamID)
+	summaries, err := db.GetTeamSummary(teamID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	d, _ := json.Marshal(map[string]interface{}{
-		"service_names":  namePerService,
-		"uptimes":        eng.GetUptimePerService()[teamID],
-		"sla_counts":     slaCountPerService,
-		"last_10_rounds": last10RoundsPerService,
-	})
+	d, _ := json.Marshal(summaries)
 	w.Write(d)
 }
 
