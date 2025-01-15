@@ -50,7 +50,7 @@ func NewEngine(conf *config.ConfigSettings) *ScoringEngine {
 		redisAddr = "quotient_redis:6379"
 	}
 	rdb := redis.NewClient(&redis.Options{
-		Addr: redisAddr,
+		Addr:     redisAddr,
 		Password: os.Getenv("REDIS_PASSWORD"),
 	})
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
@@ -120,6 +120,7 @@ func (se *ScoringEngine) Start() {
 			slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
 			se.CurrentRound++
 
+			se.RedisClient.Publish(context.Background(), "events", "round_finish")
 			slog.Info(fmt.Sprintf("Round %d will start in %s, sleeping...", se.CurrentRound, time.Until(se.NextRoundStartTime).String()))
 			time.Sleep(time.Until(se.NextRoundStartTime))
 		}
