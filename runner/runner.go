@@ -100,34 +100,33 @@ func main() {
 		log.Printf("[Runner] CheckData: %+v", runnerInstance)
 
 		// Actually run the check
-		go func(raw string) {
-			resultsChan := make(chan checks.Result)
-			go runnerInstance.Run(task.TeamID, task.TeamIdentifier, resultsChan)
-			var result checks.Result
+		resultsChan := make(chan checks.Result)
+		go runnerInstance.Run(task.TeamID, task.TeamIdentifier, resultsChan)
+		var result checks.Result
 
-			// wait for results or timeout
-			select {
-			case result = <-resultsChan:
-				// success or failure, we got a result
-			case <-time.After(30 * time.Second):
-				// in case the check never returns
-				result.Error = "runner internal timeout"
-				result.TeamID = task.TeamID
-				result.ServiceType = task.ServiceType
-				result.ServiceName = task.ServiceName
-				result.Status = false
-				log.Printf("Runner internal timeout for service type: %s", task.ServiceType)
-			}
+		// wait for results or timeout
+		select {
+		case result = <-resultsChan:
+			// success or failure, we got a result
+		case <-time.After(30 * time.Second):
+			// in case the check never returns
+			result.Error = "runner internal timeout"
+			result.TeamID = task.TeamID
+			result.ServiceType = task.ServiceType
+			result.ServiceName = task.ServiceName
+			result.Status = false
+			log.Printf("Runner internal timeout for service type: %s", task.ServiceType)
+		}
 
-			// Marshall the check result
-			resultJSON, _ := json.Marshal(result)
+		// Marshall the check result
+		resultJSON, _ := json.Marshal(result)
 
-			// Push onto "results" list
-			if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
-				log.Printf("Failed to push result to Redis: %v", err)
-			} else {
-				log.Printf("Pushed result for service %s (TeamID=%d) to 'results'", task.ServiceType, task.TeamID)
-			}
-		}(raw)
+		// Push onto "results" list
+		if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
+			log.Printf("Failed to push result to Redis: %v", err)
+		} else {
+			log.Printf("Pushed result for service %s (TeamID=%d) to 'results'", task.ServiceType, task.TeamID)
+		}
+
 	}
 }
