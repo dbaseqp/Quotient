@@ -44,62 +44,63 @@ func main() {
 
 		raw := val[1]
 
-		// spawn a goroutine to handle the task without blocking the loop
+		log.Printf("len raw: %d", len(raw))
+
+		var task engine.Task
+		if err := json.Unmarshal([]byte(raw), &task); err != nil {
+			log.Println("Invalid task format:", "err", err)
+			return
+		}
+		log.Printf("[Runner] Received task: TeamID: %d TeamIdentifier: %s ServiceType: %s", task.TeamID, task.TeamIdentifier, task.ServiceType)
+
+		var runnerInstance checks.Runner
+		switch task.ServiceType {
+		case "Custom":
+			runnerInstance = &checks.Custom{}
+		case "Dns":
+			runnerInstance = &checks.Dns{}
+		case "Ftp":
+			runnerInstance = &checks.Ftp{}
+		case "Imap":
+			runnerInstance = &checks.Imap{}
+		case "Ldap":
+			runnerInstance = &checks.Ldap{}
+		case "Ping":
+			runnerInstance = &checks.Ping{}
+		case "Pop3":
+			runnerInstance = &checks.Pop3{}
+		case "Rdp":
+			runnerInstance = &checks.Rdp{}
+		case "Smb":
+			runnerInstance = &checks.Smb{}
+		case "Smtp":
+			runnerInstance = &checks.Smtp{}
+		case "Sql":
+			runnerInstance = &checks.Sql{}
+		case "Ssh":
+			runnerInstance = &checks.Ssh{}
+		case "Tcp":
+			runnerInstance = &checks.Tcp{}
+		case "Vnc":
+			runnerInstance = &checks.Vnc{}
+		case "Web":
+			runnerInstance = &checks.Web{}
+		case "WinRM":
+			runnerInstance = &checks.WinRM{}
+		default:
+			log.Printf("Unknown service type %s. Skipping.", task.ServiceType)
+			return
+		}
+
+		// Deserialize the check data into that runner instance
+		if err := json.Unmarshal(task.CheckData, runnerInstance); err != nil {
+			log.Println("Failed to unmarshal into", "task.ServiceType", task.ServiceType, "err", err)
+			return
+		}
+		log.Printf("[Runner] CheckData: %+v", runnerInstance)
+
+		// Actually run the check
 		go func(raw string) {
-			var task engine.Task
-			if err := json.Unmarshal([]byte(raw), &task); err != nil {
-				log.Println("Invalid task format:", "err", err)
-				return
-			}
-			log.Printf("[Runner] Received task: TeamID: %d TeamIdentifier: %s ServiceType: %s", task.TeamID, task.TeamIdentifier, task.ServiceType)
-
-			var runnerInstance checks.Runner
-			switch task.ServiceType {
-			case "Custom":
-				runnerInstance = &checks.Custom{}
-			case "Dns":
-				runnerInstance = &checks.Dns{}
-			case "Ftp":
-				runnerInstance = &checks.Ftp{}
-			case "Imap":
-				runnerInstance = &checks.Imap{}
-			case "Ldap":
-				runnerInstance = &checks.Ldap{}
-			case "Ping":
-				runnerInstance = &checks.Ping{}
-			case "Pop3":
-				runnerInstance = &checks.Pop3{}
-			case "Rdp":
-				runnerInstance = &checks.Rdp{}
-			case "Smb":
-				runnerInstance = &checks.Smb{}
-			case "Smtp":
-				runnerInstance = &checks.Smtp{}
-			case "Sql":
-				runnerInstance = &checks.Sql{}
-			case "Ssh":
-				runnerInstance = &checks.Ssh{}
-			case "Tcp":
-				runnerInstance = &checks.Tcp{}
-			case "Vnc":
-				runnerInstance = &checks.Vnc{}
-			case "Web":
-				runnerInstance = &checks.Web{}
-			case "WinRM":
-				runnerInstance = &checks.WinRM{}
-			default:
-				log.Printf("Unknown service type %s. Skipping.", task.ServiceType)
-				return
-			}
-
-			// Deserialize the check data into that runner instance
-			if err := json.Unmarshal(task.CheckData, runnerInstance); err != nil {
-				log.Println("Failed to unmarshal into", "task.ServiceType", task.ServiceType, "err", err)
-				return
-			}
-			log.Printf("[Runner] CheckData: %+v", runnerInstance)
-
-			// Actually run the check
 			resultsChan := make(chan checks.Result)
 			go runnerInstance.Run(task.TeamID, task.TeamIdentifier, resultsChan)
 			var result checks.Result
