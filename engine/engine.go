@@ -169,16 +169,33 @@ func (se *ScoringEngine) ResumeEngine() {
 
 // ResetEngine resets the engine to the initial state and stops the engine
 func (se *ScoringEngine) ResetScores() error {
-	slog.Info("resetting scores")
+	slog.Info("Resetting scores and clearing Redis queues")
+
+	// Stop the engine
 	se.ResetChan <- struct{}{}
+
+	// Reset the database
 	if err := db.ResetScores(); err != nil {
 		slog.Error("failed to reset scores", "error", err)
 		return fmt.Errorf("failed to reset scores: %v", err)
 	}
+
+	// Flush Redis queues
+	ctx := context.Background()
+	keysToDelete := []string{"tasks", "results"}
+	for _, key := range keysToDelete {
+		if err := se.RedisClient.Del(ctx, key).Err(); err != nil {
+			slog.Error("Failed to clear Redis queue", "queue", key, "error", err)
+			return fmt.Errorf("failed to clear Redis queue %s: %v", key, err)
+		}
+	}
+
+	// Reset engine state
 	se.CurrentRound = 1
 	se.UptimePerService = make(map[uint]map[string]db.Uptime)
 	se.SlaPerService = make(map[uint]map[string]int)
-	slog.Info("scores reset successfully")
+	slog.Info("Scores reset and Redis queues cleared successfully")
+
 	return nil
 }
 
