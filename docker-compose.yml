@@ -1,4 +1,5 @@
 version: '3.9'
+
 services:
   db:
     container_name: quotient_database
@@ -40,7 +41,7 @@ services:
       - "127.0.0.1:6379:6379"
     networks:
       - quotient_network
-    command: ["redis-server", "--requirepass", '${REDIS_PASSWORD:?REDIS_PASSWORD variable is not set}']
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD variable is not set}"]
 
   runner:
     build:
@@ -48,7 +49,7 @@ services:
       dockerfile: Dockerfile.runner
     deploy:
       mode: replicated
-      replicas: 40 # adjust this based on the resources of the server
+      replicas: 40 # Adjust based on server resources
     restart: always
     privileged: true
     env_file:
@@ -62,6 +63,21 @@ services:
       - ./submissions:/app/submissions
       - ./custom-checks:/app/checks
 
+  divisor:
+    build:
+      context: divisor/
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env
+    network_mode: host # Use host networking for divisor
+    depends_on:
+      - redis
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
 networks:
   quotient_network:
     driver: bridge
+
