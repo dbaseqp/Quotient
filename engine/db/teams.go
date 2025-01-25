@@ -72,7 +72,7 @@ func GetTeamSummary(teamID uint) ([]map[string]any, error) {
 
 		// get sla count for this service
 		var c int64
-		if result := db.Table("sla_schemas").Count(&c).Where("team_id = ? AND service_name = ?", teamID, name); result.Error != nil {
+		if result := db.Table("sla_schemas").Where("team_id = ? AND service_name = ?", teamID, name).Count(&c); result.Error != nil {
 			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 				continue
 			} else {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"os"
-	"time"
 
 	"quotient/engine"
 	"quotient/engine/checks"
@@ -102,21 +101,9 @@ func main() {
 		// Actually run the check
 		resultsChan := make(chan checks.Result)
 		go runnerInstance.Run(task.TeamID, task.TeamIdentifier, resultsChan)
-		var result checks.Result
 
-		// wait for results or timeout
-		select {
-		case result = <-resultsChan:
-			// success or failure, we got a result
-		case <-time.After(30 * time.Second):
-			// in case the check never returns
-			result.Error = "runner internal timeout"
-			result.TeamID = task.TeamID
-			result.ServiceType = task.ServiceType
-			result.ServiceName = task.ServiceName
-			result.Status = false
-			log.Printf("Runner internal timeout for service type: %s", task.ServiceType)
-		}
+		// Block until the check is done
+		result := <-resultsChan
 
 		// Marshall the check result
 		resultJSON, _ := json.Marshal(result)

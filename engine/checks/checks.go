@@ -155,7 +155,7 @@ func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan
 		return
 	// timeout
 	case <-time.After(time.Duration(service.Timeout) * time.Second):
-		checkResult.Error = "timeout"
+		checkResult.Error = "check timeout exceeded"
 		resultsChan <- checkResult
 		return
 	}
