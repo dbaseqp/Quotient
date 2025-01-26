@@ -271,6 +271,7 @@ func (se *ScoringEngine) rvb() {
 	defer cancel()
 
 	for i := 0; i < runners; i++ {
+		// TODO check the round of the result and only count that. probably need to change this to a while loop and increment on correct data
 		val, err := se.RedisClient.BLPop(timeoutCtx, time.Until(se.NextRoundStartTime), "results").Result()
 		if err == redis.Nil {
 			slog.Warn("Timeout waiting for results", "remaining", runners-i)
@@ -298,7 +299,7 @@ func (se *ScoringEngine) rvb() {
 
 	// runners should be 0 if all results were collected successfully
 	if runners > len(results) {
-		slog.Warn("Fewer results collected for round", "round", se.CurrentRound, "than", "runners", runners)
+		slog.Warn("Fewer results collected for round", "round", se.CurrentRound, "runners", runners, "results", len(results))
 		return
 	}
 

@@ -90,6 +90,14 @@ func GetTeamSummary(teamID uint) ([]map[string]any, error) {
 				return nil, result.Error
 			}
 		}
+		// idk how to select on preload without primaryID
+		for i := range last10Rounds {
+			checks := last10Rounds[i].Checks
+			for j := range checks {
+				checks[j].Debug = ""
+				checks[j].Error = ""
+			}
+		}
 		summary["Last10Rounds"] = last10Rounds
 
 		serviceSummaries = append(serviceSummaries, summary)

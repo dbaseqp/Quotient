@@ -52,13 +52,21 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") && !conf.MiscSettings.EasyPCR {
-		me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		if form.TeamID != fmt.Sprint(me.ID) {
+	if !slices.Contains(req_roles, "admin") {
+		if conf.MiscSettings.EasyPCR {
+			me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if form.TeamID != fmt.Sprint(me.ID) {
+				w.WriteHeader(http.StatusForbidden)
+				data := map[string]any{"error": "PCR not allowed"}
+				d, _ := json.Marshal(data)
+				w.Write(d)
+				return
+			}
+		} else {
 			w.WriteHeader(http.StatusForbidden)
 			data := map[string]any{"error": "PCR not allowed"}
 			d, _ := json.Marshal(data)

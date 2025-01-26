@@ -57,6 +57,11 @@ func (c Dns) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 					response <- checkResult
 					return
 				}
+			} else {
+				checkResult.Error = "error sending query"
+				checkResult.Debug = "record " + record.Domain + ":" + fmt.Sprint(record.Answer) + fmt.Sprintf("(took %s)", rtt) + ": " + err.Error()
+				response <- checkResult
+				return
 			}
 		}
 

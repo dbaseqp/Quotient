@@ -111,6 +111,13 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 
 	// get the file path
 	filePath := path.Join("submissions/announcements", announcementID, fileName)
+	if !PathIsInDir("submissions/announcements", filePath) {
+		w.WriteHeader(http.StatusForbidden)
+		data := map[string]any{"error": "Invalid file path"}
+		d, _ := json.Marshal(data)
+		w.Write(d)
+		return
+	}
 
 	// check if the file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {

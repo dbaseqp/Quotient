@@ -115,7 +115,7 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// if not admin and verbose is not set, remove the debug and error field
-	if !slices.Contains(req_roles, "admin") && conf.MiscSettings.ShowDebugToBlueTeam == false {
+	if !slices.Contains(req_roles, "admin") && !conf.MiscSettings.ShowDebugToBlueTeam {
 		for i := range service {
 			service[i].Debug = ""
 			service[i].Error = ""

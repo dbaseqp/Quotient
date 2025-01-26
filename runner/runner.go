@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"time"
 
 	"quotient/engine"
 	"quotient/engine/checks"
@@ -103,7 +104,19 @@ func main() {
 		go runnerInstance.Run(task.TeamID, task.TeamIdentifier, resultsChan)
 
 		// Block until the check is done
-		result := <-resultsChan
+		var result checks.Result
+		select {
+		case result = <-resultsChan:
+		case <-time.After(15 * time.Second):
+			result = checks.Result{
+				TeamID:      task.TeamID,
+				ServiceName: task.ServiceName,
+				ServiceType: task.ServiceType,
+				Status:      false,
+				Debug:       "likely check paniced and couldn't timeout properly",
+				Error:       "timeout",
+			}
+		}
 
 		// Marshall the check result
 		resultJSON, _ := json.Marshal(result)
