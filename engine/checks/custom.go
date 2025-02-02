@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"al.essio.dev/pkg/shellescape"
@@ -25,7 +26,7 @@ func commandOutput(cmd string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func (c Custom) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 
 		var username, password string
@@ -42,6 +43,7 @@ func (c Custom) Run(teamID uint, teamIdentifier string, resultsChan chan Result)
 
 		// Replace command input keywords
 		formedCommand := c.Command
+		formedCommand = strings.Replace(formedCommand, "ROUND", strconv.FormatUint(uint64(roundID), 10), -1)
 		formedCommand = strings.Replace(formedCommand, "TARGET", c.Target, -1) // is there a case where u need IP and FQDN?
 		formedCommand = strings.Replace(formedCommand, "TEAMIDENTIFIER", teamIdentifier, -1)
 
@@ -84,7 +86,7 @@ func (c Custom) Run(teamID uint, teamIdentifier string, resultsChan chan Result)
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *Custom) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {

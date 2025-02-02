@@ -24,7 +24,7 @@ type queryData struct {
 	Output   string `toml:",omitempty"`
 }
 
-func (c Sql) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		username, password, err := c.getCreds(teamID)
 		if err != nil {
@@ -114,7 +114,7 @@ func (c Sql) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *Sql) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {

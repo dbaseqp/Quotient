@@ -14,7 +14,7 @@ type Ldap struct {
 	Encrypted bool
 }
 
-func (c Ldap) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c Ldap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		// Set timeout
 		ldap.DefaultTimeout = time.Duration(c.Timeout) * time.Second
@@ -65,7 +65,7 @@ func (c Ldap) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *Ldap) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
