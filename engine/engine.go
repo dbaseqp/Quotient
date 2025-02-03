@@ -277,6 +277,8 @@ func (se *ScoringEngine) rvb() {
 		val, err := se.RedisClient.BLPop(timeoutCtx, time.Until(se.NextRoundStartTime), "results").Result()
 		if err == redis.Nil {
 			slog.Warn("Timeout waiting for results", "remaining", runners-i)
+			// Clear the results, since we didn't collect everything in time
+			results = []checks.Result{}
 			break
 		} else if err != nil {
 			slog.Error("Failed to fetch results from Redis:", "error", err)
