@@ -36,7 +36,7 @@ type ScoringEngine struct {
 	SlaPerService         map[uint]map[string]int
 	EnginePauseWg         *sync.WaitGroup
 	IsEnginePaused        bool
-	CurrentRound          int
+	CurrentRound          uint
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
@@ -72,7 +72,7 @@ func (se *ScoringEngine) Start() {
 	if t, err := db.GetLastRound(); err != nil {
 		slog.Error("failed to get last round", "error", err)
 	} else {
-		se.CurrentRound = int(t.ID) + 1
+		se.CurrentRound = uint(t.ID) + 1
 	}
 
 	if err := db.LoadUptimes(&se.UptimePerService); err != nil {
