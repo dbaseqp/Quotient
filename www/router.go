@@ -99,6 +99,31 @@ func (router *Router) Start() {
 
 	/******************************************
 	|                                         |
+	|               RED ROUTES                |
+	|                                         |
+	******************************************/
+	REDAUTH := middleware.MiddlewareChain(middleware.Authentication("red", "admin"))
+
+	// red auth API routes
+	mux.HandleFunc("GET /api/red", REDAUTH(api.GetRed))
+	// mux.HandleFunc("POST /api/red/vuln", REDAUTH(api.CreatePcr))
+	mux.HandleFunc("POST /api/red/box", REDAUTH(api.CreateBox))
+	mux.HandleFunc("POST /api/red/vector", REDAUTH(api.CreateVector))
+	mux.HandleFunc("POST /api/red/attack", REDAUTH(api.CreateAttack))
+
+	mux.HandleFunc("POST /api/red/box/{id}", REDAUTH(api.EditBox))
+	mux.HandleFunc("POST /api/red/vector/{id}", REDAUTH(api.EditVector))
+	mux.HandleFunc("POST /api/red/attack/{id}", REDAUTH(api.EditAttack))
+
+	// mux.HandleFunc("DELETE /api/red/box/{id}", REDAUTH(api.DeleteBox))
+	// mux.HandleFunc("DELETE /api/red/vector/{id}", REDAUTH(api.DeleteVector))
+	// mux.HandleFunc("DELETE /api/red/attack/{id}", REDAUTH(api.DeleteAttack))
+
+	// red auth WWW routes
+	mux.HandleFunc("GET /red", REDAUTH(router.RedPage))
+
+	/******************************************
+	|                                         |
 	|               ADMIN ROUTES              |
 	|                                         |
 	******************************************/
@@ -129,6 +154,7 @@ func (router *Router) Start() {
 	mux.HandleFunc("GET /admin", ADMINAUTH(router.AdminPage))
 	mux.HandleFunc("GET /admin/engine", ADMINAUTH(router.AdministrateEnginePage))
 	mux.HandleFunc("GET /admin/teams", ADMINAUTH(router.AdministrateTeamsPage))
+	mux.HandleFunc("GET /admin/appearance", ADMINAUTH(router.AdministrateAppearancePage))
 
 	// start server
 	server := http.Server{

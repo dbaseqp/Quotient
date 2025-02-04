@@ -8,7 +8,7 @@ import (
 
 type Status int
 
-// instances vulnerability against a system
+// class of vulnerability
 type VulnSchema struct {
 	ID          uint
 	Name        string

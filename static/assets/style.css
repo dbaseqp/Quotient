@@ -44,3 +44,7 @@ table td {
     color: red;
     margin-left: 5px;
 }
+
+.inspector {
+    max-width: 50%;
+}

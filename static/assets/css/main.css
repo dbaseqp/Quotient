@@ -13616,6 +13616,10 @@ textarea.form-control-lg {
   #navbar .offcanvas {
     max-width: 200px;
   }
+
+  .inspector {
+    min-width: 25%;
+  }
 }
 .nav-link.active {
   background: linear-gradient(90deg, #6610f2 0%, #290661 100%);
@@ -13625,7 +13629,7 @@ textarea.form-control-lg {
 .inspector {
   display: inline-block;
   font: bold 14px helvetica, sans-serif;
-  background-color: rgba(var(--bs-secondary-bg-rgb), 1) !important;
+  background-color: rgba(var(--bs-tertiary-bg-rgb), 1) !important;
   /* Grey 100 */
   cursor: default;
 }

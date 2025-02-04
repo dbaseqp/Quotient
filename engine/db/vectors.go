@@ -6,11 +6,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// a generalized implementation of some type of vuln against a specific box
 type VectorSchema struct {
+	ID                        uint
 	VulnID                    uint
 	BoxID                     uint
 	Port                      int
-	Endpoint                  string
 	ImplementationDescription string
 }
 
@@ -27,9 +28,16 @@ func GetVectors() ([]VectorSchema, error) {
 	return vectors, nil
 }
 
-// create a new vector
 func CreateVector(vector VectorSchema) (VectorSchema, error) {
 	result := db.Table("vector_schemas").Create(&vector)
+	if result.Error != nil {
+		return VectorSchema{}, result.Error
+	}
+	return vector, nil
+}
+
+func UpdateVector(vector VectorSchema) (VectorSchema, error) {
+	result := db.Table("vector_schemas").Save(&vector)
 	if result.Error != nil {
 		return VectorSchema{}, result.Error
 	}
