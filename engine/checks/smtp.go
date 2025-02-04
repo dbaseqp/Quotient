@@ -30,7 +30,7 @@ func (a unencryptedAuth) Start(server *smtp.ServerInfo) (string, []byte, error) 
 	return a.Auth.Start(&s)
 }
 
-func (c Smtp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		fortunes, err := os.ReadFile("/usr/share/fortune/fortunes")
 		if err != nil {
@@ -179,7 +179,7 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *Smtp) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {

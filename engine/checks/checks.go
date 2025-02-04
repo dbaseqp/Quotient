@@ -13,7 +13,7 @@ import (
 
 // checks for each service
 type Runner interface {
-	Run(teamID uint, identifier string, resultsChan chan Result)
+	Run(teamID uint, identifier string, roundID uint, resultsChan chan Result)
 	Runnable() bool
 	Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error
 	GetType() string
@@ -46,6 +46,7 @@ type Result struct {
 	Error       string `json:"error,omitempty"`
 	Points      int    `json:"points,omitempty"`
 	ServiceType string `json:"service_type,omitempty"`
+	RoundID     uint   `json:"round_id"`
 }
 
 func (service *Service) GetType() string {
@@ -131,7 +132,7 @@ func (service *Service) Runnable() bool {
 	return true
 }
 
-func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan Result, definition func(teamID uint, teamIdentifier string, checkResult Result, response chan Result)) {
+func (service *Service) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result, definition func(teamID uint, teamIdentifier string, checkResult Result, response chan Result)) {
 	service.Target = strings.Replace(service.Target, "_", teamIdentifier, -1)
 
 	checkResult := Result{
@@ -141,6 +142,7 @@ func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan
 		Points:      service.Points,
 		Status:      false,
 		ServiceType: service.ServiceType,
+		RoundID:     roundID,
 	}
 
 	slog.Debug("Running check", "teamID", teamID, "serviceName", service.Name, "target", service.Target)

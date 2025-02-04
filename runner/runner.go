@@ -26,32 +26,29 @@ func main() {
 	})
 	ctx := context.Background()
 
-	log.Println("Runner started, listening for tasks on Redis at:", "reddisAddr", redisAddr)
+	log.Println("[Runner] Runner started, listening for tasks on Redis at:", "reddisAddr", redisAddr)
 
 	for {
 		// Block until we get a task from the "tasks" list (no timeout here).
 		val, err := rdb.BLPop(ctx, 0, "tasks").Result()
 		if err != nil {
-			log.Println("Failed to pop task from Redis: ", "err", err)
+			log.Println("[Runner] Failed to pop task from Redis: ", "err", err)
 			continue
 		}
 
 		// val[0] = "tasks", val[1] = the JSON payload
 		if len(val) < 2 {
-			log.Println("Invalid BLPop response:", val)
+			log.Println("[Runner] Invalid BLPop response:", val)
 			return
 		}
-
 		raw := val[1]
-
-		log.Printf("len raw: %d", len(raw))
 
 		var task engine.Task
 		if err := json.Unmarshal([]byte(raw), &task); err != nil {
-			log.Println("Invalid task format:", "err", err)
+			log.Println("[Runner] Invalid task format:", "err", err)
 			return
 		}
-		log.Printf("[Runner] Received task: TeamID: %d TeamIdentifier: %s ServiceType: %s", task.TeamID, task.TeamIdentifier, task.ServiceType)
+		log.Printf("[Runner] Received task: RoundID: %d TeamID: %d TeamIdentifier: %s ServiceType: %s", task.RoundID, task.TeamID, task.TeamIdentifier, task.ServiceType)
 
 		var runnerInstance checks.Runner
 		switch task.ServiceType {
@@ -88,32 +85,34 @@ func main() {
 		case "WinRM":
 			runnerInstance = &checks.WinRM{}
 		default:
-			log.Printf("Unknown service type %s. Skipping.", task.ServiceType)
+			log.Printf("[Runner] Unknown service type %s. Skipping.", task.ServiceType)
 			return
 		}
 
 		// Deserialize the check data into that runner instance
 		if err := json.Unmarshal(task.CheckData, runnerInstance); err != nil {
-			log.Println("Failed to unmarshal into", "task.ServiceType", task.ServiceType, "err", err)
+			log.Println("[Runner] Failed to unmarshal into", "task.ServiceType", task.ServiceType, "err", err)
 			return
 		}
 		log.Printf("[Runner] CheckData: %+v", runnerInstance)
 
 		// Actually run the check
 		resultsChan := make(chan checks.Result)
-		go runnerInstance.Run(task.TeamID, task.TeamIdentifier, resultsChan)
+		go runnerInstance.Run(task.TeamID, task.TeamIdentifier, task.RoundID, resultsChan)
 
 		// Block until the check is done
 		var result checks.Result
 		select {
 		case result = <-resultsChan:
 		case <-time.After(15 * time.Second):
+			log.Printf("[Runner] Timeout occured: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
 			result = checks.Result{
 				TeamID:      task.TeamID,
 				ServiceName: task.ServiceName,
 				ServiceType: task.ServiceType,
+				RoundID:     task.RoundID,
 				Status:      false,
-				Debug:       "likely check paniced and couldn't timeout properly",
+				Debug:       "likely check panicked and couldn't timeout properly",
 				Error:       "timeout",
 			}
 		}
@@ -123,9 +122,9 @@ func main() {
 
 		// Push onto "results" list
 		if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
-			log.Printf("Failed to push result to Redis: %v", err)
+			log.Printf("[Runner] Failed to push result to Redis: %v", err)
 		} else {
-			log.Printf("Pushed result for service %s (TeamID=%d) to 'results'", task.ServiceType, task.TeamID)
+			log.Printf("[Runner] Pushed result for: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
 		}
 
 	}

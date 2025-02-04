@@ -25,6 +25,7 @@ type Task struct {
 	TeamIdentifier string          `json:"team_identifier"` // Human-readable identifier for the team
 	ServiceType    string          `json:"service_type"`
 	ServiceName    string          `json:"service_name"`
+	RoundID        uint            `json:"round_id"`
 	CheckData      json.RawMessage `json:"check_data"`
 }
 
@@ -35,7 +36,7 @@ type ScoringEngine struct {
 	SlaPerService         map[uint]map[string]int
 	EnginePauseWg         *sync.WaitGroup
 	IsEnginePaused        bool
-	CurrentRound          int
+	CurrentRound          uint
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
@@ -71,7 +72,7 @@ func (se *ScoringEngine) Start() {
 	if t, err := db.GetLastRound(); err != nil {
 		slog.Error("failed to get last round", "error", err)
 	} else {
-		se.CurrentRound = int(t.ID) + 1
+		se.CurrentRound = uint(t.ID) + 1
 	}
 
 	if err := db.LoadUptimes(&se.UptimePerService); err != nil {
@@ -251,6 +252,7 @@ func (se *ScoringEngine) rvb() {
 				TeamIdentifier: team.Identifier,
 				ServiceType:    r.GetType(),
 				ServiceName:    r.GetName(),
+				RoundID:        se.CurrentRound,
 				CheckData:      data, // the entire specialized struct
 			}
 
@@ -270,11 +272,13 @@ func (se *ScoringEngine) rvb() {
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Until(se.NextRoundStartTime))
 	defer cancel()
 
-	for i := 0; i < runners; i++ {
-		// TODO check the round of the result and only count that. probably need to change this to a while loop and increment on correct data
+	i := 0
+	for i < runners {
 		val, err := se.RedisClient.BLPop(timeoutCtx, time.Until(se.NextRoundStartTime), "results").Result()
 		if err == redis.Nil {
 			slog.Warn("Timeout waiting for results", "remaining", runners-i)
+			// Clear the results, since we didn't collect everything in time
+			results = []checks.Result{}
 			break
 		} else if err != nil {
 			slog.Error("Failed to fetch results from Redis:", "error", err)
@@ -293,14 +297,13 @@ func (se *ScoringEngine) rvb() {
 			slog.Error("Failed to unmarshal check result", "error", err)
 			continue
 		}
+		if result.RoundID != se.CurrentRound {
+			slog.Warn("Ignoring out of round result", "receivedRound", result.RoundID, "currentRound", se.CurrentRound)
+			continue
+		}
 		results = append(results, result)
-		slog.Debug("service check finished", "team_id", result.TeamID, "service_name", result.ServiceName, "result", result.Status, "debug", result.Debug, "error", result.Error)
-	}
-
-	// runners should be 0 if all results were collected successfully
-	if runners > len(results) {
-		slog.Warn("Fewer results collected for round", "round", se.CurrentRound, "runners", runners, "results", len(results))
-		return
+		i++
+		slog.Debug("service check finished", "round_id", result.RoundID, "team_id", result.TeamID, "service_name", result.ServiceName, "result", result.Status, "debug", result.Debug, "error", result.Error)
 	}
 
 	// 3) Process all collected results

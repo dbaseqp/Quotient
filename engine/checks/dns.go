@@ -22,7 +22,7 @@ type DnsRecord struct {
 	Answer []string
 }
 
-func (c Dns) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c Dns) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		// Pick a record
 		record := c.Record[rand.Intn(len(c.Record))]
@@ -93,7 +93,7 @@ func (c Dns) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *Dns) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {

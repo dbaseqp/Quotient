@@ -24,7 +24,7 @@ type winCommandData struct {
 	Output   string
 }
 
-func (c WinRM) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		username, password, err := c.getCreds(teamID)
 		if err != nil {
@@ -97,7 +97,7 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, resultsChan chan Result) 
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *WinRM) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
