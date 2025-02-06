@@ -15,7 +15,7 @@ type BoxSchema struct {
 
 func GetBoxes() ([]BoxSchema, error) {
 	var boxes []BoxSchema
-	result := db.Table("box_schemas").Find(&boxes)
+	result := db.Table("box_schemas").Preload("Vectors").Find(&boxes)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return boxes, nil

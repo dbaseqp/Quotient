@@ -3,12 +3,38 @@
     <div class="pt-4 w-100 h-100 overflow-y-scroll">
         <div class="d-flex h-100 w-100 flex-row">
             <div id="graph" class="d-flex bg-body-secondary h-100 w-100"></div>
-            <div id="myInspector"></div>
+            <div>
+                <div class="modal fade" id="modal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+                    aria-labelledby="modalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-fullscreen-md-down">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h1 class="modal-title fs-5" id="modalLabel"></h1>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                    aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body" id="formContainer">
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-primary" id="submitFormButton">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 <script>
     var myDiagram;
+    const myModal = new bootstrap.Modal('#modal', {
+        keyboard: false
+    })
+    let vulns;
+    let teams;
+    let boxes;
+    let vectors = [];
     function init() {
 
         myDiagram = new go.Diagram('graph', {
@@ -45,7 +71,7 @@
             selectionAdorned: false,
             textEditable: true,
             locationObjectName: 'BODY',
-            dragComputation: stayInGroup
+            dragComputation: stayInGroup,
         })
             .bindTwoWay('location', 'loc', go.Point.parse, go.Point.stringify)
             // the main body consists of a Rectangle surrounding the text
@@ -66,7 +92,7 @@
                                     margin: new go.Margin(3, 3 + 11, 3, 3 + 4),
                                     alignment: go.Spot.Left
                                 })
-                                    .bindTwoWay('text', 'port'),
+                                    .bindTwoWay('text', 'name'),
                             ),
                     ),
                 // output port
@@ -91,25 +117,6 @@
                     .add(
                         new go.Shape('Circle', { width: 8, height: 8, fill: 'white', stroke: 'gray' }),
                         new go.Shape('Circle', { width: 4, height: 4, fill: 'dodgerblue', stroke: null })
-                    )
-            );
-
-        myDiagram.nodeTemplate.contextMenu = go.GraphObject.build('ContextMenu')
-            .add(
-                go.GraphObject.build('ContextMenuButton', {
-                    click: (e, obj) => e.diagram.commandHandler.editTextBlock()
-                })
-                    .bindObject('visible', '', (o) => o.diagram && o.diagram.commandHandler.canEditTextBlock())
-                    .add(
-                        new go.TextBlock('Rename')
-                    ),
-                // add one for Editing...
-                go.GraphObject.build('ContextMenuButton', {
-                    click: (e, obj) => e.diagram.commandHandler.deleteSelection()
-                })
-                    .bindObject('visible', '', (o) => o.diagram && o.diagram.commandHandler.canDeleteSelection())
-                    .add(
-                        new go.TextBlock('Delete')
                     )
             );
 
@@ -238,7 +245,7 @@
                                     margin: new go.Margin(3, 3 + 11, 3, 3 + 4),
                                     alignment: go.Spot.Center
                                 })
-                                    .bindTwoWay('text'),
+                                    .bindTwoWay('text', 'combinedName'),
                                 new go.Placeholder({ padding: 5, alignment: go.Spot.MiddleBottom }),
                             )
                     ),
@@ -329,6 +336,29 @@
                 })
             );
 
+        myDiagram.linkTemplateMap.add('attack-true',
+            new go.Link({
+                selectionAdorned: false,
+                fromPortId: 'from',
+                toPortId: 'to',
+                relinkableTo: true
+            })
+                .add(
+                    new go.Shape({
+                        stroke: 'red',
+                        strokeWidth: 2,
+                        mouseEnter: (e, obj) => {
+                            obj.strokeWidth = 5;
+                            obj.stroke = 'red';
+                        },
+                        mouseLeave: (e, obj) => {
+                            obj.strokeWidth = 2;
+                            obj.stroke = 'red';
+                        }
+                    })
+                )
+        );
+
         function commonLinkingToolInit(tool) {
             // the temporary link drawn during a link drawing operation (LinkingTool) is thick and blue
             tool.temporaryLink = new go.Link({ layerName: 'Tool' })
@@ -378,6 +408,7 @@
 
         // detect when dropped onto an occupied cell
         myDiagram.addDiagramListener('SelectionMoved', shiftNodesToEmptySpaces);
+        myDiagram.addDiagramListener('ChangedSelection', openInspectorModal)
 
         function shiftNodesToEmptySpaces() {
             myDiagram.selection.each((node) => {
@@ -402,53 +433,153 @@
             });
         }
 
-        // prevent nodes from being dragged to the left of where the layout placed them
-        myDiagram.addDiagramListener('LayoutCompleted', (e) => {
-            myDiagram.nodes.each((node) => {
-                if (node.category === 'Recycle') return;
-                // node.minLocation = new go.Point(node.location.x, -Infinity);
-            });
-        });
-
-        // create the Inspector for the digram
-        myInspector = new Inspector('myInspector', myDiagram, {
-            properties: {
-                key: { show: false },
-                pos: { show: false },
-                loc: { show: false },
-                // icon: { show: Inspector.showIfNode, type: 'select', choices: IconNames },
-                // color: { type: 'select', choices: ColorNames },
-                text: { show: Inspector.showIfNode, readOnly: true },
-                caption: { show: Inspector.showIfNode, readOnly: true },
-                category: { readOnly: true },
-                // imgsrc: { show: Inspector.showIfNode },
-                from: { show: false },
-                to: { show: false },
-                points: { show: false },
-                fromSpot: { show: Inspector.showIfLink, type: 'select' },
-                toSpot: { show: Inspector.showIfLink, type: 'select' }
-            },
-            propertyModified: onSelectionChanged
-        });
-
-        function onSelectionChanged() {
-            var node = myDiagram.selection.first();
+        const HIDDENFIELDS = ['key', 'loc', 'group', 'fromPortId', 'toPortId', 'isGroup', 'combinedName'];
+        function openInspectorModal() {
+            const node = myDiagram.selection.first();
             if (!(node instanceof go.Node)) return;
-            var data = node.data;
-            // var image = document.getElementById('Image');
-            // var title = document.getElementById('Title');
-            // var description = document.getElementById('Description');
+            const data = node.data;
+            const formContainer = document.getElementById('formContainer');
+            formContainer.innerHTML = ''
 
-            // if (data.imgsrc) {
-            //     image.src = data.imgsrc;
-            //     image.alt = data.caption;
-            // } else {
-            //     image.src = '';
-            //     image.alt = '';
-            // }
-            // title.textContent = data.text;
-            // description.textContent = data.description;
+            const form = document.createElement('form');
+            form.onsubmit = postSaveObject;
+
+            const header = document.getElementById('modalLabel');
+            if (node.category === 'Vulnerability') {
+                header.textContent = 'Vulnerability (read-only)'
+            } else if (node.category === 'Team') {
+                header.textContent = 'Team (read-only)'
+            } else if (node.isGroup) {
+                header.textContent = 'Edit Box'
+            } else {
+                header.textContent = 'Edit Vector'
+            }
+            for (const key in data) {
+                if (HIDDENFIELDS.includes(key)) continue;
+                const label = document.createElement('label');
+                label.for = key;
+                label.textContent = key;
+                form.appendChild(label);
+
+                let input;
+                if (key === 'caption') {
+                    label.textContent += ' (markdown supported)'
+
+                    const container = document.createElement('div');
+                    const markdown = document.createElement('div');
+                    markdown.name = key;
+                    markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
+                    markdown.innerHTML = marked.parse(data[key]);
+
+                    const textarea = document.createElement('textarea');
+                    textarea.name = key;
+                    textarea.classList.add('border', 'border-1', 'mb-2', 'w-100');
+
+                    if (!["Vulnerability", "Team"].includes(node.category)) {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.classList.add('btn', 'btn-link', 'mb-2');
+                        button.textContent = 'Edit';
+                        button.addEventListener('click', () => {
+                            if (button.textContent === 'Edit') {
+                                button.textContent = 'Preview';
+                                textarea.value = data[key];
+                                container.replaceChildren(textarea);
+                            } else if (button.textContent === 'Preview') {
+                                button.textContent = 'Edit';
+                                data[key] = textarea.value;
+                                markdown.innerHTML = marked.parse(data[key]);
+                                container.replaceChildren(markdown);
+                            }
+                        });
+                        form.appendChild(button);
+                    }
+                    container.appendChild(markdown);
+                    form.appendChild(container);
+                } else {
+                    input = document.createElement('input');
+                    input.type = 'text';
+                    input.name = key;
+                    input.value = data[key];
+                    input.classList.add('form-control', 'mb-2');
+                    if (["Vulnerability", "Team"].includes(node.category)) {
+                        input.readOnly = true;
+                    }
+                    form.appendChild(input);
+                }
+            }
+            formContainer.appendChild(form);
+            myModal.show()
         }
+
+        myDiagram.add(
+            new go.Part('Vertical', { position: new go.Point(-200, 10), selectable: false })
+                .add(
+                    new go.Panel('Horizontal', {
+                        row: 4,
+                        click: addNewBox,
+                        background: 'white',
+                        margin: new go.Margin(10, 4, 4, 4)
+                    })
+                        .add(
+                            new go.Panel('Auto')
+                                .add(
+                                    new go.Shape('Rectangle', { strokeWidth: 0, stroke: null, fill: '#6FB583' }),
+                                    new go.Shape('PlusLine', {
+                                        margin: 6,
+                                        strokeWidth: 2,
+                                        width: 12,
+                                        height: 12,
+                                        stroke: 'white',
+                                        background: '#6FB583'
+                                    })
+                                ),
+                            new go.TextBlock('New Box', { font: '10px Lato, sans-serif', margin: 6 })
+                        ),
+                    new go.Panel('Horizontal', {
+                        row: 4,
+                        click: addNewVector,
+                        background: 'white',
+                        margin: new go.Margin(10, 4, 4, 4)
+                    })
+                        .add(
+                            new go.Panel('Auto')
+                                .add(
+                                    new go.Shape('Rectangle', { strokeWidth: 0, stroke: null, fill: '#6FB583' }),
+                                    new go.Shape('PlusLine', {
+                                        margin: 6,
+                                        strokeWidth: 2,
+                                        width: 12,
+                                        height: 12,
+                                        stroke: 'white',
+                                        background: '#6FB583'
+                                    })
+                                ),
+                            new go.TextBlock('New Vector', { font: '10px Lato, sans-serif', margin: 6 })
+                        ),
+                    new go.Panel('Horizontal', {
+                        row: 4,
+                        click: addNewAttack,
+                        background: 'white',
+                        margin: new go.Margin(10, 4, 4, 4)
+                    })
+                        .add(
+                            new go.Panel('Auto')
+                                .add(
+                                    new go.Shape('Rectangle', { strokeWidth: 0, stroke: null, fill: '#6FB583' }),
+                                    new go.Shape('PlusLine', {
+                                        margin: 6,
+                                        strokeWidth: 2,
+                                        width: 12,
+                                        height: 12,
+                                        stroke: 'white',
+                                        background: '#6FB583'
+                                    })
+                                ),
+                            new go.TextBlock('New Attack', { font: '10px Lato, sans-serif', margin: 6 })
+                        )
+                )
+        );
 
         load(); // load initial diagram from the mySavedModel textarea
     }
@@ -467,66 +598,93 @@
             })
             .then((data) => {
                 console.log(data)
+                teams = data.teams
+                vulns = data.vulns
+                boxes = data.boxes
                 let nodes = []
                 let links = []
 
-                for (const vuln of data.vulns) {
-                    let node = {
-                        key: vuln.Name,
-                        text: vuln.Name,
-                        category: "Vulnerability",
-                        caption: vuln.Description,
-                    }
-                    nodes.push(node)
-                }
-                for (const box of data.boxes) {
-                    let name = ""
-                    if (box.IP && box.Hostname) {
-                        name = `${box.IP} (${box.Hostname})`
-                    } else if (box.IP) {
-                        name = box.IP
-                    } else if (box.Hostname) {
-                        name = box.Hostname
-                    }
-                    for (const vector of box.Vectors) {
-                        vector.key = "vector" + vector.ID
+                if (data.vulns.length > 0) {
+                    for (const vuln of data.vulns) {
                         let node = {
-                            key: vector.key,
-                            port: vector.Port,
-                            caption: vector.Description,
-                            group: "box" + box.ID,
+                            key: vuln.Name,
+                            text: vuln.Name,
+                            category: "Vulnerability",
+                            caption: vuln.Description,
                         }
                         nodes.push(node)
+                    }
+                }
 
-                        let vuln = data.vulns.find(v => v.ID === vector.VulnID)
+                if (data.boxes.length > 0) {
+                    for (const box of data.boxes) {
+                        vectors = vectors.concat(box.Vectors)
+
+                        let combinedName = ""
+                        if (box.IP && box.Hostname) {
+                            combinedName = `${box.IP} (${box.Hostname})`
+                        } else if (box.IP) {
+                            combinedName = box.IP
+                        } else if (box.Hostname) {
+                            combinedName = box.Hostname
+                        }
+                        for (const vector of box.Vectors) {
+                            vector.key = "vector" + vector.ID
+                            let name = "";
+                            name += vector.Port ? vector.Port : "Unknown Port"
+                            name += "/"
+                            name += vector.Protocol ? vector.Protocol : "Unknown Protocol"
+                            name += " - ID:" + vector.ID
+                            let node = {
+                                key: vector.key,
+                                port: vector.Port,
+                                caption: vector.ImplementationDescription,
+                                group: "box" + box.ID,
+                                protocol: vector.Protocol,
+                                name: name,
+                            }
+                            nodes.push(node)
+
+                            let vuln = data.vulns.find(v => v.ID === vector.VulnID)
+                            let link = {
+                                from: vuln.Name,
+                                to: vector.key,
+                            }
+                            links.push(link)
+                        }
+                        let node = {
+                            key: "box" + box.ID,
+                            combinedName: combinedName,
+                            ip: box.IP,
+                            hostname: box.Hostname,
+                            isGroup: true,
+                        }
+                        nodes.push(node)
+                    }
+                }
+
+                if (data.teams.length > 0) {
+                    for (const team of data.teams) {
+                        let node = {
+                            key: 'team' + team.ID,
+                            text: team.Name,
+                            category: "Team",
+                        }
+                        nodes.push(node)
+                    }
+                }
+
+                if (data.attacks.length > 0) {
+                    for (const attack of data.attacks) {
                         let link = {
-                            from: vuln.Name,
-                            to: vector.key,
+                            from: 'vector' + attack.VectorID,
+                            to: 'team' + attack.TeamID,
+                            category: "attack-"+attack.StillWorks,
                         }
                         links.push(link)
                     }
-                    let node = {
-                        key: "box" + box.ID,
-                        text: name,
-                        isGroup: true,
-                    }
-                    nodes.push(node)
                 }
-                for (const team of data.teams) {
-                    let node = {
-                        key: 'team' + team.ID,
-                        text: team.Name,
-                        category: "Team",
-                    }
-                    nodes.push(node)
-                }
-                for (const attack of data.attacks) {
-                    let link = {
-                        from: 'vector' + attack.VectorID,
-                        to: 'team' + attack.TeamID,
-                    }
-                    links.push(link)
-                }
+
                 myDiagram.model = new go.GraphLinksModel(nodes, links)
                 myDiagram.model.linkFromPortIdProperty = "fromPortId";
                 myDiagram.model.linkToPortIdProperty = "toPortId";
@@ -538,8 +696,411 @@
             })
     }
 
+    function postNewObject(url) {
+        const FORM = document.getElementById('formContainer').querySelector('form');
+        console.log(FORM)
+        const PAYLOAD = new FormData(FORM);
+
+        fetch(url, {
+            method: 'POST',
+            body: PAYLOAD
+        })
+            .then((response) => {
+                if (!response.ok) {
+                    Promise.reject(response)
+                }
+                return response.json()
+            })
+            .then((data) => {
+                console.log("success")
+                console.log(data)
+                myModal.hide();
+            })
+            .catch((error) => {
+                console.error("Error posting new object:", error)
+            })
+    }
+
+    function addNewBox(e, obj) {
+        const formContainer = document.getElementById('formContainer');
+        formContainer.innerHTML = ''
+
+        const submitFormButton = document.getElementById('submitFormButton');
+        submitFormButton.textContent = 'Create Box';
+        submitFormButton.onclick = () => { postNewObject("/api/red/box") };
+
+        const newObjectForm = document.createElement('form');
+        newObjectForm.onsubmit = postNewObject;
+        const title = document.getElementById('modalLabel');
+
+        title.textContent = 'New Box'
+
+        const label = document.createElement('label');
+        label.for = 'ip';
+        label.textContent = 'IP';
+        newObjectForm.appendChild(label);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.name = 'ip';
+        input.classList.add('form-control', 'mb-2');
+        newObjectForm.appendChild(input);
+
+        const label2 = document.createElement('label');
+        label2.for = 'hostname';
+        label2.textContent = 'Hostname';
+        newObjectForm.appendChild(label2);
+
+        const input2 = document.createElement('input');
+        input2.type = 'text';
+        input2.name = 'hostname';
+        input2.classList.add('form-control', 'mb-2');
+        newObjectForm.appendChild(input2);
+
+        formContainer.appendChild(newObjectForm);
+
+        myModal.show()
+    }
+
+    function addNewVector(e, obj) {
+        const formContainer = document.getElementById('formContainer');
+        formContainer.innerHTML = ''
+        const newObjectForm = document.createElement('form');
+        submitFormButton.onclick = () => { postNewObject("/api/red/vector") };
+
+        const title = document.getElementById('modalLabel');
+        title.textContent = 'New Vector'
+
+        const labelVulnType = document.createElement('label');
+        labelVulnType.for = 'vuln-id';
+        labelVulnType.textContent = 'Vulnerability';
+        newObjectForm.appendChild(labelVulnType);
+
+        const select = document.createElement('select');
+        select.name = 'vuln-id';
+        select.classList.add('form-control', 'mb-2');
+        vulns.forEach((vuln) => {
+            const option = document.createElement('option');
+            option.value = vuln.ID;
+            option.textContent = vuln.Name;
+            select.appendChild(option);
+        });
+        newObjectForm.appendChild(select);
+
+        const labelBox = document.createElement('label');
+        labelBox.for = 'box-id';
+        labelBox.textContent = 'Box';
+        newObjectForm.appendChild(labelBox);
+
+        const selectBox = document.createElement('select');
+        selectBox.name = 'box-id';
+        selectBox.classList.add('form-control', 'mb-2');
+        boxes.forEach((box) => {
+            const option = document.createElement('option');
+            option.value = box.ID;
+            option.textContent = box.IP;
+            selectBox.appendChild(option);
+        });
+        newObjectForm.appendChild(selectBox);
+
+        const labelPort = document.createElement('label');
+        labelPort.for = 'port';
+        labelPort.textContent = 'Port';
+        newObjectForm.appendChild(labelPort);
+
+        const inputPort = document.createElement('input');
+        inputPort.type = 'number';
+        inputPort.name = 'port';
+        inputPort.min = 0;
+        inputPort.max = 65535;
+        inputPort.classList.add('form-control', 'mb-2');
+        newObjectForm.appendChild(inputPort);
+
+        const labelProtocol = document.createElement('label');
+        labelProtocol.for = 'protocol';
+        labelProtocol.textContent = 'Protocol';
+        newObjectForm.appendChild(labelProtocol);
+
+        const inputProtocol = document.createElement('select');
+        inputProtocol.name = 'protocol';
+        inputProtocol.classList.add('form-control', 'mb-2');
+        const tcp = document.createElement('option');
+        tcp.value = 'tcp';
+        tcp.textContent = 'TCP';
+        const udp = document.createElement('option');
+        udp.value = 'udp';
+        udp.textContent = 'UDP';
+        inputProtocol.appendChild(tcp);
+        inputProtocol.appendChild(udp);
+        newObjectForm.appendChild(inputProtocol);
+
+        const labelCaption = document.createElement('label');
+        labelCaption.for = 'description';
+        labelCaption.textContent = 'Caption (markdown supported)';
+        newObjectForm.appendChild(labelCaption);
+
+        const container = document.createElement('div');
+
+        const textarea = document.createElement('textarea');
+        textarea.name = 'description';
+        textarea.classList.add('form-control', 'mb-2');
+        container.appendChild(textarea);
+
+        const markdown = document.createElement('div');
+        markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
+        markdown.innerHTML = marked.parse(textarea.value);
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.classList.add('btn', 'btn-link', 'mb-2');
+        button.textContent = 'Preview';
+        let content;
+        button.addEventListener('click', () => {
+            if (button.textContent === 'Edit') {
+                button.textContent = 'Preview';
+                textarea.value = content;
+                container.replaceChildren(textarea);
+            } else if (button.textContent === 'Preview') {
+                button.textContent = 'Edit';
+                content = textarea.value;
+                markdown.innerHTML = marked.parse(content);
+                container.replaceChildren(markdown);
+            }
+        });
+        newObjectForm.appendChild(button);
+
+        newObjectForm.appendChild(container);
+
+        formContainer.appendChild(newObjectForm);
+        myModal.show()
+    }
+
+    function addNewAttack(e, obj) {
+        const formContainer = document.getElementById('formContainer');
+        formContainer.innerHTML = ''
+        const newObjectForm = document.createElement('form');
+        submitFormButton.onclick = () => { postNewObject("/api/red/attack") };
+
+        const title = document.getElementById('modalLabel');
+        title.textContent = 'New Attack'
+
+        const labelVector = document.createElement('label');
+        labelVector.for = 'vector-id';
+        labelVector.textContent = 'Vector';
+        newObjectForm.appendChild(labelVector);
+
+        const selectVector = document.createElement('select');
+        selectVector.name = 'vector-id';
+        selectVector.classList.add('form-control', 'mb-2');
+        vectors.forEach((vector) => {
+            const option = document.createElement('option');
+            option.value = vector.ID;
+            option.textContent = "ID:" + vector.ID;
+            selectVector.appendChild(option);
+        });
+        newObjectForm.appendChild(selectVector);
+
+        const labelTeam = document.createElement('label');
+        labelTeam.for = 'team-id';
+        labelTeam.textContent = 'Team';
+        newObjectForm.appendChild(labelTeam);
+
+        const selectTeam = document.createElement('select');
+        selectTeam.name = 'team-id';
+        selectTeam.classList.add('form-control', 'mb-2');
+        teams.forEach((team) => {
+            const option = document.createElement('option');
+            option.value = team.ID;
+            option.textContent = team.Name;
+            selectTeam.appendChild(option);
+        });
+        newObjectForm.appendChild(selectTeam);
+
+        const labelCaption = document.createElement('label');
+        labelCaption.for = 'narrative';
+        labelCaption.textContent = 'Caption (markdown supported)';
+        newObjectForm.appendChild(labelCaption);
+
+        const container = document.createElement('div');
+
+        const textarea = document.createElement('textarea');
+        textarea.name = 'narrative';
+        textarea.classList.add('form-control', 'mb-2');
+        container.appendChild(textarea);
+
+        const markdown = document.createElement('div');
+        markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
+        markdown.innerHTML = marked.parse(textarea.value);
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.classList.add('btn', 'btn-link', 'mb-2');
+        button.textContent = 'Preview';
+        let content;
+        button.addEventListener('click', () => {
+            if (button.textContent === 'Edit') {
+                button.textContent = 'Preview';
+                textarea.value = content;
+                container.replaceChildren(textarea);
+            } else if (button.textContent === 'Preview') {
+                button.textContent = 'Edit';
+                content = textarea.value;
+                markdown.innerHTML = marked.parse(content);
+                container.replaceChildren(markdown);
+            }
+        });
+        newObjectForm.appendChild(button);
+
+        newObjectForm.appendChild(container);
+
+        const labelEvidence = document.createElement('label');
+        labelEvidence.for = 'pictures';
+        labelEvidence.textContent = 'Evidence Images';
+        newObjectForm.appendChild(labelEvidence);
+
+        const inputEvidence = document.createElement('input');
+        inputEvidence.type = 'file';
+        inputEvidence.name = 'pictures';
+        inputEvidence.multiple = true;
+        inputEvidence.classList.add('form-control', 'mb-2');
+        newObjectForm.appendChild(inputEvidence);
+
+        const labelAccessLevel = document.createElement('label');
+        labelAccessLevel.for = 'access-level';
+        labelAccessLevel.textContent = 'Access Level';
+        newObjectForm.appendChild(labelAccessLevel);
+
+        const selectAccessLevel = document.createElement('select');
+        selectAccessLevel.name = 'access-level';
+        selectAccessLevel.classList.add('form-control', 'mb-2');
+        const optionAccessLevel1 = document.createElement('option');
+        optionAccessLevel1.value = '1';
+        optionAccessLevel1.textContent = 'None';
+        const optionAccessLevel2 = document.createElement('option');
+        optionAccessLevel2.value = '2';
+        optionAccessLevel2.textContent = 'User';
+        const optionAccessLevel3 = document.createElement('option');
+        optionAccessLevel3.value = '3';
+        optionAccessLevel3.textContent = 'Admin';
+        selectAccessLevel.appendChild(optionAccessLevel1);
+        selectAccessLevel.appendChild(optionAccessLevel2);
+        selectAccessLevel.appendChild(optionAccessLevel3);
+        newObjectForm.appendChild(selectAccessLevel);
+
+        const labelStillWorks = document.createElement('label');
+        labelStillWorks.for = 'active';
+        labelStillWorks.textContent = 'Still Works?';
+        newObjectForm.appendChild(labelStillWorks);
+
+        const selectStillWorks = document.createElement('select');
+        selectStillWorks.name = 'active';
+        selectStillWorks.classList.add('form-control', 'mb-2');
+        const optionStillWorksYes = document.createElement('option');
+        optionStillWorksYes.value = 'true';
+        optionStillWorksYes.textContent = 'Yes';
+        const optionStillWorksNo = document.createElement('option');
+        optionStillWorksNo.value = 'false';
+        optionStillWorksNo.textContent = 'No';
+        selectStillWorks.appendChild(optionStillWorksYes);
+        selectStillWorks.appendChild(optionStillWorksNo);
+        newObjectForm.appendChild(selectStillWorks);
+
+        const labelAccessedPII = document.createElement('label');
+        labelAccessedPII.for = 'accessedpii';
+        labelAccessedPII.textContent = 'Accessed PII?';
+        newObjectForm.appendChild(labelAccessedPII);
+
+        const selectAccessedPII = document.createElement('select');
+        selectAccessedPII.name = 'accessedpii';
+        selectAccessedPII.classList.add('form-control', 'mb-2');
+        const optionAccessedPIIYes = document.createElement('option');
+        optionAccessedPIIYes.value = 'true';
+        optionAccessedPIIYes.textContent = 'Yes';
+        const optionAccessedPIINo = document.createElement('option');
+        optionAccessedPIINo.value = 'false';
+        optionAccessedPIINo.textContent = 'No';
+        selectAccessedPII.appendChild(optionAccessedPIIYes);
+        selectAccessedPII.appendChild(optionAccessedPIINo);
+        newObjectForm.appendChild(selectAccessedPII);
+
+        const labelAccessedPasswords = document.createElement('label');
+        labelAccessedPasswords.for = 'accessedpasswords';
+        labelAccessedPasswords.textContent = 'Accessed Passwords?';
+        newObjectForm.appendChild(labelAccessedPasswords);
+
+        const selectAccessedPasswords = document.createElement('select');
+        selectAccessedPasswords.name = 'accessedpasswords';
+        selectAccessedPasswords.classList.add('form-control', 'mb-2');
+        const optionAccessedPasswordsYes = document.createElement('option');
+        optionAccessedPasswordsYes.value = 'true';
+        optionAccessedPasswordsYes.textContent = 'Yes';
+        const optionAccessedPasswordsNo = document.createElement('option');
+        optionAccessedPasswordsNo.value = 'false';
+        optionAccessedPasswordsNo.textContent = 'No';
+        selectAccessedPasswords.appendChild(optionAccessedPasswordsYes);
+        selectAccessedPasswords.appendChild(optionAccessedPasswordsNo);
+        newObjectForm.appendChild(selectAccessedPasswords);
+
+        const labelAccessedSystemConfig = document.createElement('label');
+        labelAccessedSystemConfig.for = 'accessedsystemconfig';
+        labelAccessedSystemConfig.textContent = 'Accessed System Configuration?';
+        newObjectForm.appendChild(labelAccessedSystemConfig);
+
+        const selectAccessedSystemConfig = document.createElement('select');
+        selectAccessedSystemConfig.name = 'accessedsystemconfig';
+        selectAccessedSystemConfig.classList.add('form-control', 'mb-2');
+        const optionAccessedSystemConfigYes = document.createElement('option');
+        optionAccessedSystemConfigYes.value = 'true';
+        optionAccessedSystemConfigYes.textContent = 'Yes';
+        const optionAccessedSystemConfigNo = document.createElement('option');
+        optionAccessedSystemConfigNo.value = 'false';
+        optionAccessedSystemConfigNo.textContent = 'No';
+        selectAccessedSystemConfig.appendChild(optionAccessedSystemConfigYes);
+        selectAccessedSystemConfig.appendChild(optionAccessedSystemConfigNo);
+        newObjectForm.appendChild(selectAccessedSystemConfig);
+
+        const labelAccessedDatabases = document.createElement('label');
+        labelAccessedDatabases.for = 'accesseddatabases';
+        labelAccessedDatabases.textContent = 'Accessed Databases?';
+        newObjectForm.appendChild(labelAccessedDatabases);
+
+        const selectAccessedDatabases = document.createElement('select');
+        selectAccessedDatabases.name = 'accesseddatabases';
+        selectAccessedDatabases.classList.add('form-control', 'mb-2');
+        const optionAccessedDatabasesYes = document.createElement('option');
+        optionAccessedDatabasesYes.value = 'true';
+        optionAccessedDatabasesYes.textContent = 'Yes';
+        const optionAccessedDatabasesNo = document.createElement('option');
+        optionAccessedDatabasesNo.value = 'false';
+        optionAccessedDatabasesNo.textContent = 'No';
+        selectAccessedDatabases.appendChild(optionAccessedDatabasesYes);
+        selectAccessedDatabases.appendChild(optionAccessedDatabasesNo);
+        newObjectForm.appendChild(selectAccessedDatabases);
+
+        formContainer.appendChild(newObjectForm);
+        myModal.show()
+    }
+
     function layout() {
         myDiagram.layoutDiagram(true);
+    }
+
+    function postSaveObject(e) {
+        e.preventDefault();
+        const form = e.target;
+        const data = new FormData(form);
+        const node = myDiagram.selection.first();
+        const model = myDiagram.model;
+        model.startTransaction('update node');
+        for (const [key, value] of data.entries()) {
+            if (key === 'caption') {
+                node.data[key] = value;
+            } else {
+                node.data[key] = value;
+            }
+        }
+        model.commitTransaction('update node');
+        myModal.hide();
     }
 
     // Define a custom tool that changes a drag operation on a Link to a relinking operation,

@@ -16,6 +16,7 @@ const (
 
 // a specific instance of a vector against a team
 type AttackSchema struct {
+	ID             uint
 	VectorID       uint
 	Vector         VectorSchema
 	TeamID         uint

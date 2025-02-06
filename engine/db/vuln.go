@@ -13,7 +13,7 @@ type VulnSchema struct {
 	ID          uint
 	Name        string
 	Description string
-	Vectors     []VectorSchema `gorm:"foreignKey:VulnID"`
+	// Vectors     []VectorSchema `gorm:"foreignKey:VulnID"`
 }
 
 func GetVulns() ([]VulnSchema, error) {

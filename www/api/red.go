@@ -41,72 +41,97 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	boxes, err := db.GetBoxes()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		data := map[string]any{"error": fmt.Sprintf("could not get boxes: %v", err)}
+		d, _ := json.Marshal(data)
+		w.Write(d)
+		return
+	}
+
+	attacks, err := db.GetAttacks()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		data := map[string]any{"error": fmt.Sprintf("could not get attacks: %v", err)}
+		d, _ := json.Marshal(data)
+		w.Write(d)
+		return
+	}
+
+	// data := map[string]any{
+	// 	"vulns": vulns,
+	// 	"boxes": []db.BoxSchema{
+	// 		{
+	// 			ID:       1,
+	// 			IP:       "10.100.10X.1",
+	// 			Hostname: "box1",
+	// 			Vectors: []db.VectorSchema{
+	// 				{
+	// 					ID:                        1,
+	// 					VulnID:                    1,
+	// 					Port:                      80,
+	// 					ImplementationDescription: "vector1 **description**",
+	// 				},
+	// 				{
+	// 					ID:                        2,
+	// 					VulnID:                    2,
+	// 					Port:                      443,
+	// 					ImplementationDescription: "vector2 description",
+	// 				},
+	// 			},
+	// 		},
+	// 		{
+	// 			ID:       2,
+	// 			IP:       "10.100.10X.2",
+	// 			Hostname: "box2",
+	// 			Vectors: []db.VectorSchema{
+	// 				{
+	// 					ID:                        3,
+	// 					VulnID:                    1,
+	// 					Port:                      443,
+	// 					ImplementationDescription: "vector1 description",
+	// 				},
+	// 				{
+	// 					ID:                        4,
+	// 					VulnID:                    2,
+	// 					Port:                      443,
+	// 					ImplementationDescription: "vector2 description",
+	// 				},
+	// 			},
+	// 		},
+	// 	},
+	// 	"attacks": []db.AttackSchema{
+	// 		{
+	// 			VectorID: 1,
+	// 			Vector: db.VectorSchema{
+	// 				BoxID: 1,
+	// 			},
+	// 			TeamID: 1,
+	// 		},
+	// 		{
+	// 			VectorID: 1,
+	// 			Vector: db.VectorSchema{
+	// 				BoxID: 1,
+	// 			},
+	// 			TeamID: 2,
+	// 		},
+	// 		{
+	// 			VectorID: 2,
+	// 			Vector: db.VectorSchema{
+	// 				BoxID: 2,
+	// 			},
+	// 			TeamID: 2,
+	// 		},
+	// 	},
+	// 	"teams": teams,
+	// }
+
 	data := map[string]any{
-		"vulns": vulns,
-		"boxes": []db.BoxSchema{
-			{
-				ID:       1,
-				IP:       "10.100.10X.1",
-				Hostname: "box1",
-				Vectors: []db.VectorSchema{
-					{
-						ID:                        1,
-						VulnID:                    1,
-						Port:                      80,
-						ImplementationDescription: "vector1 description",
-					},
-					{
-						ID:                        2,
-						VulnID:                    2,
-						Port:                      443,
-						ImplementationDescription: "vector2 description",
-					},
-				},
-			},
-			{
-				ID:       2,
-				IP:       "10.100.10X.2",
-				Hostname: "box2",
-				Vectors: []db.VectorSchema{
-					{
-						ID:                        3,
-						VulnID:                    1,
-						Port:                      443,
-						ImplementationDescription: "vector1 description",
-					},
-					{
-						ID:                        4,
-						VulnID:                    2,
-						Port:                      443,
-						ImplementationDescription: "vector2 description",
-					},
-				},
-			},
-		},
-		"attacks": []db.AttackSchema{
-			{
-				VectorID: 1,
-				Vector: db.VectorSchema{
-					BoxID: 1,
-				},
-				TeamID: 1,
-			},
-			{
-				VectorID: 1,
-				Vector: db.VectorSchema{
-					BoxID: 1,
-				},
-				TeamID: 2,
-			},
-			{
-				VectorID: 2,
-				Vector: db.VectorSchema{
-					BoxID: 2,
-				},
-				TeamID: 2,
-			},
-		},
-		"teams": teams,
+		"vulns":   vulns,
+		"boxes":   boxes,
+		"teams":   teams,
+		"attacks": attacks,
 	}
 	d, _ := json.Marshal(data)
 	w.Write(d)
@@ -173,11 +198,21 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 	a := r.FormValue("vuln-id")
 	b := r.FormValue("box-id")
 	c := r.FormValue("port")
+
 	description := r.FormValue("description")
+	protocol := r.FormValue("protocol")
+
+	if protocol != "tcp" && protocol != "udp" {
+		w.WriteHeader(http.StatusBadRequest)
+		data := map[string]any{"error": "Invalid protocol"}
+		d, _ := json.Marshal(data)
+		w.Write(d)
+		return
+	}
 
 	var vuln uint
 	if v, err := strconv.Atoi(a); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Failed to convert vuln id"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
@@ -188,7 +223,7 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 
 	var box uint
 	if v, err := strconv.Atoi(b); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Failed to convert box id"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
@@ -199,8 +234,15 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 
 	port, err := strconv.Atoi(c)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Failed to convert port"}
+		d, _ := json.Marshal(data)
+		w.Write(d)
+		return
+	}
+	if port < 0 || port > 65535 {
+		w.WriteHeader(http.StatusBadRequest)
+		data := map[string]any{"error": "Port out of range"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
 		return
@@ -210,6 +252,7 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 		VulnID:                    vuln,
 		BoxID:                     box,
 		Port:                      port,
+		Protocol:                  protocol,
 		ImplementationDescription: description,
 	}
 
@@ -252,10 +295,10 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 	narrative := r.FormValue("narrative")
 
 	active := r.FormValue("active") == "true"
-	pii := r.FormValue("pii") == "true"
-	password := r.FormValue("password") == "true"
-	sysconfig := r.FormValue("sysconfig") == "true"
-	database := r.FormValue("database") == "true"
+	pii := r.FormValue("accessedpii") == "true"
+	password := r.FormValue("accessedpassword") == "true"
+	sysconfig := r.FormValue("accessedsysconfig") == "true"
+	database := r.FormValue("accesseddatabases") == "true"
 
 	var vector uint
 	if v, err := strconv.Atoi(a); err != nil {

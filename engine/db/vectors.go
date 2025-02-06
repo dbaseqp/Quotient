@@ -12,12 +12,13 @@ type VectorSchema struct {
 	VulnID                    uint
 	BoxID                     uint
 	Port                      int
+	Protocol                  string
 	ImplementationDescription string
 }
 
 func GetVectors() ([]VectorSchema, error) {
 	var vectors []VectorSchema
-	result := db.Table("vector_schemas").Find(&vectors)
+	result := db.Table("vector_schemas").Order("port asc").Find(&vectors)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return vectors, nil
