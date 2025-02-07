@@ -39,7 +39,7 @@ func (router *Router) Start() {
 
 	mux.Handle("/static/assets/", http.StripPrefix("/static/assets/", http.FileServer(http.Dir("./static/assets"))))
 
-	UNAUTH := middleware.MiddlewareChain(middleware.Authentication("anonymous", "team", "admin", "red"))
+	UNAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("anonymous", "team", "admin", "red"))
 	// public API routes
 	mux.HandleFunc("POST /api/login", api.Login)
 
@@ -59,7 +59,7 @@ func (router *Router) Start() {
 	|                                         |
 	******************************************/
 
-	ALLAUTH := middleware.MiddlewareChain(middleware.Authentication("team", "admin", "red"))
+	ALLAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin", "red"))
 	// general auth API routes
 	mux.HandleFunc("GET /api/logout", ALLAUTH(api.Logout))
 
@@ -77,7 +77,7 @@ func (router *Router) Start() {
 	|                                         |
 	******************************************/
 
-	TEAMAUTH := middleware.MiddlewareChain(middleware.Authentication("team", "admin"))
+	TEAMAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin"))
 	// team auth API routes
 	mux.HandleFunc("GET /api/teams", TEAMAUTH(api.GetTeams))
 	mux.HandleFunc("GET /api/services/{team_id}", TEAMAUTH(api.GetTeamSummary))
@@ -128,7 +128,7 @@ func (router *Router) Start() {
 	|                                         |
 	******************************************/
 
-	ADMINAUTH := middleware.MiddlewareChain(middleware.Authentication("admin"))
+	ADMINAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("admin"))
 	// admin auth API routes
 	mux.HandleFunc("POST /api/announcements/create", ADMINAUTH(api.CreateAnnouncement))
 	mux.HandleFunc("POST /api/announcements/{id}", ADMINAUTH(api.UpdateAnnouncement))
@@ -156,10 +156,11 @@ func (router *Router) Start() {
 	mux.HandleFunc("GET /admin/teams", ADMINAUTH(router.AdministrateTeamsPage))
 	mux.HandleFunc("GET /admin/appearance", ADMINAUTH(router.AdministrateAppearancePage))
 
+
 	// start server
 	server := http.Server{
 		Addr:    fmt.Sprintf("%s:%d", router.Config.RequiredSettings.BindAddress, router.Config.MiscSettings.Port),
-		Handler: middleware.Logging(mux),
+		Handler: mux,
 	}
 	slog.Info(fmt.Sprintf("Starting Web Server on %s://%s:%d", protocol, router.Config.RequiredSettings.BindAddress, router.Config.MiscSettings.Port))
 

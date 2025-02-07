@@ -1,13 +1,14 @@
 #!/bin/sh
 
-# Usage: ./example.sh <address> <team_id> <username> <password>
+# Usage: ./example.sh <round> <address> <team_id> <username> <password>
 
-ADDRESS="$1"
-TEAM_ID="$2"
-USERNAME="$3"
-PASSWORD="$4"
+ROUND="$1"
+ADDRESS="$2"
+TEAM_ID="$3"
+USERNAME="$4"
+PASSWORD="$5"
 
-echo "$ADDRESS" "$TEAM_ID" "$USERNAME" "$PASSWORD"
+echo "$ROUND" "$ADDRESS" "$TEAM_ID" "$USERNAME" "$PASSWORD"
 
 ping -c2 -W2 -w2 "$ADDRESS" && return 0
 

@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   db:
     container_name: quotient_database
@@ -49,7 +47,7 @@ services:
       dockerfile: Dockerfile.runner
     deploy:
       mode: replicated
-      replicas: 40 # Adjust based on server resources
+      replicas: 4 # Adjust based on server resources
     restart: always
     privileged: true
     env_file:
