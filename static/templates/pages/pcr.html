@@ -85,8 +85,8 @@
             let credlist_select = document.getElementById("credlist-select")
             for (const credlist of credlists) {
                 let option = document.createElement("option")
-                option.value = credlist
-                option.textContent = credlist
+                option.value = credlist.CredlistPath
+                option.textContent = credlist.CredlistName
                 credlist_select.appendChild(option)
             }
         })

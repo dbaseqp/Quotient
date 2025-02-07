@@ -136,22 +136,8 @@ func (se *ScoringEngine) GetUptimePerService() map[uint]map[string]db.Uptime {
 	return se.UptimePerService
 }
 
-func (se *ScoringEngine) GetCredlists() []string {
-	var credlists []string
-
-	credlistFiles, err := os.ReadDir("config/credlists/")
-	if err != nil {
-		slog.Error("failed to read credlists directory:", "error", err)
-		return nil
-	}
-
-	for _, credlistFile := range credlistFiles {
-		if !credlistFile.IsDir() && filepath.Ext(credlistFile.Name()) == ".credlist" {
-			credlists = append(credlists, credlistFile.Name())
-		}
-	}
-
-	return credlists
+func (se *ScoringEngine) GetCredlists() any {
+	return se.Config.CredlistSettings.Credlist
 }
 
 func (se *ScoringEngine) PauseEngine() {
@@ -393,6 +379,18 @@ func (se *ScoringEngine) LoadCredentials() error {
 		return fmt.Errorf("failed to read credlists directory: %v", err)
 	}
 
+	// remove credlists not in the config
+	// for i, credcredlistFiles := range credlistFiles {
+	// 	for _, configCredlist := range se.Config.CredlistSettings.Credlist {
+	// 		if credcredlistFiles.Name() == configCredlist.CredlistPath {
+	// 			// assume the last element is OK, so replace the current element with it
+	// 			// and then truncate the slice
+	// 			credlistFiles[i] = credlistFiles[len(credlistFiles)-1]
+	// 			credlistFiles = credlistFiles[:len(credlistFiles)-1]
+	// 		}
+	// 	}
+	// }
+
 	teams, err := db.GetTeams()
 	if err != nil {
 		return fmt.Errorf("failed to get teams: %v", err)
@@ -436,6 +434,12 @@ func (se *ScoringEngine) LoadCredentials() error {
 }
 
 func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string) error {
+	for _, c := range se.Config.CredlistSettings.Credlist {
+		if c.CredlistPath == credlistName {
+			break
+		}
+	}
+
 	se.CredentialsMutex[teamID].Lock()
 	defer se.CredentialsMutex[teamID].Unlock()
 

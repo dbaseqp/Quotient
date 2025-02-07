@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"quotient/engine/checks"
 	"slices"
 	"sort"
@@ -20,6 +21,9 @@ var (
 type ConfigSettings struct {
 	// General engine settings
 	RequiredSettings RequiredConfig `toml:"RequiredSettings,omitempty" json:"RequiredSettings,omitempty"`
+
+	// Credlists settings
+	CredlistSettings CredlistConfig `toml:"CredlistSettings,omitempty" json:"CredlistSettings,omitempty"`
 
 	// LDAP settings
 	LdapSettings LdapAuthConfig `toml:"LdapSettings,omitempty" json:"LdapSettings,omitempty"`
@@ -43,6 +47,14 @@ type RequiredConfig struct {
 	EventType    string
 	DBConnectURL string
 	BindAddress  string
+}
+
+type CredlistConfig struct {
+	Credlist []struct {
+		CredlistName        string
+		CredlistPath        string
+		CredlistExplainText string
+	}
 }
 
 type LdapAuthConfig struct {
@@ -195,6 +207,20 @@ func checkConfig(conf *ConfigSettings) error {
 	}
 
 	// optional settings, set defaults
+	for i, credlist := range conf.CredlistSettings.Credlist {
+		if credlist.CredlistPath == "" {
+			errResult = errors.Join(errResult, fmt.Errorf("credlist %d missing path", i))
+		}
+		if credlist.CredlistName == "" {
+			conf.CredlistSettings.Credlist[i].CredlistName = credlist.CredlistPath
+		}
+		if credlist.CredlistExplainText == "" {
+			conf.CredlistSettings.Credlist[i].CredlistExplainText = "username,password"
+		}
+
+		conf.CredlistSettings.Credlist[i].CredlistPath = filepath.Base(credlist.CredlistPath)
+	}
+
 	if conf.MiscSettings.Delay == 0 {
 		conf.MiscSettings.Delay = 60
 	}
