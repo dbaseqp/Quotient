@@ -35,10 +35,10 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	// get username,password from request
 	// somehow determine which credlist to change
 	type Form struct {
-		TeamID     string   `json:"team_id"`
-		CredlistID string   `json:"credlist_id"`
-		Usernames  []string `json:"usernames"`
-		Passwords  []string `json:"passwords"`
+		TeamID       string   `json:"team_id"`
+		CredlistPath string   `json:"credlist_id"`
+		Usernames    []string `json:"usernames"`
+		Passwords    []string `json:"passwords"`
 	}
 
 	var form Form
@@ -80,7 +80,7 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if err := eng.UpdateCredentials(uint(id), form.CredlistID, form.Usernames, form.Passwords); err != nil {
+	if err := eng.UpdateCredentials(uint(id), form.CredlistPath, form.Usernames, form.Passwords); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
