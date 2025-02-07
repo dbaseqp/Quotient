@@ -20,10 +20,7 @@ type Custom struct {
 func commandOutput(cmd string) (string, error) {
 
 	out, err := exec.Command("/bin/sh", "-c", cmd).CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(string(out)), err
 }
 
 func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {

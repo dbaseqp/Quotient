@@ -39,7 +39,7 @@
 
         myDiagram = new go.Diagram('graph', {
             allowCopy: false,
-            layout: new go.LayeredDigraphLayout({
+            layout: new CustomLayeredDigraphLayout({
                 setsPortSpots: false, // Links already know their fromSpot and toSpot
                 columnSpacing: 5,
                 isInitial: false,
@@ -642,6 +642,7 @@
                                 group: "box" + box.ID,
                                 protocol: vector.Protocol,
                                 name: name,
+                                category: "Vector",
                             }
                             nodes.push(node)
 
@@ -679,7 +680,7 @@
                         let link = {
                             from: 'vector' + attack.VectorID,
                             to: 'team' + attack.TeamID,
-                            category: "attack-"+attack.StillWorks,
+                            category: "attack-" + attack.StillWorks,
                         }
                         links.push(link)
                     }
@@ -1101,6 +1102,36 @@
         }
         model.commitTransaction('update node');
         myModal.hide();
+    }
+
+    // Define a custom layout that assigns layers based on node category
+    class CustomLayeredDigraphLayout extends go.LayeredDigraphLayout {
+        assignLayers() {
+            super.assignLayers();  // Call the default behavior
+
+            // Iterate over each vertex (node) in the layout
+            this.network.vertexes.each(vertex => {
+                const node = vertex.node;
+                if (!node) return;
+
+                if (node.data.isGroup) {
+                    vertex.layer = 5;  
+                }
+
+                // Assign specific layers (columns) based on category
+                switch (node.data.category) {
+                    case "Vulnerability":
+                        vertex.layer = 10; 
+                        break;
+                    case "Team":
+                        vertex.layer = 0; 
+                        break;
+                    default:
+                        // Let GoJS auto-assign layers for other nodes
+                        break;
+                }
+            });
+        }
     }
 
     // Define a custom tool that changes a drag operation on a Link to a relinking operation,

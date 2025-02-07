@@ -434,10 +434,15 @@ func (se *ScoringEngine) LoadCredentials() error {
 }
 
 func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string) error {
+	validCredlist := false
 	for _, c := range se.Config.CredlistSettings.Credlist {
 		if c.CredlistPath == credlistName {
+			validCredlist = true
 			break
 		}
+	}
+	if !validCredlist {
+		return fmt.Errorf("invalid credlist name")
 	}
 
 	se.CredentialsMutex[teamID].Lock()
