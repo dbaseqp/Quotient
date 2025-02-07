@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -14,11 +15,11 @@ func Logging(next http.HandlerFunc) http.HandlerFunc {
 		start := time.Now()
 
 		// Generate (or reuse) a unique request ID.
-		requestID := r.Header.Get("X-Request-ID")
+		requestID := r.Context().Value("request_id")
 		if requestID == "" {
 			requestID = uuid.New().String()
+			r = r.WithContext(context.WithValue(r.Context(), "request_id", requestID))
 		}
-		w.Header().Set("X-Request-ID", requestID)
 
 		// Process the request.
 		next.ServeHTTP(w, r)
