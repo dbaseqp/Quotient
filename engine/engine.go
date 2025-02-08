@@ -148,6 +148,7 @@ func (se *ScoringEngine) GetCredlists() (any, error) {
 		}
 		a.Name = credlist.CredlistName
 		a.Example = credlist.CredlistExplainText
+		a.Path = credlist.CredlistPath
 		a.Usernames = []string{}
 		credlistPath := filepath.Join("config/credlists", credlist.CredlistPath)
 		file, err := os.Open(credlistPath)

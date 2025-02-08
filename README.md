@@ -11,13 +11,7 @@ docker-compose up --detach
 
 Through the Admin UI you will have to specify the "Identifier" for each team. This is the unique part of the target address. Also, you will need to mark the team as "Active" so that the team can start scoring.
 
-If you want to rotate the IP, use the following script:
-
-```bash
-rotate.sh
-```
-
-IP rotation is still currently under development.
+If you want to rotate IPs, configure [Divisor](https://github.com/dbaseqp/Divisor).
 
 ## Configuration
 
@@ -152,6 +146,8 @@ pw = "password"
 
 The IP address of the target box should be the IP the scoring engine will use. To templatize the IP address, use an underscore `_` in place of the part of the IP address that will be unique per team. This is the "Identifier" that you must specify through the Admin UI per team. The scoring engine will replace the underscore with the "Identifier" to create the unique target address for each team. If the target should use a DNS name, you can specify that by setting `ip` field to the DNS name (which will be used for all checks under the box) or using the `target` field at the individual check level. Template the DNS name with an underscore `_` in place of the part of the DNS name that will be unique per team.
 
+It is recommended to use Quotient with [aweful-dns](https://github.com/wrccdc-org/aweful-dns) running on the same host.
+
 ```toml
 [[box]]
 name = "web01"
@@ -168,7 +164,7 @@ ip = "10.100.1_.2"
 
     [[box.web]] # type of check you want
     display = "web01" # name of the check that gets appended to the box name
-    # target = "team_.example.tld" # if you want to use a DNS name
+    target = "example.team_.tld" # e.g. this will resolve to example.team01.tld with aweful-dns
 
         [[box.web.url]] # some checks have components you need to include
         path = "/index.html"
