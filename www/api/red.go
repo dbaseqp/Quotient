@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"quotient/engine/db"
@@ -16,6 +17,7 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": fmt.Sprintf("could not get teams: %v", err)}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
@@ -26,6 +28,7 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": fmt.Sprintf("could not open vulns.json: %v", err)}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 	defer file.Close()
@@ -38,6 +41,7 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": fmt.Sprintf("could not decode vulns.json: %v", err)}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
@@ -47,6 +51,7 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": fmt.Sprintf("could not get boxes: %v", err)}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
@@ -56,76 +61,9 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": fmt.Sprintf("could not get attacks: %v", err)}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
-
-	// data := map[string]any{
-	// 	"vulns": vulns,
-	// 	"boxes": []db.BoxSchema{
-	// 		{
-	// 			ID:       1,
-	// 			IP:       "10.100.10X.1",
-	// 			Hostname: "box1",
-	// 			Vectors: []db.VectorSchema{
-	// 				{
-	// 					ID:                        1,
-	// 					VulnID:                    1,
-	// 					Port:                      80,
-	// 					ImplementationDescription: "vector1 **description**",
-	// 				},
-	// 				{
-	// 					ID:                        2,
-	// 					VulnID:                    2,
-	// 					Port:                      443,
-	// 					ImplementationDescription: "vector2 description",
-	// 				},
-	// 			},
-	// 		},
-	// 		{
-	// 			ID:       2,
-	// 			IP:       "10.100.10X.2",
-	// 			Hostname: "box2",
-	// 			Vectors: []db.VectorSchema{
-	// 				{
-	// 					ID:                        3,
-	// 					VulnID:                    1,
-	// 					Port:                      443,
-	// 					ImplementationDescription: "vector1 description",
-	// 				},
-	// 				{
-	// 					ID:                        4,
-	// 					VulnID:                    2,
-	// 					Port:                      443,
-	// 					ImplementationDescription: "vector2 description",
-	// 				},
-	// 			},
-	// 		},
-	// 	},
-	// 	"attacks": []db.AttackSchema{
-	// 		{
-	// 			VectorID: 1,
-	// 			Vector: db.VectorSchema{
-	// 				BoxID: 1,
-	// 			},
-	// 			TeamID: 1,
-	// 		},
-	// 		{
-	// 			VectorID: 1,
-	// 			Vector: db.VectorSchema{
-	// 				BoxID: 1,
-	// 			},
-	// 			TeamID: 2,
-	// 		},
-	// 		{
-	// 			VectorID: 2,
-	// 			Vector: db.VectorSchema{
-	// 				BoxID: 2,
-	// 			},
-	// 			TeamID: 2,
-	// 		},
-	// 	},
-	// 	"teams": teams,
-	// }
 
 	data := map[string]any{
 		"vulns":   vulns,
@@ -151,6 +89,7 @@ func CreateBox(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to create box"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
@@ -167,6 +106,7 @@ func EditBox(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to convert box id"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	} else {
 		id = uint(temp)
@@ -185,6 +125,7 @@ func EditBox(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to update box"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
@@ -216,6 +157,7 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to convert vuln id"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	} else {
 		vuln = uint(v)
@@ -227,6 +169,7 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to convert box id"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	} else {
 		box = uint(v)
@@ -238,6 +181,7 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to convert port"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 	if port < 0 || port > 65535 {
@@ -261,6 +205,7 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to create vector"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
@@ -280,6 +225,7 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to parse multipart form"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
@@ -306,6 +252,7 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to convert vector id"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	} else {
 		vector = uint(v)
@@ -317,6 +264,7 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to convert team id"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	} else {
 		team = uint(v)
@@ -328,6 +276,7 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to convert access level"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
@@ -349,6 +298,7 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Failed to create attack"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 

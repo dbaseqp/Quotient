@@ -42,6 +42,8 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })
+
 	type Point struct {
 		X string
 		Y int
@@ -116,6 +118,8 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })
+
 	for _, team := range teams {
 		s := Series{Name: team.Name}
 		series = append(series, s)
@@ -169,6 +173,7 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 		w.Write(d)
 		return
 	}
+	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })
 
 	uptime := eng.GetUptimePerService()
 

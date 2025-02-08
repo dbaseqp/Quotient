@@ -25,6 +25,7 @@ type Task struct {
 	TeamIdentifier string          `json:"team_identifier"` // Human-readable identifier for the team
 	ServiceType    string          `json:"service_type"`
 	ServiceName    string          `json:"service_name"`
+	Deadline       time.Time       `json:"deadline"`
 	RoundID        uint            `json:"round_id"`
 	CheckData      json.RawMessage `json:"check_data"`
 }
@@ -136,8 +137,40 @@ func (se *ScoringEngine) GetUptimePerService() map[uint]map[string]db.Uptime {
 	return se.UptimePerService
 }
 
-func (se *ScoringEngine) GetCredlists() any {
-	return se.Config.CredlistSettings.Credlist
+func (se *ScoringEngine) GetCredlists() (any, error) {
+	var credlists []any
+	for _, credlist := range se.Config.CredlistSettings.Credlist {
+		var a struct {
+			Name      string   `json:"name"`
+			Path      string   `json:"path"`
+			Usernames []string `json:"usernames"`
+			Example   string   `json:"example"`
+		}
+		a.Name = credlist.CredlistName
+		a.Example = credlist.CredlistExplainText
+		a.Usernames = []string{}
+		credlistPath := filepath.Join("config/credlists", credlist.CredlistPath)
+		file, err := os.Open(credlistPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open credlist file %s: %v", credlistPath, err)
+		}
+		defer file.Close()
+
+		reader := csv.NewReader(file)
+		records, err := reader.ReadAll()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read credlist file %s: %v", credlistPath, err)
+		}
+
+		for _, record := range records {
+			if len(record) != 2 {
+				return nil, fmt.Errorf("invalid credlist format")
+			}
+			a.Usernames = append(a.Usernames, record[0])
+		}
+		credlists = append(credlists, a)
+	}
+	return credlists, nil
 }
 
 func (se *ScoringEngine) PauseEngine() {
@@ -239,6 +272,7 @@ func (se *ScoringEngine) rvb() {
 				ServiceType:    r.GetType(),
 				ServiceName:    r.GetName(),
 				RoundID:        se.CurrentRound,
+				Deadline:       se.NextRoundStartTime,
 				CheckData:      data, // the entire specialized struct
 			}
 

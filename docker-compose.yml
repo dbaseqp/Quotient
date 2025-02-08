@@ -60,6 +60,10 @@ services:
     volumes:
       - ./submissions:/app/submissions
       - ./custom-checks:/app/checks
+    tmpfs:
+      - /tmp:size=32m
+        #dns:
+        #- 10.128.0.26
 
   divisor:
     build:

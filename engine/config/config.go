@@ -93,7 +93,7 @@ type MiscConfig struct {
 }
 
 type UIConfig struct {
-	DisableInfoPage             bool
+	EnablePublicGraphs          bool
 	DisableGraphsForBlueTeam    bool
 	ShowAnnouncementsForRedTeam bool
 }

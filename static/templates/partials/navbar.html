@@ -31,9 +31,6 @@
             {{ template "navbutton" (dict "pipe" . "title" "Injects" "href" "/injects" "icon" "bi-envelope") }}
             {{ template "navbutton" (dict "pipe" . "title" "PCRs" "href" "/pcr" "icon" "bi-key") }}
             {{ end }}
-            {{ if or (contains .roles "red") (contains .roles "admin") }}
-            {{ template "navbutton" (dict "pipe" . "title" "Red Team" "href" "/red" "icon" "bi-diagram-3")}}
-            {{ end }}
 
             {{ if contains .roles "admin" }}
             {{ template "navbutton" (dict "pipe" . "title" "Admin" "href" "/admin" "icon" "bi-display") }}

@@ -28,6 +28,11 @@ func main() {
 
 	log.Println("[Runner] Runner started, listening for tasks on Redis at:", "reddisAddr", redisAddr)
 
+	input := make(chan checks.Result)
+	output := make(chan []byte)
+
+	go jsonProcessor(input, output)
+
 	for {
 		// Block until we get a task from the "tasks" list (no timeout here).
 		val, err := rdb.BLPop(ctx, 0, "tasks").Result()
@@ -101,31 +106,41 @@ func main() {
 		go runnerInstance.Run(task.TeamID, task.TeamIdentifier, task.RoundID, resultsChan)
 
 		// Block until the check is done
-		var result checks.Result
-		select {
-		case result = <-resultsChan:
-		case <-time.After(15 * time.Second):
-			log.Printf("[Runner] Timeout occured: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
-			result = checks.Result{
-				TeamID:      task.TeamID,
-				ServiceName: task.ServiceName,
-				ServiceType: task.ServiceType,
-				RoundID:     task.RoundID,
-				Status:      false,
-				Debug:       "likely check panicked and couldn't timeout properly",
-				Error:       "timeout",
+		go func() {
+			var result checks.Result
+			select {
+			case result = <-resultsChan:
+			case <-time.After(time.Until(task.Deadline)):
+				log.Printf("[Runner] Timeout occured: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
+				result = checks.Result{
+					TeamID:      task.TeamID,
+					ServiceName: task.ServiceName,
+					ServiceType: task.ServiceType,
+					RoundID:     task.RoundID,
+					Status:      false,
+					Debug:       "likely check panicked and couldn't timeout properly",
+					Error:       "timeout",
+				}
 			}
-		}
 
-		// Marshall the check result
+			// Marshall the check result
+			input <- result
+			resultJSON := <-output
+
+			// Push onto "results" list
+			if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
+				log.Printf("[Runner] Failed to push result to Redis: %v", err)
+			} else {
+				log.Printf("[Runner] Pushed result for: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
+			}
+		}()
+	}
+}
+
+// serialize json to minimize in use memory
+func jsonProcessor(input chan checks.Result, output chan []byte) {
+	for result := range input {
 		resultJSON, _ := json.Marshal(result)
-
-		// Push onto "results" list
-		if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
-			log.Printf("[Runner] Failed to push result to Redis: %v", err)
-		} else {
-			log.Printf("[Runner] Pushed result for: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
-		}
-
+		output <- resultJSON
 	}
 }

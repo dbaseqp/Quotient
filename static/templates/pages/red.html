@@ -319,7 +319,8 @@
             selectionAdorned: false,
             fromPortId: 'from',
             toPortId: 'to',
-            relinkableTo: true
+            relinkableTo: false,
+            relinkableFrom: false,
         })
             .add(
                 new go.Shape({
@@ -404,7 +405,7 @@
         });
 
         // use a special DraggingTool to cause the dragging of a Link to start relinking it
-        myDiagram.toolManager.draggingTool = new DragLinkingTool();
+        // myDiagram.toolManager.draggingTool = new DragLinkingTool();
 
         // detect when dropped onto an occupied cell
         myDiagram.addDiagramListener('SelectionMoved', shiftNodesToEmptySpaces);
@@ -601,6 +602,7 @@
                 teams = data.teams
                 vulns = data.vulns
                 boxes = data.boxes
+                vectors = []
                 let nodes = []
                 let links = []
 
@@ -713,8 +715,12 @@
                 return response.json()
             })
             .then((data) => {
-                console.log("success")
                 console.log(data)
+                if (data.error) {
+                    alert(data.error)
+                } else {
+                    load()
+                }
                 myModal.hide();
             })
             .catch((error) => {
