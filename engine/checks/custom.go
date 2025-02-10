@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"fmt"
 
 	"al.essio.dev/pkg/shellescape"
 )
@@ -20,10 +21,7 @@ type Custom struct {
 func commandOutput(cmd string) (string, error) {
 
 	out, err := exec.Command("/bin/sh", "-c", cmd).CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
+	return string(out), err
 }
 
 func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
@@ -54,8 +52,8 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 		checkResult.Debug = formedCommand
 		out, err := commandOutput(formedCommand)
 		if err != nil {
-			checkResult.Error = "command returned error" + out
-			checkResult.Debug += " " + err.Error()
+			checkResult.Error = fmt.Sprintf("command returned error:\n%s", err.Error())
+			checkResult.Debug += fmt.Sprintf("\noutput:\n%s", out)
 			response <- checkResult
 			return
 		}

@@ -1,0 +1,49 @@
+{{ define "page" }}
+<div class="d-flex w-100 h-100">
+    <div class="pt-4 w-100 h-100 overflow-y-scroll">
+        <div class="container">
+            <div class="row">
+                <h3>Appearance/Roles Settings</h3>
+            </div>
+            <div class="row">
+                <form class="row g-3" onsubmit="return formSubmit(event)">
+                    <div class="col-12">
+                        <label for="inputName" class="form-label">Public Scoreboard</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="radio--publicScoreboard" id="radio--publicScoreboard1">
+                            <label class="form-check-label" for="radio--publicScoreboard1">
+                                Enabled
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="radio--publicScoreboard" id="radio--publicScoreboard2">
+                            <label class="form-check-label" for="radio--publicScoreboard2">
+                                Disabled
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label for="inputName" class="form-label">Show Announcements to Red Team</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="radio--showAnnouncementsRedTeam" id="radio--showAnnouncementsRedTeam1">
+                            <label class="form-check-label" for="radio--showAnnouncementsRedTeam1">
+                                Enabled
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="radio--showAnnouncementsRedTeam" id="radio--showAnnouncementsRedTeam2">
+                            <label class="form-check-label" for="radio--showAnnouncementsRedTeam2">
+                                Disabled
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="d-flex justify-content-end">
+                            <button class="btn btn-primary" type="submit">Save</button>
+                        </div>
+                    </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{ end }}

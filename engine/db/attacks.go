@@ -14,15 +14,17 @@ const (
 	ADMIN
 )
 
-// instance of a vector against a team
+// a specific instance of a vector against a team
 type AttackSchema struct {
-	BoxID          uint
+	ID             uint
+	VectorID       uint
+	Vector         VectorSchema
 	TeamID         uint
 	Narrative      string
 	EvidenceImages []string `gorm:"type:text[]"` // /submissions/red/teamID/boxID/image.png
-	Vulnerable     bool
 	AccessLevel    int
 
+	StillWorks                    bool
 	DataAccessPII                 bool
 	DataAccessPassword            bool
 	DataAccessSystemConfiguration bool
@@ -42,9 +44,16 @@ func GetAttacks() ([]AttackSchema, error) {
 	return attacks, nil
 }
 
-// crate a new attack
 func CreateAttack(attack AttackSchema) (AttackSchema, error) {
 	result := db.Table("attack_schemas").Create(&attack)
+	if result.Error != nil {
+		return AttackSchema{}, result.Error
+	}
+	return attack, nil
+}
+
+func UpdateAttack(attack AttackSchema) (AttackSchema, error) {
+	result := db.Table("attack_schemas").Save(&attack)
 	if result.Error != nil {
 		return AttackSchema{}, result.Error
 	}

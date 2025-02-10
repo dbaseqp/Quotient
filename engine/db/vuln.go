@@ -8,12 +8,12 @@ import (
 
 type Status int
 
-// instances vulnerability against a system
+// class of vulnerability
 type VulnSchema struct {
 	ID          uint
 	Name        string
 	Description string
-	Vectors     []VectorSchema `gorm:"foreignKey:VulnID"`
+	// Vectors     []VectorSchema `gorm:"foreignKey:VulnID"`
 }
 
 func GetVulns() ([]VulnSchema, error) {
