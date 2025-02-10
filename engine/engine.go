@@ -426,6 +426,18 @@ func (se *ScoringEngine) LoadCredentials() error {
 	// 	}
 	// }
 
+	// remove credlists not in the config
+	// for i, credcredlistFiles := range credlistFiles {
+	// 	for _, configCredlist := range se.Config.CredlistSettings.Credlist {
+	// 		if credcredlistFiles.Name() == configCredlist.CredlistPath {
+	// 			// assume the last element is OK, so replace the current element with it
+	// 			// and then truncate the slice
+	// 			credlistFiles[i] = credlistFiles[len(credlistFiles)-1]
+	// 			credlistFiles = credlistFiles[:len(credlistFiles)-1]
+	// 		}
+	// 	}
+	// }
+
 	teams, err := db.GetTeams()
 	if err != nil {
 		return fmt.Errorf("failed to get teams: %v", err)
