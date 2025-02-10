@@ -101,28 +101,40 @@ func main() {
 		}
 		log.Printf("[Runner] CheckData: %+v", runnerInstance)
 
-		// Actually run the check
+		// Create a channel to receive the check results
 		resultsChan := make(chan checks.Result)
-		go runnerInstance.Run(task.TeamID, task.TeamIdentifier, task.RoundID, resultsChan)
 
-		// Block until the check is done
+		// Run the check asynchronously to not block
 		go func() {
+			// this currently discards all failed attempts
 			var result checks.Result
-			select {
-			case result = <-resultsChan:
-			case <-time.After(time.Until(task.Deadline)):
-				log.Printf("[Runner] Timeout occured: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
-				result = checks.Result{
-					TeamID:      task.TeamID,
-					ServiceName: task.ServiceName,
-					ServiceType: task.ServiceType,
-					RoundID:     task.RoundID,
-					Status:      false,
-					Debug:       "likely check panicked and couldn't timeout properly",
-					Error:       "timeout",
-				}
-			}
+			for i := 0; i < task.Attempts; i++ {
+				// send the request
+				log.Printf("[Runner] Running check: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s, Attempt=%d", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName, i+1)
+				go runnerInstance.Run(task.TeamID, task.TeamIdentifier, task.RoundID, resultsChan)
 
+				// wait for the response
+				select {
+				case result = <-resultsChan:
+				case <-time.After(time.Until(task.Deadline)):
+					log.Printf("[Runner] Timeout occured: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
+					result = checks.Result{
+						TeamID:      task.TeamID,
+						ServiceName: task.ServiceName,
+						ServiceType: task.ServiceType,
+						RoundID:     task.RoundID,
+						Status:      false,
+						Debug:       "round ended before check completed",
+						Error:       "timeout",
+					}
+				}
+
+				// if fail, retry, else stop retrying
+				if time.Now().Before(task.Deadline) && !result.Status {
+					continue
+				}
+				break
+			}
 			// Marshall the check result
 			input <- result
 			resultJSON := <-output
