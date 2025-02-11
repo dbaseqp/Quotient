@@ -42,6 +42,7 @@ func Connect(connectURL string) {
 	err = db.AutoMigrate(&AnnouncementSchema{},
 		&TeamSchema{}, &RoundSchema{}, &ServiceCheckSchema{}, &SLASchema{}, &ManualAdjustmentSchema{},
 		&InjectSchema{}, &SubmissionSchema{},
+		// box schema must come first for automigrate to work
 		&VulnSchema{}, &BoxSchema{}, &VectorSchema{}, &AttackSchema{})
 	if err != nil {
 		log.Fatalln("Failed to auto migrate:", err)

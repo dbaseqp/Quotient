@@ -55,12 +55,6 @@ func main() {
 		log.Fatalln("Failed to add teams to DB:", err)
 	}
 
-	// load boxes
-
-	if err := db.LoadBoxes(&conf); err != nil {
-		log.Fatalln("Failed to load boxes to DB:", err)
-	}
-
 	// start engine, restart if it stops
 	go func() {
 		for {

@@ -4,6 +4,12 @@
 *.conf
 *.exe
 *.log
+*.txt
+*.zip
+*.tar.gz
+*.dump
+*.csv
+
 quotient
 runner/runner
 

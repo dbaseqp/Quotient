@@ -49,6 +49,17 @@ func (router *Router) pageData(r *http.Request, unique map[string]any) map[strin
 	data["config"] = router.Config
 	data["error"] = ""
 
+	if data["roles"] != nil {
+		roles := data["roles"].([]string)
+		if slices.Contains(roles, "admin") {
+			data["home"] = "/announcements"
+		} else if slices.Contains(roles, "red") {
+			data["home"] = "/graphs"
+		} else {
+			data["home"] = "/announcements"
+		}
+	}
+
 	for key, value := range unique {
 		data[key] = value
 	}
@@ -60,8 +71,16 @@ func (router *Router) HomePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (router *Router) LoginPage(w http.ResponseWriter, r *http.Request) {
-	if username, _ := api.Authenticate(w, r); username != "" {
-		http.Redirect(w, r, "/announcements", http.StatusTemporaryRedirect)
+	if username, roles := api.Authenticate(w, r); username != "" {
+		var home string
+		if slices.Contains(roles, "admin") {
+			home = "/announcements"
+		} else if slices.Contains(roles, "red") {
+			home = "/graphs"
+		} else {
+			home = "/announcements"
+		}
+		http.Redirect(w, r, home, http.StatusTemporaryRedirect)
 		return
 	}
 
@@ -125,9 +144,23 @@ func (router *Router) AdministrateEnginePage(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+func (router *Router) AdministrateAppearancePage(w http.ResponseWriter, r *http.Request) {
+	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/admin/appearance.html"))
+	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Appearance"})); err != nil {
+		panic(err)
+	}
+}
+
 func (router *Router) GraphPage(w http.ResponseWriter, r *http.Request) {
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/graphs.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Graphs"})); err != nil {
+		panic(err)
+	}
+}
+
+func (router *Router) RedPage(w http.ResponseWriter, r *http.Request) {
+	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/red.html"))
+	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Red Team"})); err != nil {
 		panic(err)
 	}
 }
