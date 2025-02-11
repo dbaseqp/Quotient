@@ -20,7 +20,15 @@ func GetCredlists(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	credlists := eng.GetCredlists()
+	credlists, err := eng.GetCredlists()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		data := map[string]any{"error": "Error getting credlists"}
+		d, _ := json.Marshal(data)
+		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		return
+	}
 
 	d, _ := json.Marshal(credlists)
 	w.Write(d)
@@ -47,7 +55,7 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&form)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		slog.Error(err.Error())
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
@@ -82,6 +90,10 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := eng.UpdateCredentials(uint(id), form.CredlistPath, form.Usernames, form.Passwords); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		data := map[string]any{"error": "Error updating PCR"}
+		d, _ := json.Marshal(data)
+		w.Write(d)
+		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
