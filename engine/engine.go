@@ -253,6 +253,7 @@ func (se *ScoringEngine) rvb() {
 			break
 		} else if err != nil {
 			slog.Error("Failed to fetch results from Redis:", "error", err)
+			time.Sleep(2 * time.Second)
 			continue
 		}
 
