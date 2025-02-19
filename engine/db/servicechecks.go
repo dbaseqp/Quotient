@@ -93,7 +93,7 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 		var team uint
 		var penalty int
 
-		if err:= rows.Scan(&id, &team, &penalty); err != nil {
+		if err := rows.Scan(&id, &team, &penalty); err != nil {
 			return nil, err
 		}
 

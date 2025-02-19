@@ -32,6 +32,9 @@ func (c *Tcp) Verify(box string, ip string, points int, timeout int, slapenalty 
 	if c.ServiceType == "" {
 		c.ServiceType = "Tcp"
 	}
+	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
+		return err
+	}
 	if c.Display == "" {
 		c.Display = "tcp"
 	}

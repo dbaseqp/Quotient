@@ -2,12 +2,12 @@ package checks
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
-	"fmt"
 
 	"al.essio.dev/pkg/shellescape"
 )

@@ -31,9 +31,17 @@ type ScoringEngine struct {
 
 	// signals
 	ResetChan chan struct{}
+
+	// Config update handling
+	configPath string
 }
 
-func NewEngine(conf *config.ConfigSettings) *ScoringEngine {
+func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
+	// Ensure config is properly validated and runners are set up
+	if err := conf.SetConfig(configPath); err != nil {
+		panic(fmt.Sprintf("Failed to validate initial config: %v", err))
+	}
+
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "quotient_redis:6379"
@@ -46,14 +54,22 @@ func NewEngine(conf *config.ConfigSettings) *ScoringEngine {
 		panic(fmt.Sprintf("Failed to connect to Redis: %v", err))
 	}
 
-	return &ScoringEngine{
+	se := &ScoringEngine{
 		Config:           conf,
 		CredentialsMutex: make(map[uint]*sync.Mutex),
 		UptimePerService: make(map[uint]map[string]db.Uptime),
 		SlaPerService:    make(map[uint]map[string]int),
 		ResetChan:        make(chan struct{}),
 		RedisClient:      rdb,
+		configPath:       configPath,
 	}
+
+	// Start watching config file for changes
+	if err := conf.WatchConfig(configPath); err != nil {
+		slog.Error("Failed to start config watcher", "error", err)
+	}
+
+	return se
 }
 
 func (se *ScoringEngine) Start() {
@@ -200,6 +216,14 @@ func (se *ScoringEngine) rvb() {
 
 	slog.Debug("Starting service checks", "round", se.CurrentRound)
 	allRunners := se.Config.AllChecks()
+	slog.Info("Service check configuration",
+		"boxes", len(se.Config.Box),
+		"runners", len(allRunners))
+
+	// Log details about each box's runners
+	for _, box := range se.Config.Box {
+		slog.Debug("Box configuration", "name", box.Name, "runners", len(box.Runners))
+	}
 
 	// 1) Enqueue
 	for _, team := range teams {

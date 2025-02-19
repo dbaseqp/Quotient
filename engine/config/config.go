@@ -112,8 +112,9 @@ type Box struct {
 	IP   string
 
 	// Internal use but not in config file
-	Runners []checks.Runner `toml:"-"`
+	Runners []checks.Runner `toml:"-" json:"-"`
 
+	// Service check definitions
 	Custom []*checks.Custom `toml:"Custom,omitempty" json:"custom,omitempty"`
 	Dns    []*checks.Dns    `toml:"Dns,omitempty" json:"dns,omitempty"`
 	Ftp    []*checks.Ftp    `toml:"Ftp,omitempty" json:"ftp,omitempty"`
@@ -134,12 +135,15 @@ type Box struct {
 
 // Load in a config
 func (conf *ConfigSettings) SetConfig(path string) error {
+	slog.Info("Loading configuration file", "path", path)
+
 	tempConf := ConfigSettings{}
 	fileContent, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("configuration file ("+path+") not found:", err)
 	}
 
+	slog.Debug("Decoding TOML configuration")
 	md, err := toml.Decode(string(fileContent), &tempConf)
 	if err != nil {
 		return err
@@ -149,6 +153,9 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 		slog.Warn("undecoded configuration key \"" + undecoded.String() + "\" will not be used.")
 	}
 
+	// Log box count
+	slog.Debug("Configuration state", "boxes", len(tempConf.Box))
+
 	// check the configuration and set defaults
 	if err := checkConfig(&tempConf); err != nil {
 		return fmt.Errorf("configuration file ("+path+") is invalid:", err)
@@ -156,6 +163,10 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 
 	// if we're here, the config is valid
 	*conf = tempConf
+
+	slog.Info("Configuration loaded successfully",
+		"boxes", len(conf.Box),
+		"total_runners", len(conf.AllChecks()))
 
 	return nil
 }
@@ -293,6 +304,9 @@ func checkConfig(conf *ConfigSettings) error {
 		if _, ok := dupeBoxMap[conf.Box[i].Name]; ok {
 			errResult = errors.Join(errResult, errors.New("duplicate box name found: "+conf.Box[i].Name))
 		}
+		slog.Debug("Checking box configuration",
+			"box", conf.Box[i].Name,
+			"ip", conf.Box[i].IP)
 
 		// Ensure TeamID replacement chars are lowercase
 		conf.Box[i].IP = strings.ToLower(conf.Box[i].IP)
@@ -332,6 +346,14 @@ func checkConfig(conf *ConfigSettings) error {
 }
 
 func getRunners[T checks.Runner](arr []T) []checks.Runner {
+	if len(arr) == 0 {
+		return nil // Return nil instead of empty slice to make it clearer in logs
+	}
+
+	slog.Debug("Converting service checks",
+		"type", fmt.Sprintf("%T", arr[0]),
+		"count", len(arr))
+
 	out := make([]checks.Runner, len(arr))
 	for i, v := range arr {
 		out[i] = v
