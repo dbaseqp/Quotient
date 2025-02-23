@@ -49,7 +49,7 @@ services:
       mode: replicated
       replicas: 10 # Adjust based on server resources
     restart: always
-    privileged: true
+    #privileged: true # disable unless a runner needs priv access (e.g. wireguard)
     env_file:
       - .env
     depends_on:
@@ -62,8 +62,6 @@ services:
       - ./custom-checks:/app/checks
     tmpfs:
       - /tmp:size=32m
-        #dns:
-        #- 10.128.0.26
 
   divisor:
     build:
