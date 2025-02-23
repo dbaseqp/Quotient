@@ -93,7 +93,7 @@ func GetEngine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d, _ := json.Marshal(map[string]interface{}{
+	d, _ := json.Marshal(map[string]any{
 		"last_round":         lastRound,
 		"current_round_time": eng.CurrentRoundStartTime,
 		"next_round_time":    eng.NextRoundStartTime,

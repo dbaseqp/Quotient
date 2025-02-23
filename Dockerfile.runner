@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /src
 
@@ -11,7 +11,7 @@ RUN go build
 
 
 # runner
-FROM alpine:3.20
+FROM alpine:3.21
 WORKDIR /app
 COPY --from=builder /src/runner/runner runner
 RUN apk add --no-cache wireguard-tools iproute2 iputils curl git openssh
