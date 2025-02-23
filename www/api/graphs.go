@@ -17,7 +17,7 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 	round, err := db.GetLastRound()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]interface{}{"error": err.Error()}
+		data := map[string]any{"error": err.Error()}
 		d, _ := json.Marshal(data)
 		w.Write(d)
 		return
@@ -36,7 +36,7 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 	teams, err := db.GetTeams()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]interface{}{"error": err.Error()}
+		data := map[string]any{"error": err.Error()}
 		d, _ := json.Marshal(data)
 		w.Write(d)
 		return
@@ -83,7 +83,7 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 		series = append(series, s)
 	}
 
-	data := map[string]interface{}{"series": series}
+	data := map[string]any{"series": series}
 	d, _ := json.Marshal(data)
 	w.Write(d)
 }
@@ -92,7 +92,7 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 	scores, err := db.GetServiceCheckSumByRound()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]interface{}{"error": err.Error()}
+		data := map[string]any{"error": err.Error()}
 		d, _ := json.Marshal(data)
 		w.Write(d)
 		return
@@ -112,7 +112,7 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 	teams, err := db.GetTeams()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]interface{}{"error": err.Error()}
+		data := map[string]any{"error": err.Error()}
 		d, _ := json.Marshal(data)
 		w.Write(d)
 		return
@@ -159,7 +159,7 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 		return b.Data[len(b.Data)-1].Total - a.Data[len(a.Data)-1].Total
 	})
 
-	data := map[string]interface{}{"series": series}
+	data := map[string]any{"series": series}
 	d, _ := json.Marshal(data)
 	w.Write(d)
 }
@@ -168,7 +168,7 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	teams, err := db.GetTeams()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]interface{}{"error": err.Error()}
+		data := map[string]any{"error": err.Error()}
 		d, _ := json.Marshal(data)
 		w.Write(d)
 		return
@@ -229,7 +229,7 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data := map[string]interface{}{"series": series}
+	data := map[string]any{"series": series}
 	d, _ := json.Marshal(data)
 	w.Write(d)
 }

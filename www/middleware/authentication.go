@@ -38,13 +38,11 @@ func Authentication(roles ...string) Middleware {
 
 			// need to refactor for multi-roles
 			for _, user_role := range user_roles {
-				for _, allowed_role := range roles {
-					if user_role == allowed_role {
-						ctx := context.WithValue(r.Context(), "username", username)
-						ctx = context.WithValue(ctx, "roles", user_roles)
-						next(w, r.WithContext(ctx))
-						return
-					}
+				if slices.Contains(roles, user_role) {
+					ctx := context.WithValue(r.Context(), "username", username)
+					ctx = context.WithValue(ctx, "roles", user_roles)
+					next(w, r.WithContext(ctx))
+					return
 				}
 			}
 			w.WriteHeader(http.StatusForbidden)

@@ -1,6 +1,7 @@
 package www
 
 import (
+	"maps"
 	"net/http"
 	"quotient/www/api"
 	"slices"
@@ -60,9 +61,7 @@ func (router *Router) pageData(r *http.Request, unique map[string]any) map[strin
 		}
 	}
 
-	for key, value := range unique {
-		data[key] = value
-	}
+	maps.Copy(data, unique)
 	return data
 }
 

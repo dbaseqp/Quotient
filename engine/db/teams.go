@@ -107,7 +107,7 @@ func GetTeamSummary(teamID uint) ([]map[string]any, error) {
 }
 
 func UpdateTeam(teamID uint, identifier string, active bool) error {
-	result := db.Table("team_schemas").Where("id = ?", teamID).Updates(map[string]interface{}{"identifier": identifier, "active": active})
+	result := db.Table("team_schemas").Where("id = ?", teamID).Updates(map[string]any{"identifier": identifier, "active": active})
 	if result.Error != nil {
 		return result.Error
 	}

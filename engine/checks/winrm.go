@@ -37,7 +37,7 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 		params := *winrm.DefaultParameters
 
 		// Run bad attempts if specified
-		for i := 0; i < c.BadAttempts; i++ {
+		for range c.BadAttempts {
 			endpoint := winrm.NewEndpoint(c.Target, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
 			winrm.NewClientWithParameters(endpoint, username, uuid.New().String(), &params)
 		}

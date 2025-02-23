@@ -59,7 +59,7 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			subject = fortune
 		} else {
 			selected := make([]string, 3)
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				selected[i] = words[rand.Intn(len(words))]
 			}
 			subject = strings.Join(selected, " ")

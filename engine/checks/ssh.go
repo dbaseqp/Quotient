@@ -72,7 +72,7 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			}
 		}
 
-		for i := 0; i < c.BadAttempts; i++ {
+		for range c.BadAttempts {
 			badConf := &ssh.ClientConfig{
 				User: username,
 				Auth: []ssh.AuthMethod{
