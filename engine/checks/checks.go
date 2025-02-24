@@ -18,6 +18,7 @@ type Runner interface {
 	Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error
 	GetType() string
 	GetName() string
+	GetAttempts() int
 }
 
 // services will inherit Service so that config.Config can be read from file, but will not be used after initial read
@@ -35,6 +36,7 @@ type Service struct {
 	Disabled     bool      `toml:",omitempty"`
 	Target       string    `toml:",omitempty"` // Target is the IP address or hostname for the box
 	ServiceType  string    `toml:",omitempty"` // ServiceType is the name of the Runner that checks the service
+	Attempts     int       `toml:",omitempty"` // Attempts is the number of times the service has been checked
 }
 
 type Result struct {
@@ -55,6 +57,10 @@ func (service *Service) GetType() string {
 
 func (service *Service) GetName() string {
 	return service.Name
+}
+
+func (service *Service) GetAttempts() int {
+	return service.Attempts
 }
 
 func (service *Service) getCreds(teamID uint) (string, string, error) {
@@ -114,6 +120,9 @@ func (service *Service) Configure(ip string, points int, timeout int, slapenalty
 		if !strings.HasSuffix(list, ".credlist") {
 			return errors.New("check " + service.Name + " has invalid credlist names")
 		}
+	}
+	if service.Attempts == 0 {
+		service.Attempts = 1
 	}
 
 	return nil

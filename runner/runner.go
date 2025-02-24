@@ -13,6 +13,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+var (
+	input  = make(chan checks.Result)
+	output = make(chan []byte)
+)
+
 func main() {
 	// Redis connection info
 	redisAddr := os.Getenv("REDIS_ADDR")
@@ -27,9 +32,6 @@ func main() {
 	ctx := context.Background()
 
 	log.Println("[Runner] Runner started, listening for tasks on Redis at:", "reddisAddr", redisAddr)
-
-	input := make(chan checks.Result)
-	output := make(chan []byte)
 
 	go jsonProcessor(input, output)
 
@@ -101,39 +103,53 @@ func main() {
 		}
 		log.Printf("[Runner] CheckData: %+v", runnerInstance)
 
-		// Actually run the check
+		// Create a channel to receive the check results
 		resultsChan := make(chan checks.Result)
+
+		// Run the check asynchronously to not block
+		go handleTask(ctx, rdb, runnerInstance, task, resultsChan)
+	}
+}
+
+func handleTask(ctx context.Context, rdb *redis.Client, runnerInstance checks.Runner, task engine.Task, resultsChan chan checks.Result) {
+	// this currently discards all failed attempts
+	var result checks.Result
+	for i := 0; i < task.Attempts; i++ {
+		// send the request
+		log.Printf("[Runner] Running check: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s, Attempt=%d", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName, i+1)
 		go runnerInstance.Run(task.TeamID, task.TeamIdentifier, task.RoundID, resultsChan)
 
-		// Block until the check is done
-		go func() {
-			var result checks.Result
-			select {
-			case result = <-resultsChan:
-			case <-time.After(time.Until(task.Deadline)):
-				log.Printf("[Runner] Timeout occured: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
-				result = checks.Result{
-					TeamID:      task.TeamID,
-					ServiceName: task.ServiceName,
-					ServiceType: task.ServiceType,
-					RoundID:     task.RoundID,
-					Status:      false,
-					Debug:       "likely check panicked and couldn't timeout properly",
-					Error:       "timeout",
-				}
+		// wait for the response
+		select {
+		case result = <-resultsChan:
+		case <-time.After(time.Until(task.Deadline)):
+			log.Printf("[Runner] Timeout occured: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
+			result = checks.Result{
+				TeamID:      task.TeamID,
+				ServiceName: task.ServiceName,
+				ServiceType: task.ServiceType,
+				RoundID:     task.RoundID,
+				Status:      false,
+				Debug:       "round ended before check completed",
+				Error:       "timeout",
 			}
+		}
 
-			// Marshall the check result
-			input <- result
-			resultJSON := <-output
+		// if fail, retry, else stop retrying
+		if time.Now().Before(task.Deadline) && !result.Status {
+			continue
+		}
+		break
+	}
+	// Marshall the check result
+	input <- result
+	resultJSON := <-output
 
-			// Push onto "results" list
-			if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
-				log.Printf("[Runner] Failed to push result to Redis: %v", err)
-			} else {
-				log.Printf("[Runner] Pushed result for: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
-			}
-		}()
+	// Push onto "results" list
+	if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
+		log.Printf("[Runner] Failed to push result to Redis: %v", err)
+	} else {
+		log.Printf("[Runner] Pushed result for: RoundID=%d, TeamID=%d, ServiceType=%s, ServiceName=%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
 	}
 }
 

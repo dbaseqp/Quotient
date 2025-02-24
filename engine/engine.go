@@ -224,6 +224,7 @@ func (se *ScoringEngine) rvb() {
 				ServiceName:    r.GetName(),
 				RoundID:        se.CurrentRound,
 				Deadline:       se.NextRoundStartTime,
+				Attempts:       r.GetAttempts(),
 				CheckData:      data, // the entire specialized struct
 			}
 
