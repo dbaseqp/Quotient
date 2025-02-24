@@ -194,6 +194,7 @@ ip = "10.100.1_.2"
     [[box.web]] # type of check you want
     display = "web01" # name of the check that gets appended to the box name
     target = "example.team_.tld" # e.g. this will resolve to example.team01.tld with aweful-dns
+    port = 8080
 
         [[box.web.url]] # some checks have components you need to include
         path = "/index.html"
@@ -201,7 +202,6 @@ ip = "10.100.1_.2"
         [[box.web.url]]
         path = "/admin"
         status = 403
-        port = 8080
 ```
 
 Custom checks can be added to the `./custom-checks/` directory. It is very common to make the custom check simply run some other script that you have written that has the necessary logic to check the service. The script should return a 0 if the service is up and anything else if it is down. The script should be executable. The script will be mounted in the `/app/checks/` directory of the runner. If the script invokes external dependencies or needs to have a specific run time, this should be added to the Dockerfile.runner and the runner rebuilt and redeployed.
