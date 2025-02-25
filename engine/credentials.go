@@ -12,23 +12,6 @@ import (
 )
 
 func (se *ScoringEngine) LoadCredentials() error {
-	credlistFiles, err := os.ReadDir("config/credlists/")
-	if err != nil {
-		return fmt.Errorf("failed to read credlists directory: %v", err)
-	}
-
-	// remove credlists not in the config
-	for i, credcredlistFiles := range credlistFiles {
-		for _, configCredlist := range se.Config.CredlistSettings.Credlist {
-			if credcredlistFiles.Name() == configCredlist.CredlistPath {
-				// assume the last element is OK, so replace the current element with it
-				// and then truncate the slice
-				credlistFiles[i] = credlistFiles[len(credlistFiles)-1]
-				credlistFiles = credlistFiles[:len(credlistFiles)-1]
-			}
-		}
-	}
-
 	teams, err := db.GetTeams()
 	if err != nil {
 		return fmt.Errorf("failed to get teams: %v", err)
@@ -36,34 +19,44 @@ func (se *ScoringEngine) LoadCredentials() error {
 
 	for _, team := range teams {
 		se.CredentialsMutex[team.ID] = &sync.Mutex{}
-		for _, credlistFile := range credlistFiles {
-			if !credlistFile.IsDir() && filepath.Ext(credlistFile.Name()) == ".credlist" {
-				submissionPath := fmt.Sprintf("submissions/pcrs/%d/%s", team.ID, credlistFile.Name())
-				if _, err := os.Stat(submissionPath); os.IsNotExist(err) {
-					destDir := filepath.Dir(submissionPath)
-					if err := os.MkdirAll(destDir, os.ModePerm); err != nil {
-						return fmt.Errorf("failed to create directory %s: %v", destDir, err)
-					}
 
-					sourcePath := fmt.Sprintf("config/credlists/%s", credlistFile.Name())
-					sourceFile, err := os.Open(sourcePath)
-					if err != nil {
-						return fmt.Errorf("failed to open source file %s: %v", sourcePath, err)
-					}
-					defer sourceFile.Close()
+		// Iterate directly over the credlists defined in the config
+		for _, configCredlist := range se.Config.CredlistSettings.Credlist {
+			credlistPath := configCredlist.CredlistPath
 
-					destFile, err := os.Create(submissionPath)
-					if err != nil {
-						return fmt.Errorf("failed to create destination file %s: %v", submissionPath, err)
-					}
-					defer destFile.Close()
+			// Ensure the source file exists
+			sourcePath := fmt.Sprintf("config/credlists/%s", credlistPath)
+			if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
+				return fmt.Errorf("credlist file %s defined in config does not exist: %v", sourcePath, err)
+			} else if err != nil {
+				return fmt.Errorf("failed to check credlist file %s: %v", sourcePath, err)
+			}
 
-					if _, err := io.Copy(destFile, sourceFile); err != nil {
-						return fmt.Errorf("failed to copy file from %s to %s: %v", sourcePath, submissionPath, err)
-					}
-				} else if err != nil {
-					return fmt.Errorf("failed to check file %s: %v", submissionPath, err)
+			submissionPath := fmt.Sprintf("submissions/pcrs/%d/%s", team.ID, credlistPath)
+			if _, err := os.Stat(submissionPath); os.IsNotExist(err) {
+				destDir := filepath.Dir(submissionPath)
+				if err := os.MkdirAll(destDir, os.ModePerm); err != nil {
+					return fmt.Errorf("failed to create directory %s: %v", destDir, err)
 				}
+
+				sourcePath := fmt.Sprintf("config/credlists/%s", credlistPath)
+				sourceFile, err := os.Open(sourcePath)
+				if err != nil {
+					return fmt.Errorf("failed to open source file %s: %v", sourcePath, err)
+				}
+				defer sourceFile.Close()
+
+				destFile, err := os.Create(submissionPath)
+				if err != nil {
+					return fmt.Errorf("failed to create destination file %s: %v", submissionPath, err)
+				}
+				defer destFile.Close()
+
+				if _, err := io.Copy(destFile, sourceFile); err != nil {
+					return fmt.Errorf("failed to copy file from %s to %s: %v", sourcePath, submissionPath, err)
+				}
+			} else if err != nil {
+				return fmt.Errorf("failed to check file %s: %v", submissionPath, err)
 			}
 		}
 	}
