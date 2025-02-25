@@ -71,7 +71,7 @@ func (se *ScoringEngine) LoadCredentials() error {
 	return nil
 }
 
-func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string) error {
+func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string) (int, error) {
 	// check if the credlist name is in the config
 	validCredlist := false
 	for _, c := range se.Config.CredlistSettings.Credlist {
@@ -81,7 +81,7 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 		}
 	}
 	if !validCredlist {
-		return fmt.Errorf("invalid credlist name")
+		return 0, fmt.Errorf("invalid credlist name")
 	}
 
 	se.CredentialsMutex[teamID].Lock()
@@ -90,35 +90,37 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 	slog.Debug("updating credentials", "teamID", teamID, "credlistName", credlistName)
 
 	if len(usernames) != len(passwords) {
-		return fmt.Errorf("mismatched usernames and passwords")
+		return 0, fmt.Errorf("mismatched usernames and passwords")
 	}
 
 	credlistPath := fmt.Sprintf("submissions/pcrs/%d/%s", teamID, credlistName)
 	originalCreds := make(map[string]string)
 	credlist, err := os.Open(credlistPath)
 	if err != nil {
-		return fmt.Errorf("failed to read original credlist: %v", err)
+		return 0, fmt.Errorf("failed to read original credlist: %v", err)
 	}
 
 	reader := csv.NewReader(credlist)
 	records, err := reader.ReadAll()
 	if err != nil {
-		return fmt.Errorf("failed to read original credlist: %v", err)
+		return 0, fmt.Errorf("failed to read original credlist: %v", err)
 	}
 
 	for _, record := range records {
 		if len(record) != 2 {
 			slog.Debug("invalid credlist format", "record", record)
-			return fmt.Errorf("invalid credlist format")
+			return 0, fmt.Errorf("invalid credlist format")
 		}
 		originalCreds[record[0]] = record[1]
 	}
 
+	updatedCount := 0
 	for i, username := range usernames {
 		if _, exists := originalCreds[username]; !exists {
 			slog.Debug("username not found in original credlist, skipping update", "username", username)
 		} else {
 			originalCreds[username] = passwords[i]
+			updatedCount++
 		}
 	}
 
@@ -127,7 +129,7 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 	// write back to the file that was read
 	credlistFile, err := os.Create(credlistPath)
 	if err != nil {
-		return fmt.Errorf("failed to open credlist file for writing: %v", err)
+		return 0, fmt.Errorf("failed to open credlist file for writing: %v", err)
 	}
 	defer credlistFile.Close()
 
@@ -135,17 +137,17 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 	for username, password := range originalCreds {
 		// csv write encoded
 		if err := writer.Write([]string{username, password}); err != nil {
-			return fmt.Errorf("failed to write to credlist file: %v", err)
+			return 0, fmt.Errorf("failed to write to credlist file: %v", err)
 		}
 		slog.Debug("successfully wrote to credlist", "username", username, "password", password)
 	}
 	writer.Flush()
 
 	if err := writer.Error(); err != nil {
-		return fmt.Errorf("failed to flush pcr writer: %v", err)
+		return 0, fmt.Errorf("failed to flush pcr writer: %v", err)
 	}
 
-	return nil
+	return updatedCount, nil
 }
 
 func (se *ScoringEngine) GetCredlists() (any, error) {
