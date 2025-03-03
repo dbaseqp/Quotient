@@ -183,7 +183,7 @@ func GetServiceScores() ([]ServiceScoreData, error) {
 			service_check_schemas.team_id,
 			service_check_schemas.service_name,
 			SUM(CASE WHEN service_check_schemas.result = ? THEN service_check_schemas.points ELSE 0 END) as points,
-			COUNT(sla_schemas.id) as violations,
+			COUNT(sla_schemas.round_id) as violations,
 			COALESCE(SUM(sla_schemas.penalty), 0) as total_penalty
 		`, true).
 		Joins("LEFT JOIN sla_schemas ON service_check_schemas.team_id = sla_schemas.team_id AND service_check_schemas.service_name = sla_schemas.service_name").
