@@ -24,25 +24,16 @@
                 </div>
                 <div class="row mb-3">
                     <div class="col">
-                        <h3>Scoring Data</h3>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h3 class="mb-0">Scoring Data</h3>
+                            <div>
+                                <button class="btn btn-primary me-2" onclick="exportJSON()">Export JSON</button>
+                                <button class="btn btn-primary" onclick="exportCSV()">Export CSV</button>
+                            </div>
+                        </div>
                         <div class="card">
                             <div class="card-body">
                                 <pre id="scoringData" class="m-0"></pre>
-                                <script>
-                                    fetch('/api/engine/export/scores')
-                                        .then((response) => {
-                                            if (!response.ok) {
-                                                throw new Error('Network response was not ok');
-                                            }
-                                            return response.json()
-                                        })
-                                        .then((data) => {
-                                            document.getElementById('scoringData').textContent = JSON.stringify(data, null, 2);
-                                        })
-                                        .catch(error => {
-                                            console.error('Error fetching scoring data:', error)
-                                        });
-                                </script>
                             </div>
                         </div>
                     </div>
@@ -70,7 +61,6 @@
                             })
                             .catch(error => console.error('Error pausing engine:', error));
                     });
-
                     document.getElementById('resetButton').addEventListener('click', () => {
                         if (confirm("This will reset all scores and the engine but keep injects and their submissions. Are you sure?")) {
                             fetch('/api/engine/reset')
@@ -135,7 +125,67 @@
                         PROGRESS.style.width = `${progress}%`;
                         PROGRESS.setAttribute('aria-valuenow', progress);
                     }
+                    function fetchScores() {
+                        fetch('/api/engine/export/scores')
+                            .then((response) => {
+                                if (!response.ok) {
+                                    throw new Error('Network response was not ok');
+                                }
+                                return response.json()
+                            })
+                            .then((data) => {
+                                scoreData = data;
+                                document.getElementById('scoringData').textContent = JSON.stringify(data, null, 2);
+                            })
+                            .catch(error => {
+                                console.error('Error fetching scoring data:', error)
+                            });
+                    }
+                    function exportJSON() {
+                        fetchScores();
+                        const dataStr = JSON.stringify(scoreData, null, 2);
+                        const dataBlob = new Blob([dataStr], {type: 'application/json'});
+                        const url = URL.createObjectURL(dataBlob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = 'scoring_data.json';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                    }
+                    function exportCSV() {
+                        fetchScores();
+                        const headers = ['Team', 'Service', 'Service Points', 'SLA Violations', 'SLA Penalty', 'Total Points'];
+                        const csvRows = [headers.join(',')];
 
+                        scoreData.forEach(team => {
+                            team.services.forEach(service => {
+                                const row = [
+                                    team.team_name,
+                                    service.service_name,
+                                    service.service_points,
+                                    service.sla_violations,
+                                    service.sla_penalty,
+                                    team.total_points
+                                ];
+                                csvRows.push(row.join(','));
+                            });
+                        });
+
+                        const csvStr = csvRows.join('\n');
+                        const dataBlob = new Blob([csvStr], {type: 'text/csv'});
+                        const url = URL.createObjectURL(dataBlob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = 'scoring_data.csv';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                    }
+
+                    fetchScores();
                     getEngineData()
                     updateProgress()
 
