@@ -14,7 +14,20 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// Global variable to store the runner ID
+var runnerID string
+
 func main() {
+	// Use environment variable RUNNER_ID if set, otherwise use hostname
+	runnerID = os.Getenv("RUNNER_ID")
+	if runnerID == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			hostname = "unknown"
+		}
+		runnerID = hostname
+	}
+
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "quotient_redis:6379"
@@ -26,7 +39,7 @@ func main() {
 	})
 	ctx := context.Background()
 
-	log.Printf("[Runner] Started, listening for tasks on Redis at: %s", redisAddr)
+	log.Printf("[Runner] Started with ID %s, listening for tasks on Redis at: %s", runnerID, redisAddr)
 
 	for {
 		task, err := getNextTask(ctx, rdb)
@@ -117,19 +130,28 @@ func createRunner(task *engine.Task) (checks.Runner, error) {
 }
 
 func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, task *engine.Task) {
-	// this currently discards all failed attempts
-	resultsChan := make(chan checks.Result, 1)
-	var result checks.Result
+	// Create a task key to identify the check
+	taskKey := fmt.Sprintf("task:%d:%d:%s:%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
 
-	// Initialize default result fields
-	result = checks.Result{
+	// Create a result
+	result := checks.Result{
 		TeamID:      task.TeamID,
 		ServiceName: task.ServiceName,
 		ServiceType: task.ServiceType,
 		RoundID:     task.RoundID,
 		Status:      false,
+		RunnerID:    runnerID,
+		StartTime:   time.Now().Format(time.RFC3339),
+		StatusText:  "running",
 	}
 
+	// Set initial "running" status in Redis for visualization
+	statusJSON, _ := json.Marshal(result)
+	rdb.Set(ctx, taskKey, statusJSON, time.Until(task.Deadline))
+
+	resultsChan := make(chan checks.Result, 1)
+
+	// this currently discards all failed attempts
 	for i := range task.Attempts {
 		log.Printf("[Runner] Running check: RoundID=%d TeamID=%d ServiceType=%s ServiceName=%s Attempt=%d",
 			task.RoundID, task.TeamID, task.ServiceType, task.ServiceName, i+1)
@@ -185,4 +207,11 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 
 	log.Printf("[Runner] Successfully pushed result: RoundID=%d TeamID=%d ServiceType=%s Status=%v",
 		result.RoundID, result.TeamID, result.ServiceType, result.Status)
+
+	// Update the task key with the final result status
+	result.EndTime = time.Now().Format(time.RFC3339)
+	result.StatusText = map[bool]string{true: "success", false: "failed"}[result.Status]
+	statusJSON, _ = json.Marshal(result)
+	// Use a longer TTL for completed tasks to ensure they're visible in the UI
+	rdb.Set(ctx, taskKey, statusJSON, 3*time.Minute)
 }

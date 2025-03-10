@@ -145,6 +145,7 @@ func (router *Router) Start() {
 	mux.HandleFunc("POST /api/engine/pause", ADMINAUTH(api.PauseEngine))
 	mux.HandleFunc("GET /api/engine/reset", ADMINAUTH(api.ResetScores))
 	mux.HandleFunc("GET /api/engine", ADMINAUTH(api.GetEngine))
+	mux.HandleFunc("GET /api/engine/tasks", ADMINAUTH(api.GetActiveTasks))
 	mux.HandleFunc("POST /api/admin/teams", ADMINAUTH(api.UpdateTeams))
 
 	mux.HandleFunc("GET /api/engine/export/scores", ADMINAUTH(api.ExportScores))
@@ -153,9 +154,9 @@ func (router *Router) Start() {
 	// admin auth WWW routes
 	mux.HandleFunc("GET /admin", ADMINAUTH(router.AdminPage))
 	mux.HandleFunc("GET /admin/engine", ADMINAUTH(router.AdministrateEnginePage))
+	mux.HandleFunc("GET /admin/runners", ADMINAUTH(router.AdministrateRunnersPage))
 	mux.HandleFunc("GET /admin/teams", ADMINAUTH(router.AdministrateTeamsPage))
 	mux.HandleFunc("GET /admin/appearance", ADMINAUTH(router.AdministrateAppearancePage))
-
 
 	// start server
 	server := http.Server{
