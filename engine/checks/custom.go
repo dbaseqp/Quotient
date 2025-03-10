@@ -2,12 +2,13 @@ package checks
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
-	"fmt"
 
 	"al.essio.dev/pkg/shellescape"
 )
@@ -16,12 +17,6 @@ type Custom struct {
 	Service
 	Command string
 	Regex   string
-}
-
-func commandOutput(cmd string) (string, error) {
-
-	out, err := exec.Command("/bin/sh", "-c", cmd).CombinedOutput()
-	return string(out), err
 }
 
 func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
@@ -50,9 +45,31 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 		formedCommand = strings.Replace(formedCommand, "PASSWORD", shellescape.Quote(password), -1)
 		slog.Debug("CUSTOM CHECK COMMAND", "command", formedCommand)
 		checkResult.Debug = formedCommand
-		out, err := commandOutput(formedCommand)
+		cmd := exec.Command("/bin/sh", "-c", formedCommand)
+
+		tmpfilePath := fmt.Sprintf("/tmp/custom-check-%d-%d-%s", roundID, teamID, c.Name)
+		tmpfile, err := os.Create(tmpfilePath)
 		if err != nil {
-			checkResult.Error = fmt.Sprintf("command returned error:\n%s", err.Error())
+			checkResult.Error = "error creating tmpfile"
+			checkResult.Debug = err.Error()
+			response <- checkResult
+			return
+		}
+		defer tmpfile.Close()
+
+		cmd.Stdout = tmpfile
+		cmd.Stderr = tmpfile
+
+		err = cmd.Run()
+		raw, err2 := os.ReadFile(tmpfilePath)
+		if err2 != nil {
+			checkResult.Debug += fmt.Sprintf("\nerror reading tmpfile:\n%s", err2.Error())
+			response <- checkResult
+			return
+		}
+		out := string(raw)
+		if err != nil {
+			checkResult.Error += fmt.Sprintf("command returned error:\n%s", err.Error())
 			checkResult.Debug += fmt.Sprintf("\noutput:\n%s", out)
 			response <- checkResult
 			return
