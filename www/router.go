@@ -39,7 +39,7 @@ func (router *Router) Start() {
 
 	mux.Handle("/static/assets/", http.StripPrefix("/static/assets/", http.FileServer(http.Dir("./static/assets"))))
 
-	UNAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("anonymous", "team", "admin", "red"))
+	UNAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Cors, middleware.Authentication("anonymous", "team", "admin", "red"))
 	// public API routes
 	mux.HandleFunc("POST /api/login", api.Login)
 
@@ -155,7 +155,6 @@ func (router *Router) Start() {
 	mux.HandleFunc("GET /admin/engine", ADMINAUTH(router.AdministrateEnginePage))
 	mux.HandleFunc("GET /admin/teams", ADMINAUTH(router.AdministrateTeamsPage))
 	mux.HandleFunc("GET /admin/appearance", ADMINAUTH(router.AdministrateAppearancePage))
-
 
 	// start server
 	server := http.Server{
