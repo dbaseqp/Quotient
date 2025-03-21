@@ -28,6 +28,29 @@ func main() {
 
 	log.Printf("[Runner] Started, listening for tasks on Redis at: %s", redisAddr)
 
+	go func() {
+		for {
+			val, err := rdb.BLPop(ctx, 0, "events").Result()
+			if err != nil {
+				log.Printf("[Runner] Error getting event: %v", err)
+				continue
+			}
+
+			if len(val) < 2 {
+				log.Printf("[Runner] Invalid BLPop response: %v", val)
+				continue
+			}
+
+			if val[1] != "reset" {
+				log.Printf("[Runner] Invalid event payload: %v", val[1])
+				continue
+			}
+
+			log.Printf("[Runner] Reset event received, quitting...")
+			os.Exit(0)
+		}
+	}()
+
 	for {
 		task, err := getNextTask(ctx, rdb)
 		if err != nil {
