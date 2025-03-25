@@ -317,7 +317,7 @@ func checkConfig(conf *ConfigSettings) error {
 					errResult = errors.Join(errResult, err)
 				}
 				if _, exists := runnerNames[check.GetName()]; exists {
-					errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", check.GetName()))
+					errResult = errors.Join(errResult, fmt.Errorf("duplicate check name found: %s", check.GetName()))
 				} else {
 					runnerNames[check.GetName()] = true
 				}
