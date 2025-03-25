@@ -19,6 +19,7 @@ type Runner interface {
 	GetType() string
 	GetName() string
 	GetAttempts() int
+	GetCredlists() []string
 }
 
 // services will inherit Service so that config.Config can be read from file, but will not be used after initial read
@@ -61,6 +62,10 @@ func (service *Service) GetName() string {
 
 func (service *Service) GetAttempts() int {
 	return service.Attempts
+}
+
+func (service *Service) GetCredlists() []string {
+	return service.CredLists
 }
 
 func (service *Service) getCreds(teamID uint) (string, string, error) {
@@ -115,11 +120,6 @@ func (service *Service) Configure(ip string, points int, timeout int, slapenalty
 	}
 	if service.SlaThreshold == 0 {
 		service.SlaThreshold = slathreshold
-	}
-	for _, list := range service.CredLists {
-		if !strings.HasSuffix(list, ".credlist") {
-			return errors.New("check " + service.Name + " has invalid credlist names")
-		}
 	}
 	if service.Attempts == 0 {
 		service.Attempts = 1
