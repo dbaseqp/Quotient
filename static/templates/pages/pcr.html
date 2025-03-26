@@ -128,13 +128,63 @@
         })
             .then((response) => {
                 if (!response.ok) {
-                    Promise.reject(response)
+                    return Promise.reject(response);
                 }
-                return response.json()
+                return response.json();
             })
             .then((data) => {
-                window.location.reload();
+                // Create an alert
+                const alertDiv = document.createElement("div");
+                // Determine alert type based on count
+                if (data.count === 0) {
+                    alertDiv.className = "alert alert-warning alert-dismissible fade show mt-3";
+                    alertDiv.role = "alert";
+                    alertDiv.textContent = "No credentials were updated. Please check that the usernames exist in the selected credential list.";
+                } else {
+                    alertDiv.className = "alert alert-success alert-dismissible fade show mt-3";
+                    alertDiv.role = "alert";
+                    // Set the message with the count of updated credentials
+                    const message = `${data.message}: ${data.count} credential${data.count !== 1 ? 's' : ''} updated successfully.`;
+                    alertDiv.textContent = message;
+                }
+                // Add a close button
+                const closeButton = document.createElement("button");
+                closeButton.type = "button";
+                closeButton.className = "btn-close";
+                closeButton.setAttribute("data-bs-dismiss", "alert");
+                closeButton.setAttribute("aria-label", "Close");
+                alertDiv.appendChild(closeButton);
+                // Insert the alert before the form
+                const form = document.getElementById("pcr__form");
+                form.parentNode.insertBefore(alertDiv, form);
+                // Clear the textarea only if credentials were updated
+                if (data.count > 0) {
+                    document.getElementById("pcr__credentials").value = "";
+                }
+                // Auto-dismiss after 5 seconds
+                setTimeout(() => {
+                    const bsAlert = new bootstrap.Alert(alertDiv);
+                    bsAlert.close();
+                }, 5000);
             })
+            .catch(error => {
+                console.error("Error submitting PCR:", error);
+                // Create an error alert
+                const alertDiv = document.createElement("div");
+                alertDiv.className = "alert alert-danger alert-dismissible fade show mt-3";
+                alertDiv.role = "alert";
+                alertDiv.textContent = "Error submitting PCR. Please try again.";
+                // Add a close button
+                const closeButton = document.createElement("button");
+                closeButton.type = "button";
+                closeButton.className = "btn-close";
+                closeButton.setAttribute("data-bs-dismiss", "alert");
+                closeButton.setAttribute("aria-label", "Close");
+                alertDiv.appendChild(closeButton);
+                // Insert the alert before the form
+                const form = document.getElementById("pcr__form");
+                form.parentNode.insertBefore(alertDiv, form);
+            });
     }
 </script>
 {{ end }}
