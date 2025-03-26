@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"math/rand"
 	"os"
@@ -113,8 +112,7 @@ func (se *ScoringEngine) Start() {
 		// wait for first signal of done round (either from reset or end of round)
 	}()
 	waitForReset()
-	slog.Info("engine loop ending (probably due to reset)")
-	// this return should kill any running goroutines by breaking the loop
+	slog.Info("Restarting scoring...")
 }
 
 func waitForReset() {
@@ -132,27 +130,21 @@ func waitForReset() {
 		Addr:     redisAddr,
 		Password: os.Getenv("REDIS_PASSWORD"),
 	})
-	ctx := context.Background()
 
 	for {
-		val, err := rdb.BLPop(ctx, 0, "events").Result()
-		if err != nil {
-			log.Printf("[Runner] Error getting event: %v", err)
-			continue
-		}
+		events := rdb.Subscribe(context.Background(), "events")
+		defer events.Close()
+		eventsChannel := events.Channel()
 
-		if len(val) < 2 {
-			log.Printf("[Runner] Invalid BLPop response: %v", val)
-			continue
+		for msg := range eventsChannel {
+			slog.Info("Received message: %v", msg)
+			if msg.Payload == "reset" {
+				slog.Info("Reset event received, quitting...")
+				return
+			} else {
+				continue
+			}
 		}
-
-		if val[1] != "reset" {
-			log.Printf("[Runner] Invalid event payload: %v", val[1])
-			continue
-		}
-
-		log.Printf("[Runner] Reset event received, quitting...")
-		return
 	}
 }
 
