@@ -28,6 +28,22 @@ func main() {
 
 	log.Printf("[Runner] Started, listening for tasks on Redis at: %s", redisAddr)
 
+	go func() {
+		events := rdb.Subscribe(context.Background(), "events")
+		defer events.Close()
+		eventsChannel := events.Channel()
+
+		for msg := range eventsChannel {
+			log.Printf("[Runner] Received message: %v", msg)
+			if msg.Payload == "reset" {
+				log.Printf("[Runner] Reset event received, quitting...")
+				os.Exit(0)
+			} else {
+				continue
+			}
+		}
+	}()
+
 	for {
 		task, err := getNextTask(ctx, rdb)
 		if err != nil {
