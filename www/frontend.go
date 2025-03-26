@@ -143,6 +143,13 @@ func (router *Router) AdministrateEnginePage(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+func (router *Router) AdministrateRunnersPage(w http.ResponseWriter, r *http.Request) {
+	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/admin/runners.html"))
+	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Runners"})); err != nil {
+		panic(err)
+	}
+}
+
 func (router *Router) AdministrateAppearancePage(w http.ResponseWriter, r *http.Request) {
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/admin/appearance.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Appearance"})); err != nil {

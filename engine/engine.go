@@ -140,6 +140,79 @@ func (se *ScoringEngine) GetUptimePerService() map[uint]map[string]db.Uptime {
 	return se.UptimePerService
 }
 
+// GetActiveTasks returns all active and recently completed tasks
+func (se *ScoringEngine) GetActiveTasks() (map[string]any, error) {
+	ctx := context.Background()
+
+	// Default empty response structure
+	result := map[string]any{
+		"running":     []any{},
+		"success":     []any{},
+		"failed":      []any{},
+		"all_runners": []any{},
+	}
+
+	// Get all task keys using a single pattern
+	allKeys, err := se.RedisClient.Keys(ctx, "task:*").Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tasks: %w", err)
+	}
+
+	// Skip if no keys found
+	if len(allKeys) == 0 {
+		return result, nil
+	}
+
+	// Use a single pipeline to get all task data in one round-trip
+	pipe := se.RedisClient.Pipeline()
+	cmds := make(map[string]*redis.StringCmd, len(allKeys))
+
+	// Queue up all GET commands at once
+	for _, key := range allKeys {
+		cmds[key] = pipe.Get(ctx, key)
+	}
+
+	// Execute the pipeline
+	_, err = pipe.Exec(ctx)
+	if err != nil && err != redis.Nil {
+		return nil, fmt.Errorf("failed to execute pipeline: %w", err)
+	}
+
+	// Use map as a set to track unique runner IDs
+	runnersSet := make(map[string]struct{})
+
+	// Process all results
+	for _, cmd := range cmds {
+		value, err := cmd.Result()
+		if err != nil {
+			continue // Skip if we can't get the task details
+		}
+
+		// Parse the value as JSON directly into a checks.Result
+		var taskStatus checks.Result
+		if err := json.Unmarshal([]byte(value), &taskStatus); err != nil {
+			continue // Skip if we can't parse the JSON
+		}
+
+		// Add runner ID to set if available
+		if taskStatus.RunnerID != "" {
+			runnersSet[taskStatus.RunnerID] = struct{}{}
+		}
+
+		// Categorize by status - directly using the status as map key for cleaner code
+		if statusKey := taskStatus.StatusText; statusKey == "running" || statusKey == "success" || statusKey == "failed" {
+			result[statusKey] = append(result[statusKey].([]any), taskStatus)
+		}
+	}
+
+	// Convert runners set to slice in one go
+	for runnerId := range runnersSet {
+		result["all_runners"] = append(result["all_runners"].([]any), runnerId)
+	}
+
+	return result, nil
+}
+
 func (se *ScoringEngine) PauseEngine() {
 	if !se.IsEnginePaused {
 		se.EnginePauseWg.Add(1)
@@ -154,7 +227,7 @@ func (se *ScoringEngine) ResumeEngine() {
 	}
 }
 
-// ResetEngine resets the engine to the initial state and stops the engine
+// ResetScores resets the engine to the initial state and stops the engine
 func (se *ScoringEngine) ResetScores() error {
 	slog.Info("Resetting scores and clearing Redis queues")
 

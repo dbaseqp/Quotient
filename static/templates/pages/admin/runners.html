@@ -1,0 +1,340 @@
+{{ define "page" }}
+<div class="d-flex w-100 h-100">
+    <div class="pt-4 w-100 h-100 overflow-y-scroll">
+        <div class="container">
+            <div class="row">
+                <div class="row mb-3">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h3>Runner Tasks</h3>
+                            <div class="d-flex align-items-center">
+                                <div class="form-check form-switch d-inline-block me-2">
+                                    <input class="form-check-input" type="checkbox" id="autoRefreshSwitch" checked>
+                                    <label class="form-check-label" for="autoRefreshSwitch">Auto-refresh</label>
+                                </div>
+                                <span class="badge bg-secondary" id="lastUpdated">Never</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Round Progress -->
+                <div class="row mb-3">
+                    <div class="col">
+                        <h3>Round Progress</h3>
+                        <p id="round__number"></p>
+                        <div class="progress">
+                            <div id="roundProgress"
+                                class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0"
+                                aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Runner Utilization -->
+                <div class="row mb-3">
+                    <div class="col">
+                        <h3>Runner Utilization</h3>
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="d-flex mb-2">
+                                            <div class="me-3 border p-2 text-center" style="min-width: 120px;">
+                                                <div class="fs-4 fw-bold" id="activeRunnersCount">0</div>
+                                                <div class="small text-muted">Active Runners</div>
+                                            </div>
+                                            <div class="border p-2 text-center" style="min-width: 120px;">
+                                                <div class="fs-4 fw-bold" id="totalRunnersCount">0</div>
+                                                <div class="small text-muted">Known Runners</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Runners -->
+                <div class="row mb-3">
+                    <div class="col">
+                        <h3>Active Runners</h3>
+                        <div class="card">
+                            <div class="card-body">
+                                <div id="activeRunnersList" class="m-0">Loading runner data...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <script>
+                let refreshInterval;
+                let autoRefreshEnabled = true;
+
+                // Round progress variables
+                const PROGRESS = document.getElementById('roundProgress');
+                let LASTROUND = 0;
+                let CURRENTROUND = 0;
+                let NEXTROUND = 0;
+                let RUNNING = false;
+                let ROUNDDURATION = 60; // Default to 60 seconds, will be calculated from start/end times
+
+                // Function to update runner tasks visualization
+                function updateRunnerTasks() {
+                    if (!autoRefreshEnabled) return;
+
+                    fetch('/api/engine/tasks')
+                        .then(response => response.json())
+                        .then(tasks => {
+                            // Update last updated timestamp
+                            document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+
+                            // Get tasks from each category
+                            const runningTasks = tasks.running || [];
+                            const successTasks = tasks.success || [];
+                            const failedTasks = tasks.failed || [];
+
+                            // Group tasks by runner
+                            const runnerMap = new Map();
+                            const activeRunners = new Set();
+
+                            // Process running tasks to get active runners
+                            runningTasks.forEach(task => {
+                                if (task.runner_id) {
+                                    activeRunners.add(task.runner_id);
+
+                                    if (!runnerMap.has(task.runner_id)) {
+                                        runnerMap.set(task.runner_id, []);
+                                    }
+                                    runnerMap.get(task.runner_id).push(task);
+                                }
+                            });
+
+                            // Get all known runners
+                            const allRunners = new Set();
+                            runningTasks.forEach(task => {
+                                if (task.runner_id) allRunners.add(task.runner_id);
+                            });
+                            successTasks.forEach(task => {
+                                if (task.runner_id) allRunners.add(task.runner_id);
+                            });
+                            failedTasks.forEach(task => {
+                                if (task.runner_id) allRunners.add(task.runner_id);
+                            });
+
+                            // Add runners that aren't processing tasks
+                            if (tasks.all_runners) {
+                                tasks.all_runners.forEach(id => allRunners.add(id));
+                            }
+
+                            // Update runner counts
+                            const activeRunnersCount = activeRunners.size;
+                            const totalRunnersCount = Math.max(allRunners.size, 1); // Ensure at least 1
+
+                            document.getElementById('activeRunnersCount').textContent = activeRunnersCount;
+                            document.getElementById('totalRunnersCount').textContent = totalRunnersCount;
+
+                            // Display active runners
+                            const activeRunnersContainer = document.getElementById('activeRunnersList');
+
+                            if (activeRunners.size === 0) {
+                                activeRunnersContainer.innerHTML = '<p>No active runners at the moment.</p>';
+                                return;
+                            }
+
+                            // Create a table for active runners
+                            const table = document.createElement('table');
+                            table.className = 'table table-striped';
+
+                            const thead = document.createElement('thead');
+                            const headerRow = document.createElement('tr');
+                            ['Runner', 'Tasks', 'Elapsed Time'].forEach(text => {
+                                const th = document.createElement('th');
+                                th.textContent = text;
+                                headerRow.appendChild(th);
+                            });
+                            thead.appendChild(headerRow);
+                            table.appendChild(thead);
+
+                            const tbody = document.createElement('tbody');
+
+                            // Sort runners alphabetically
+                            [...runnerMap.keys()].sort().forEach(runnerId => {
+                                const tasks = runnerMap.get(runnerId);
+
+                                // Create a row for each runner
+                                const row = document.createElement('tr');
+
+                                // Runner ID cell
+                                const runnerCell = document.createElement('td');
+                                runnerCell.textContent = runnerId;
+                                row.appendChild(runnerCell);
+
+                                // Tasks cell
+                                const tasksCell = document.createElement('td');
+                                const tasksList = document.createElement('div');
+                                tasksList.className = 'd-flex flex-wrap gap-1';
+
+                                tasks.forEach(task => {
+                                    // Create a link to the service page with parameters
+                                    const taskLink = document.createElement('a');
+                                    taskLink.setAttribute('href', `/services?team=${task.team_id}&service=${task.service_type}`);
+                                    taskLink.style.textDecoration = 'none';
+
+                                    // Create the badge inside the link
+                                    const taskBadge = document.createElement('span');
+                                    taskBadge.className = 'badge bg-primary';
+                                    taskBadge.setAttribute('style', 'text-decoration: none;');
+                                    taskBadge.textContent = `${task.service_type} (Team ${task.team_id})`;
+
+                                    // Add the badge to the link and the link to the list
+                                    taskLink.appendChild(taskBadge);
+                                    tasksList.appendChild(taskLink);
+                                });
+
+                                tasksCell.appendChild(tasksList);
+                                row.appendChild(tasksCell);
+
+                                // Elapsed time cell
+                                const timeCell = document.createElement('td');
+
+                                // Find the longest running task for this runner
+                                let longestRunningTask = null;
+                                let longestElapsedTime = 0;
+
+                                tasks.forEach(task => {
+                                    if (task.start_time) {
+                                        const startTime = new Date(task.start_time);
+                                        const now = new Date();
+                                        const elapsedSeconds = Math.round((now - startTime) / 1000);
+
+                                        if (elapsedSeconds > longestElapsedTime) {
+                                            longestElapsedTime = elapsedSeconds;
+                                            longestRunningTask = task;
+                                        }
+                                    }
+                                });
+
+                                if (longestRunningTask) {
+                                    // Create a progress bar for the elapsed time
+                                    const progressContainer = document.createElement('div');
+                                    progressContainer.className = 'progress';
+
+                                    const progressBar = document.createElement('div');
+                                    progressBar.className = 'progress-bar';
+
+                                    // If ROUNDDURATION is 0 or undefined, use a reasonable default based on elapsed time
+                                    const roundDuration = ROUNDDURATION || Math.max(60, longestElapsedTime * 2);
+                                    const progressPercent = Math.min(100, Math.round((longestElapsedTime / roundDuration) * 100));
+
+                                    progressBar.style.width = `${progressPercent}%`;
+                                    progressBar.textContent = `${longestElapsedTime}s`;
+
+                                    // Color based on elapsed time
+                                    if (progressPercent > 80) {
+                                        progressBar.className = 'progress-bar bg-danger';
+                                    } else if (progressPercent > 50) {
+                                        progressBar.className = 'progress-bar bg-warning';
+                                    } else {
+                                        progressBar.className = 'progress-bar bg-success';
+                                    }
+
+                                    progressContainer.appendChild(progressBar);
+                                    timeCell.appendChild(progressContainer);
+                                } else {
+                                    timeCell.textContent = 'Unknown';
+                                }
+
+                                row.appendChild(timeCell);
+                                tbody.appendChild(row);
+                            });
+
+                            table.appendChild(tbody);
+                            activeRunnersContainer.innerHTML = '';
+                            activeRunnersContainer.appendChild(table);
+                        })
+                        .catch(error => {
+                            console.error('Error fetching runner tasks:', error);
+                            document.getElementById('activeRunnersList').innerHTML = 
+                                '<p class="text-danger">Error loading runner tasks. See console for details.</p>';
+                        });
+                }
+
+                // Event listener for auto-refresh toggle
+                document.getElementById('autoRefreshSwitch').addEventListener('change', (e) => {
+                    autoRefreshEnabled = e.target.checked;
+                    if (autoRefreshEnabled) {
+                        refreshInterval = setInterval(updateRunnerTasks, 2000);
+                    } else {
+                        clearInterval(refreshInterval);
+                    }
+                });
+
+                function getEngineData() {
+                    fetch('/api/engine')
+                        .then(response => response.json())
+                        .then(data => {
+                            LASTROUND = data["last_round"];
+                            CURRENTROUND = data["current_round_time"];
+                            NEXTROUND = data["next_round_time"];
+                            RUNNING = data["running"];
+
+                            const startTime = new Date(CURRENTROUND).getTime() / 1000;
+                            const endTime = new Date(NEXTROUND).getTime() / 1000;
+                            ROUNDDURATION = Math.round(endTime - startTime);
+
+                            let last_round_start_time = new Date(LASTROUND.StartTime).toLocaleString();
+                            let current_round_time = new Date(CURRENTROUND).toLocaleString();
+                            let next_round_time = new Date(NEXTROUND).toLocaleString();
+
+                            document.getElementById('round__number').textContent = `Round ${LASTROUND.ID} was at ${last_round_start_time}.
+                            Round ${LASTROUND.ID + 1} started at ${current_round_time} and should end at ${next_round_time}.`;
+                        })
+                        .catch(error => console.error('Error fetching engine status:', error));
+                }
+
+                function updateProgress() {
+                    const now = Date.now() / 1000; // current time in seconds
+                    let last_round_start_time = new Date(CURRENTROUND) / 1000;
+                    let next_round_start_time = new Date(NEXTROUND) / 1000;
+
+                    const elapsed = now - last_round_start_time;
+                    const duration = next_round_start_time - last_round_start_time;
+
+                    const progress = Math.round((elapsed / duration) * 100);
+
+                    if (progress >= 100) {
+                        PROGRESS.textContent = '100%';
+                        PROGRESS.style.width = '100%';
+                        PROGRESS.setAttribute('aria-valuenow', 100);
+                        if (RUNNING) {
+                            // Instead of reloading the page, fetch new data
+                            getEngineData();
+                            updateRunnerTasks();
+                        }
+                        return;
+                    }
+
+                    PROGRESS.textContent = `${progress}%`;
+                    PROGRESS.style.width = `${progress}%`;
+                    PROGRESS.setAttribute('aria-valuenow', progress);
+                }
+
+                // Initialize
+                updateRunnerTasks();
+                getEngineData();
+                updateProgress();
+
+                // Set up intervals
+                refreshInterval = setInterval(updateRunnerTasks, 2000);
+                setInterval(() => {
+                    getEngineData();
+                    updateProgress();
+                }, 1000);
+            </script>
+        </div>
+    </div>
+</div>
+{{ end }}

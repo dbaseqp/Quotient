@@ -131,12 +131,27 @@
             })
         })
         .then(() => {
-            const TEAM_ID = document.getElementById("team-select").value
-            fetchServices(TEAM_ID)
+            // Check URL parameters for team and service
+            const urlParams = new URLSearchParams(window.location.search);
+            const teamParam = urlParams.get('team');
+            const serviceParam = urlParams.get('service');
+
+            if (teamParam) {
+                // Set the team dropdown to the team from URL, but only if it's a valid option
+                const teamSelect = document.getElementById("team-select");
+                // Check if teamParam is a valid option
+                const isValidOption = Array.from(teamSelect.options).some(option => option.value === teamParam);
+                if (isValidOption) {
+                    teamSelect.value = teamParam;
+                }
+            }
+
+            const TEAM_ID = document.getElementById("team-select").value;
+            // We'll validate serviceParam inside fetchServices after we have the list of services
+            fetchServices(TEAM_ID, serviceParam);
         })
 
-    function fetchServices(team_id) {
-
+    function fetchServices(team_id, highlightServiceName = null) {
         fetch(`/api/services/${team_id}`)
             .then((response) => {
                 if (!response.ok) {
@@ -153,6 +168,16 @@
                     SERVICE_CONTAINER.appendChild(message)
                     return
                 }
+                // Validate highlightServiceName against available services
+                let validServiceName = null;
+                if (highlightServiceName) {
+                    // Check if highlightServiceName exists in the data
+                    const serviceExists = data.some(summary => summary.ServiceName === highlightServiceName);
+                    if (serviceExists) {
+                        validServiceName = highlightServiceName;
+                    }
+                }
+
                 for (const SUMMARY of data) {
                     const SERVICENAME = SUMMARY.ServiceName
                     const SLACOUNT = SUMMARY.SlaCount
@@ -213,11 +238,23 @@
                         }
                     }
 
-                    service.setHTMLUnsafe(service.outerHTML.replaceAll("placeholder", SERVICENAME))
+                    // Set the data-service-id attribute (this is what's actually used in the click handler)
                     service.setAttribute("data-service-id", SERVICENAME)
-                    services.push(service.firstChild)
+
+                    // If this is the service we want to highlight (from task card click)
+                    if (validServiceName && SERVICENAME === validServiceName) {
+                        // Add a highlight class to this service
+                        service.classList.add('border-primary', 'border-2')
+
+                        // Auto-click this service to show details
+                        setTimeout(() => {
+                            service.click()
+                        }, 500)
+                    }
+
+                    services.push(service)
                 }
-                
+
                 for (let i = 0; i < services.length; i++) {
                     SERVICE_CONTAINER.appendChild(services[i])
                 }
@@ -259,6 +296,5 @@
                 })
             })
     }
-
 </script>
 {{ end }}
