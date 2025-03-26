@@ -50,11 +50,13 @@ type RequiredConfig struct {
 }
 
 type CredlistConfig struct {
-	Credlist []struct {
-		CredlistName        string
-		CredlistPath        string
-		CredlistExplainText string
-	}
+	Credlist []Credlist `toml:"Credlist,omitempty" json:"Credlist,omitempty"`
+}
+
+type Credlist struct {
+	CredlistName        string
+	CredlistPath        string
+	CredlistExplainText string
 }
 
 type LdapAuthConfig struct {
@@ -331,10 +333,25 @@ func checkConfig(conf *ConfigSettings) error {
 					errResult = errors.Join(errResult, err)
 				}
 				if _, exists := runnerNames[check.GetName()]; exists {
-					errResult = errors.Join(errResult, fmt.Errorf("duplicate runner name found: %s", check.GetName()))
+					errResult = errors.Join(errResult, fmt.Errorf("duplicate check name found: %s", check.GetName()))
 				} else {
 					runnerNames[check.GetName()] = true
 				}
+
+				// check if the credlist is a defined credlist
+				found := false
+				for _, list := range check.GetCredlists() {
+					if slices.ContainsFunc(conf.CredlistSettings.Credlist, func(credlist Credlist) bool {
+						return credlist.CredlistName == list
+					}) {
+						found = true
+						break
+					}
+				}
+				if !found && len(check.GetCredlists()) > 0 {
+					errResult = errors.Join(errResult, fmt.Errorf("credlist not found for %s", check.GetName()))
+				}
+
 				allChecks = append(allChecks, check)
 			}
 		}

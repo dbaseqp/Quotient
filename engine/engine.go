@@ -29,9 +29,6 @@ type ScoringEngine struct {
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
 
-	// signals
-	ResetChan chan struct{}
-
 	// Config update handling
 	configPath string
 }
@@ -59,7 +56,6 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 		CredentialsMutex: make(map[uint]*sync.Mutex),
 		UptimePerService: make(map[uint]map[string]db.Uptime),
 		SlaPerService:    make(map[uint]map[string]int),
-		ResetChan:        make(chan struct{}),
 		RedisClient:      rdb,
 		configPath:       configPath,
 	}
@@ -131,9 +127,41 @@ func (se *ScoringEngine) Start() {
 		}
 		// wait for first signal of done round (either from reset or end of round)
 	}()
-	<-se.ResetChan
-	slog.Info("engine loop ending (probably due to reset)")
-	// this return should kill any running goroutines by breaking the loop
+	waitForReset()
+	slog.Info("Restarting scoring...")
+}
+
+func waitForReset() {
+	// wait for a signal to reset the engine
+	// this will block until the engine is reset
+	// this is a blocking call
+	// the engine will be reset and the loop will start again
+
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "quotient_redis:6379"
+	}
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: os.Getenv("REDIS_PASSWORD"),
+	})
+
+	for {
+		events := rdb.Subscribe(context.Background(), "events")
+		defer events.Close()
+		eventsChannel := events.Channel()
+
+		for msg := range eventsChannel {
+			slog.Info("Received message: %v", msg)
+			if msg.Payload == "reset" {
+				slog.Info("Reset event received, quitting...")
+				return
+			} else {
+				continue
+			}
+		}
+	}
 }
 
 func (se *ScoringEngine) GetUptimePerService() map[uint]map[string]db.Uptime {
@@ -231,9 +259,6 @@ func (se *ScoringEngine) ResumeEngine() {
 func (se *ScoringEngine) ResetScores() error {
 	slog.Info("Resetting scores and clearing Redis queues")
 
-	// Stop the engine
-	se.ResetChan <- struct{}{}
-
 	// Reset the database
 	if err := db.ResetScores(); err != nil {
 		slog.Error("failed to reset scores", "error", err)
@@ -251,6 +276,8 @@ func (se *ScoringEngine) ResetScores() error {
 	}
 
 	// Reset engine state
+	se.RedisClient.Publish(context.Background(), "events", "reset")
+
 	se.CurrentRound = 1
 	se.UptimePerService = make(map[uint]map[string]db.Uptime)
 	se.SlaPerService = make(map[uint]map[string]int)
