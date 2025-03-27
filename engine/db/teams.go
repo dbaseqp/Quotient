@@ -117,7 +117,7 @@ func UpdateTeam(teamID uint, identifier string, active bool) error {
 func GetTeamScore(teamID uint) (int, int, int, error) {
 	// get service points
 	servicePoints := 0
-	rows, err := db.Raw("SELECT SUM(points) FROM service_check_schemas WHERE team_id = ?", teamID).Rows()
+	rows, err := db.Raw("SELECT SUM(points) FROM service_check_schemas WHERE team_id = ? and result = 't'", teamID).Rows()
 	if err != nil {
 		return 0, 0, 0, err
 	}
