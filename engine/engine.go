@@ -99,33 +99,62 @@ func (se *ScoringEngine) Start() {
 
 	se.NextRoundStartTime = time.Time{}
 
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "quotient_redis:6379"
+	}
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: os.Getenv("REDIS_PASSWORD"),
+	})
+
+	events := rdb.Subscribe(context.Background(), "events")
+	defer events.Close()
+	eventsChannel := events.Channel()
+
 	// engine loop
 	go func() {
 		for {
 			slog.Info("Queueing up for round", "round", se.CurrentRound)
 			se.EnginePauseWg.Wait()
-			slog.Info("Starting round", "round", se.CurrentRound)
-			se.CurrentRoundStartTime = time.Now()
-			se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
-
-			// run the round logic
-			switch se.Config.RequiredSettings.EventType {
-			case "koth":
-				se.koth()
-			case "rvb":
-				se.rvb()
+			select {
+			case msg := <-eventsChannel:
+				slog.Info("Received message", "message", msg.Payload)
+				if msg.Payload == "reset" {
+					slog.Info("Engine loop reset event received while waiting, quitting...")
+					return
+				} else {
+					continue
+				}
 			default:
-				slog.Error("Unknown event type", "eventType", se.Config.RequiredSettings.EventType)
+				slog.Info("Starting round", "round", se.CurrentRound)
+				se.CurrentRoundStartTime = time.Now()
+				se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
+
+				// run the round logic
+				var err error
+				switch se.Config.RequiredSettings.EventType {
+				case "koth":
+					err = se.koth()
+				case "rvb":
+					err = se.rvb()
+				default:
+					slog.Error("Unknown event type", "eventType", se.Config.RequiredSettings.EventType)
+				}
+				if err != nil {
+					slog.Error("Round error. If this is a reset, ignore...", "error", err)
+					return
+				}
+
+				slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
+				se.CurrentRound++
+
+				se.RedisClient.Publish(context.Background(), "events", "round_finish")
+				slog.Info(fmt.Sprintf("Round %d will start in %s, sleeping...", se.CurrentRound, time.Until(se.NextRoundStartTime).String()))
+				time.Sleep(time.Until(se.NextRoundStartTime))
 			}
-
-			slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
-			se.CurrentRound++
-
-			se.RedisClient.Publish(context.Background(), "events", "round_finish")
-			slog.Info(fmt.Sprintf("Round %d will start in %s, sleeping...", se.CurrentRound, time.Until(se.NextRoundStartTime).String()))
-			time.Sleep(time.Until(se.NextRoundStartTime))
 		}
-		// wait for first signal of done round (either from reset or end of round)
 	}()
 	waitForReset()
 	slog.Info("Restarting scoring...")
@@ -147,19 +176,17 @@ func waitForReset() {
 		Password: os.Getenv("REDIS_PASSWORD"),
 	})
 
-	for {
-		events := rdb.Subscribe(context.Background(), "events")
-		defer events.Close()
-		eventsChannel := events.Channel()
+	events := rdb.Subscribe(context.Background(), "events")
+	defer events.Close()
+	eventsChannel := events.Channel()
 
-		for msg := range eventsChannel {
-			slog.Info("Received message: %v", msg)
-			if msg.Payload == "reset" {
-				slog.Info("Reset event received, quitting...")
-				return
-			} else {
-				continue
-			}
+	for msg := range eventsChannel {
+		slog.Info("Received message", "message", msg.Payload)
+		if msg.Payload == "reset" {
+			slog.Info("Reset event received, quitting...")
+			return
+		} else {
+			continue
 		}
 	}
 }
@@ -287,14 +314,15 @@ func (se *ScoringEngine) ResetScores() error {
 }
 
 // perform a round of koth
-func (se *ScoringEngine) koth() {
+func (se *ScoringEngine) koth() error {
 	// enginePauseWg.Wait()
 
 	// do koth stuff
+	return nil
 }
 
 // perform a round of rvb
-func (se *ScoringEngine) rvb() {
+func (se *ScoringEngine) rvb() error {
 	// reassign the next round start time with jitter
 	// double the jitter and subtract it to get a random number between -jitter and jitter
 	randomJitter := rand.Intn(2*se.Config.MiscSettings.Jitter) - se.Config.MiscSettings.Jitter
@@ -303,11 +331,27 @@ func (se *ScoringEngine) rvb() {
 
 	slog.Info(fmt.Sprintf("round should take %s", time.Until(se.NextRoundStartTime).String()))
 
+	//
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "quotient_redis:6379"
+	}
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: os.Getenv("REDIS_PASSWORD"),
+	})
+
+	events := rdb.Subscribe(context.Background(), "events")
+	defer events.Close()
+	eventsChannel := events.Channel()
+	//
+
 	// do rvb stuff
 	teams, err := db.GetTeams()
 	if err != nil {
 		slog.Error("failed to get teams:", "error", err)
-		return
+		return err
 	}
 
 	runners := 0
@@ -370,41 +414,53 @@ func (se *ScoringEngine) rvb() {
 
 	i := 0
 	for i < runners {
-		val, err := se.RedisClient.BLPop(timeoutCtx, time.Until(se.NextRoundStartTime), "results").Result()
-		if err == redis.Nil {
-			slog.Warn("Timeout waiting for results", "remaining", runners-i)
-			// Clear the results, since we didn't collect everything in time
-			results = []checks.Result{}
-			break
-		} else if err != nil {
-			slog.Error("Failed to fetch results from Redis:", "error", err)
-			time.Sleep(2 * time.Second)
-			continue
-		}
+		select {
+		case msg := <-eventsChannel:
+			slog.Info("Received message", "message", msg.Payload)
+			if msg.Payload == "reset" {
+				slog.Info("Reset event received, quitting...")
+				return fmt.Errorf("reset event received")
+			} else {
+				continue
+			}
+		default:
+			val, err := se.RedisClient.BLPop(timeoutCtx, time.Until(se.NextRoundStartTime), "results").Result()
+			if err == redis.Nil {
+				slog.Warn("Timeout waiting for results", "remaining", runners-i)
+				// Clear the results, since we didn't collect everything in time
+				results = []checks.Result{}
+				break
+			} else if err != nil {
+				slog.Error("Failed to fetch results from Redis:", "error", err)
+				time.Sleep(2 * time.Second)
+				continue
+			}
 
-		// val[0] = "results", val[1] = JSON checks.Result
-		if len(val) < 2 {
-			slog.Warn("Malformed result from Redis", "val", val)
-			continue
-		}
-		raw := val[1]
+			// val[0] = "results", val[1] = JSON checks.Result
+			if len(val) < 2 {
+				slog.Warn("Malformed result from Redis", "val", val)
+				continue
+			}
+			raw := val[1]
 
-		var result checks.Result
-		if err := json.Unmarshal([]byte(raw), &result); err != nil {
-			slog.Error("Failed to unmarshal check result", "error", err)
-			continue
+			var result checks.Result
+			if err := json.Unmarshal([]byte(raw), &result); err != nil {
+				slog.Error("Failed to unmarshal check result", "error", err)
+				continue
+			}
+			if result.RoundID != se.CurrentRound {
+				slog.Warn("Ignoring out of round result", "receivedRound", result.RoundID, "currentRound", se.CurrentRound)
+				continue
+			}
+			results = append(results, result)
+			i++
+			slog.Debug("service check finished", "round_id", result.RoundID, "team_id", result.TeamID, "service_name", result.ServiceName, "result", result.Status, "debug", result.Debug, "error", result.Error)
 		}
-		if result.RoundID != se.CurrentRound {
-			slog.Warn("Ignoring out of round result", "receivedRound", result.RoundID, "currentRound", se.CurrentRound)
-			continue
-		}
-		results = append(results, result)
-		i++
-		slog.Debug("service check finished", "round_id", result.RoundID, "team_id", result.TeamID, "service_name", result.ServiceName, "result", result.Status, "debug", result.Debug, "error", result.Error)
 	}
 
 	// 3) Process all collected results
 	se.processCollectedResults(results)
+	return nil
 }
 
 func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
