@@ -8,7 +8,7 @@ services:
     networks:
       - quotient_network
     volumes:
-      - quotient_db_data:/var/lib/postgresql/data
+      - ./db:/var/lib/postgresql/data
 
   server:
     container_name: quotient_server
@@ -82,6 +82,3 @@ services:
 networks:
   quotient_network:
     driver: bridge
-
-volumes:
-  quotient_db_data:
