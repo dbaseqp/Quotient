@@ -85,14 +85,6 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	// check if the inject exists
 	injects, err := db.GetInjects()
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-			data := map[string]any{"error": "Inject not found"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
-			return
-		}
-
 		w.WriteHeader(http.StatusInternalServerError)
 		data := map[string]any{"error": err.Error()}
 		d, _ := json.Marshal(data)
@@ -116,7 +108,7 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// if not admin check if the inject is open
+	// if not admin, check if the inject is open
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") && time.Now().Before(inject.OpenTime) {
 		w.WriteHeader(http.StatusNotFound)
@@ -128,6 +120,13 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 
 	// get the file path
 	filePath := path.Join("config/injects", injectID, fileName)
+	if !PathIsInDir("config/injects/"+injectID, filePath) {
+		w.WriteHeader(http.StatusForbidden)
+		data := map[string]any{"error": "Invalid file path"}
+		d, _ := json.Marshal(data)
+		w.Write(d)
+		return
+	}
 
 	// check if the file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {

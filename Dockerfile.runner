@@ -1,0 +1,23 @@
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /src
+
+COPY . ./
+
+WORKDIR /src/runner
+RUN go mod download
+RUN go build
+
+# runner
+FROM alpine:3.21
+WORKDIR /app
+COPY --from=builder /src/runner/runner runner
+RUN apk add --no-cache wireguard-tools iproute2 iputils curl git openssh fortune py3-uv python3 proxychains-ng jq file sshpass bind-tools grep
+
+# custom python check scripts
+COPY custom-checks/requirements.txt /app
+RUN ln -sf python3 /usr/bin/python
+RUN uv pip install --system --break-system-packages setuptools
+RUN uv pip install --system --break-system-packages -r /app/requirements.txt
+
+ENTRYPOINT ["/app/runner"]

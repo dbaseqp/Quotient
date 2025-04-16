@@ -2,9 +2,11 @@ package checks
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"al.essio.dev/pkg/shellescape"
@@ -19,13 +21,10 @@ type Custom struct {
 func commandOutput(cmd string) (string, error) {
 
 	out, err := exec.Command("/bin/sh", "-c", cmd).CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
+	return string(out), err
 }
 
-func (c Custom) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 
 		var username, password string
@@ -42,6 +41,7 @@ func (c Custom) Run(teamID uint, teamIdentifier string, resultsChan chan Result)
 
 		// Replace command input keywords
 		formedCommand := c.Command
+		formedCommand = strings.Replace(formedCommand, "ROUND", strconv.FormatUint(uint64(roundID), 10), -1)
 		formedCommand = strings.Replace(formedCommand, "TARGET", c.Target, -1) // is there a case where u need IP and FQDN?
 		formedCommand = strings.Replace(formedCommand, "TEAMIDENTIFIER", teamIdentifier, -1)
 
@@ -52,8 +52,8 @@ func (c Custom) Run(teamID uint, teamIdentifier string, resultsChan chan Result)
 		checkResult.Debug = formedCommand
 		out, err := commandOutput(formedCommand)
 		if err != nil {
-			checkResult.Error = "command returned error" + out
-			checkResult.Debug += " " + err.Error()
+			checkResult.Error = fmt.Sprintf("command returned error:\n%s", err.Error())
+			checkResult.Debug += fmt.Sprintf("\noutput:\n%s", out)
 			response <- checkResult
 			return
 		}
@@ -84,10 +84,13 @@ func (c Custom) Run(teamID uint, teamIdentifier string, resultsChan chan Result)
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *Custom) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	if c.ServiceType == "" {
+		c.ServiceType = "Custom"
+	}
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}

@@ -24,7 +24,7 @@ type winCommandData struct {
 	Output   string
 }
 
-func (c WinRM) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		username, password, err := c.getCreds(teamID)
 		if err != nil {
@@ -37,7 +37,7 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, resultsChan chan Result) 
 		params := *winrm.DefaultParameters
 
 		// Run bad attempts if specified
-		for i := 0; i < c.BadAttempts; i++ {
+		for range c.BadAttempts {
 			endpoint := winrm.NewEndpoint(c.Target, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
 			winrm.NewClientWithParameters(endpoint, username, uuid.New().String(), &params)
 		}
@@ -97,10 +97,13 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, resultsChan chan Result) 
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *WinRM) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	if c.ServiceType == "" {
+		c.ServiceType = "WinRM"
+	}
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}

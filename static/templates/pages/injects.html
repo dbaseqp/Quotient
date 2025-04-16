@@ -147,7 +147,7 @@
 
                                     const id = pane.id.split("--")[1];
                                     const title = document.getElementById(`tab__title--${id}`);
-                                    const description = document.getElementById(`tab__subject--${id}`);
+                                    const description = document.getElementById(`pane__description--${id}`);
                                     const opentime = document.getElementById(`tab__time--${id}`);
                                     const duetime = document.getElementById(`pane__due--${id}`);
                                     const closetime = document.getElementById(`pane__close--${id}`);
@@ -155,7 +155,7 @@
                                     const existingFilesList = document.getElementById("existing-files-list");
 
                                     document.getElementById("edit-inject-title").value = title.textContent;
-                                    document.getElementById("edit-inject-description").value = description.textContent;
+                                    document.getElementById("edit-inject-description").value = description.firstElementChild.firstElementChild.textContent;
                                     const formatDateTimeLocal = (dateString) => {
                                         const date = new Date(dateString);
                                         const tzOffset = date.getTimezoneOffset() * 60000;
@@ -348,7 +348,7 @@
                     {{ end }}
                     <div class="h-100 p-4 overflow-auto">
                         <div>
-                            <p id="pane__description--placeholder" class="placeholder col-12"></p>
+                            <div id="pane__description--placeholder" class="placeholder col-12"></div>
                         </div>
                         {{ if contains .roles "team" }}
                         <div class="d-flex flex-column mb-3">
@@ -497,22 +497,26 @@
                 let subject = pane.querySelector("#pane__subject--placeholder")
                 let description = pane.querySelector("#pane__description--placeholder")
 
+                
                 from.className = ""
                 subject.className = ""
                 description.className = ""
-
+                
                 from.textContent = inject.Title
                 subject.textContent = inject.Title
-                description.innerHTML = `
-                    <p>${inject.Description}</p>
-                    <h5>Inject Details</h5>
-                    <ul>
-                        <li id="pane__due--${inject.ID}"><p><strong>Due Time:</strong> ${inject.DueTime.toLocaleString()}</p></li>
-                        <li id="pane__close--${inject.ID}"><p><strong>Close Time:</strong> ${inject.CloseTime.toLocaleString()}</p></li>
+                                
+                let descTemp = document.createElement("div")
+                descTemp.innerHTML = `
+                <p>${inject.Description}</p>
+                <h5>Inject Details</h5>
+                <ul>
+                    <li id="pane__due--${inject.ID}"><p><strong>Due Time:</strong> ${inject.DueTime.toLocaleString()}</p></li>
+                    <li id="pane__close--${inject.ID}"><p><strong>Close Time:</strong> ${inject.CloseTime.toLocaleString()}</p></li>
                     </ul>
-                `
-
-                if (inject.InjectFileNames != null && inject.InjectFileNames.length > 0) {
+                    `
+                    description.appendChild(descTemp)
+                    
+                    if (inject.InjectFileNames != null && inject.InjectFileNames.length > 0) {
                     let files = document.createElement("div")
                     files.className = "d-flex flex-column"
                     let header = document.createElement("h5")
@@ -531,7 +535,7 @@
                     }
                     description.appendChild(files)
                 }
-
+                
                 tab.setHTMLUnsafe(tab.outerHTML.replaceAll("placeholder", inject.ID))
                 pane.setHTMLUnsafe(pane.outerHTML.replaceAll("placeholder", inject.ID))
                 tabs.push(tab.firstChild)

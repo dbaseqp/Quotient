@@ -52,53 +52,62 @@ func GetTeamByUsername(name string) (TeamSchema, error) {
 	return team, nil
 }
 
-func GetTeamSummary(teamID uint) ([]string, map[string]int, []RoundSchema, error) {
+func GetTeamSummary(teamID uint) ([]map[string]any, error) {
+	serviceSummaries := []map[string]any{}
 	namePerService := []string{}
-	slaCountPerService := make(map[string]int)
-	last10RoundsPerService := []RoundSchema{}
 
 	// get services names
 	if result := db.Table("service_check_schemas").Select("DISTINCT(service_name)").Where("team_id = ?", teamID).Find(&namePerService); result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return namePerService, slaCountPerService, last10RoundsPerService, nil
+			return serviceSummaries, nil
 		} else {
-			return nil, nil, nil, result.Error
+			return nil, result.Error
 		}
 	}
-
-	// get uptime per service for this team
 
 	// get sla counts per service for this team
 	for _, name := range namePerService {
-		slaCountPerService[name] = 0
-	}
+		summary := make(map[string]any)
+		summary["ServiceName"] = name
 
-	rows, err := db.Raw("SELECT service_name, count(*) FROM sla_schemas WHERE team_id = ? GROUP BY service_name", teamID).Rows()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var name string
-		var count int
-		rows.Scan(&name, &count)
-		slaCountPerService[name] = count
-	}
-
-	// get last 10 rounds for this team
-	if result := db.Table("round_schemas").Preload("Checks", "team_id = ?", teamID).Order("id desc").Limit(10).Find(&last10RoundsPerService); result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return namePerService, slaCountPerService, last10RoundsPerService, nil
-		} else {
-			return nil, nil, nil, result.Error
+		// get sla count for this service
+		var c int64
+		if result := db.Table("sla_schemas").Where("team_id = ? AND service_name = ?", teamID, name).Count(&c); result.Error != nil {
+			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				continue
+			} else {
+				return nil, result.Error
+			}
 		}
+		summary["SlaCount"] = int(c)
+
+		// get last 10 rounds for service
+		var last10Rounds []RoundSchema
+		if result := db.Table("round_schemas").Preload("Checks", "team_id = ? AND service_name = ?", teamID, name).Order("id desc").Limit(10).Find(&last10Rounds); result.Error != nil {
+			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				return serviceSummaries, nil
+			} else {
+				return nil, result.Error
+			}
+		}
+		// idk how to select on preload without primaryID
+		for i := range last10Rounds {
+			checks := last10Rounds[i].Checks
+			for j := range checks {
+				checks[j].Debug = ""
+				checks[j].Error = ""
+			}
+		}
+		summary["Last10Rounds"] = last10Rounds
+
+		serviceSummaries = append(serviceSummaries, summary)
 	}
 
-	return namePerService, slaCountPerService, last10RoundsPerService, nil
+	return serviceSummaries, nil
 }
 
 func UpdateTeam(teamID uint, identifier string, active bool) error {
-	result := db.Table("team_schemas").Where("id = ?", teamID).Updates(map[string]interface{}{"identifier": identifier, "active": active})
+	result := db.Table("team_schemas").Where("id = ?", teamID).Updates(map[string]any{"identifier": identifier, "active": active})
 	if result.Error != nil {
 		return result.Error
 	}
@@ -108,7 +117,7 @@ func UpdateTeam(teamID uint, identifier string, active bool) error {
 func GetTeamScore(teamID uint) (int, int, int, error) {
 	// get service points
 	servicePoints := 0
-	rows, err := db.Raw("SELECT SUM(points) FROM service_check_schemas WHERE team_id = ?", teamID).Rows()
+	rows, err := db.Raw("SELECT SUM(points) FROM service_check_schemas WHERE team_id = ? and result = 't'", teamID).Rows()
 	if err != nil {
 		return 0, 0, 0, err
 	}

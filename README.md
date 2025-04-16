@@ -1,23 +1,40 @@
 # Quotient
 
+## Prerequisites
+
+Ensure you have the following installed on your system:
+- Docker
+- Docker Compose
+
 ## Quick Start
 
 ```bash
-git clone https://github.com/dbaseqp/Quotient
+git clone --recurse-submodules https://github.com/dbaseqp/Quotient
 cd Quotient
-docker build ./ -t quotient_server
-docker-compose up --detach
+docker-compose up --build --detach
 ```
+
+## Architecture
+
+The system is designed as a group of docker components using docker compose in docker-compose.yml. These components are:
+1. Server - this is the scoring engine, the web frontend and API, configuration parser, and coordinator of scoring checks.
+2. Database - PostgreSQL database that keeps state for each of the checks and round information.
+3. Redis - This passes data between the runners and the scoring engine as a queue.
+4. Runner - This alpine container has go code that runs the service check after retrieving the task from redis. It needs to be customize if custom checks require additionally installed software like python modules (automatically installed from requirements.txt) or alpine packages. This is managed by Dockerfile.runner and can be rebuilt with `docker-compose build runner`.
+5. Divisor - Docker container with elevated privileges that randomly selects an IP address from a configured subnet, and assigns from a configurable pool size to the docker runner containers. This needs to be able to query docker to determine the docker hosts and to be able to manage host network iptables. This is a separate git repo and a submodule of this repo under ./divisor.
+
+## Troubleshooting
+
+If you encounter any issues during setup or operation, consider the following:
+- Check the logs for any error messages using `docker-compose logs`.
+- Verify that all environment variables are correctly set in the `.env` file.
+- Make sure that config values are set in `event.conf` before running the engine.
+
+## Web setup
 
 Through the Admin UI you will have to specify the "Identifier" for each team. This is the unique part of the target address. Also, you will need to mark the team as "Active" so that the team can start scoring.
 
-If you want to rotate the IP, use the following script:
-
-```bash
-rotate.sh
-```
-
-IP rotation is still currently under development.
+If you want to rotate IPs, configure [Divisor](https://github.com/dbaseqp/Divisor).
 
 ## Configuration
 
@@ -65,7 +82,13 @@ name = "example"
 ip = "10.100.1_.2"
 
     [[box.ssh]]
-    credlists = ["web01.credlist"]
+    credlists = ["web01.credlist",]
+
+    [[box.custom]]
+    command = "/app/checks/example.sh ROUND TARGET TEAMIDENTIFIER USERNAME PASSWORD"
+    credlists = ["web01.credlist","users.credlist"]
+    regex = "example [Tt]ext"
+
 ```
 
 ### Configuration Sections
@@ -152,6 +175,8 @@ pw = "password"
 
 The IP address of the target box should be the IP the scoring engine will use. To templatize the IP address, use an underscore `_` in place of the part of the IP address that will be unique per team. This is the "Identifier" that you must specify through the Admin UI per team. The scoring engine will replace the underscore with the "Identifier" to create the unique target address for each team. If the target should use a DNS name, you can specify that by setting `ip` field to the DNS name (which will be used for all checks under the box) or using the `target` field at the individual check level. Template the DNS name with an underscore `_` in place of the part of the DNS name that will be unique per team.
 
+It is recommended to use Quotient with [aweful-dns](https://github.com/wrccdc-org/aweful-dns) running on the same host.
+
 ```toml
 [[box]]
 name = "web01"
@@ -168,10 +193,28 @@ ip = "10.100.1_.2"
 
     [[box.web]] # type of check you want
     display = "web01" # name of the check that gets appended to the box name
-    # target = "team_.example.tld" # if you want to use a DNS name
+    target = "example.team_.tld" # e.g. this will resolve to example.team01.tld with aweful-dns
+    port = 8080
 
         [[box.web.url]] # some checks have components you need to include
         path = "/index.html"
+
+        [[box.web.url]]
+        path = "/admin"
+        status = 403
 ```
 
-Custom checks can be added to the `./engine/checks/custom/` directory. It is very common to make the custom check simply run some other script that you have written that has the necessary logic to check the service. The script should return a 0 if the service is up and anything else if it is down. The script should be executable.
+Custom checks can be added to the `./custom-checks/` directory. It is very common to make the custom check simply run some other script that you have written that has the necessary logic to check the service. The script should return a 0 if the service is up and anything else if it is down. The script should be executable. The script will be mounted in the `/app/checks/` directory of the runner. If the script invokes external dependencies or needs to have a specific run time, this should be added to the Dockerfile.runner and the runner rebuilt and redeployed.
+
+## Contributing
+
+Please fork the repository and submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 - see the LICENSE file for details.
+
+## Contact
+
+For support or questions, please open a GitHub issue.
+

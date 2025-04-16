@@ -86,6 +86,18 @@ func ExportConfig(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func GetActiveTasks(w http.ResponseWriter, r *http.Request) {
+	tasks, err := eng.GetActiveTasks()
+	if err != nil {
+		slog.Error("failed to get active tasks", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	d, _ := json.Marshal(tasks)
+	w.Write(d)
+}
+
 func GetEngine(w http.ResponseWriter, r *http.Request) {
 	lastRound, err := db.GetLastRound()
 	if err != nil {
@@ -93,7 +105,7 @@ func GetEngine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d, _ := json.Marshal(map[string]interface{}{
+	d, _ := json.Marshal(map[string]any{
 		"last_round":         lastRound,
 		"current_round_time": eng.CurrentRoundStartTime,
 		"next_round_time":    eng.NextRoundStartTime,

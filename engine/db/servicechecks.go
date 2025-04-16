@@ -69,7 +69,9 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 		var team uint
 		var points int
 
-		rows.Scan(&id, &team, &points)
+		if err := rows.Scan(&id, &team, &points); err != nil {
+			return nil, err
+		}
 
 		roundidx := int(id) - 1
 		if result[roundidx] == nil {
@@ -91,7 +93,9 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 		var team uint
 		var penalty int
 
-		rows.Scan(&id, &team, &penalty)
+		if err := rows.Scan(&id, &team, &penalty); err != nil {
+			return nil, err
+		}
 
 		roundidx := int(id) - 1
 		if result[roundidx] == nil {
@@ -100,6 +104,9 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 
 		// id starts at 1 so 0 index needs -1
 		for i := roundidx; i < len(result); i++ {
+			if result[i] == nil {
+				result[i] = make(map[uint]int)
+			}
 			result[i][team] -= penalty
 		}
 	}

@@ -40,25 +40,16 @@ func main() {
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 
-	// read config file
+	// Initialize empty config
 	conf := config.ConfigSettings{}
-	if err := conf.SetConfig("./config/event.conf"); err != nil {
-		log.Fatalf("Error reading config file: %v", err)
-		return
-	}
+	configPath := "./config/event.conf"
 
-	// create engine and connect to db
-	se := engine.NewEngine(&conf)
+	// Create engine which will validate and load the config
+	se := engine.NewEngine(&conf, configPath)
 	db.Connect(conf.RequiredSettings.DBConnectURL)
 
 	if err := db.AddTeams(&conf); err != nil {
 		log.Fatalln("Failed to add teams to DB:", err)
-	}
-
-	// load boxes
-
-	if err := db.LoadBoxes(&conf); err != nil {
-		log.Fatalln("Failed to load boxes to DB:", err)
 	}
 
 	// start engine, restart if it stops

@@ -30,18 +30,18 @@ func (a unencryptedAuth) Start(server *smtp.ServerInfo) (string, []byte, error) 
 	return a.Auth.Start(&s)
 }
 
-func (c Smtp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		fortunes, err := os.ReadFile("/usr/share/games/fortunes/fortunes")
+		fortunes, err := os.ReadFile("/usr/share/fortune/fortunes")
 		if err != nil {
-			checkResult.Error = "failed to load fortune file (/usr/share/games/fortunes/fortunes)"
+			checkResult.Error = "failed to load fortune file (/usr/share/fortune/fortunes)"
 			checkResult.Debug = err.Error()
 			response <- checkResult
 			return
 		}
 		c.Fortunes = strings.Split(string(fortunes), "\n%\n")
 		if len(c.Fortunes) == 0 {
-			checkResult.Error = "failed to load fortune file (/usr/share/games/fortunes/fortunes)"
+			checkResult.Error = "failed to load fortune file (/usr/share/fortune/fortunes)"
 			checkResult.Debug = "no fortunes found"
 			response <- checkResult
 			return
@@ -59,7 +59,7 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 			subject = fortune
 		} else {
 			selected := make([]string, 3)
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				selected[i] = words[rand.Intn(len(words))]
 			}
 			subject = strings.Join(selected, " ")
@@ -179,10 +179,13 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *Smtp) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	if c.ServiceType == "" {
+		c.ServiceType = "Smtp"
+	}
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}

@@ -4,13 +4,22 @@
 *.conf
 *.exe
 *.log
+*.txt
+*.zip
+*.tar.gz
+*.dump
+*.csv
+
 quotient
+runner/runner
 
 /config/*
 !/config/**/
 /config/*/**
-/engine/checks/custom/*
-!/engine/checks/custom/.gitkeep
+/custom-checks/*
+!/custom-checks/.gitkeep
+!/custom-checks/example.sh
+!/custom-checks/requirements.txt
 
 /submissions/*
 !.gitkeep

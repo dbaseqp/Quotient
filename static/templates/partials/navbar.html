@@ -23,7 +23,7 @@
             {{ template "navbutton" (dict "pipe" . "title" "Announcements" "href" "/announcements" "icon"
             "bi-broadcast-pin") }}
             {{ end }}
-            {{ if or (and (contains .roles "team") (not .config.UISettings.DisableGraphsForBlueTeam) ) (contains .roles "admin") }}
+            {{ if or (and (contains .roles "team") (not .config.UISettings.DisableGraphsForBlueTeam) ) (contains .roles "admin") (contains .roles "red") }}
             {{ template "navbutton" (dict "pipe" . "title" "Graphs" "href" "/graphs" "icon" "bi-graph-up") }}
             {{ end }}
             {{ if or (contains .roles "team") (contains .roles "admin") }}

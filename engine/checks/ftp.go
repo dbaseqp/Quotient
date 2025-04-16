@@ -23,7 +23,7 @@ type FtpFile struct {
 	Regex string
 }
 
-func (c Ftp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c Ftp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		conn, err := ftp.Dial(c.Target+":"+strconv.Itoa(c.Port), ftp.DialWithTimeout(time.Duration(c.Timeout)*time.Second))
 		if err != nil {
@@ -108,10 +108,13 @@ func (c Ftp) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *Ftp) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	if c.ServiceType == "" {
+		c.ServiceType = "Ftp"
+	}
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}

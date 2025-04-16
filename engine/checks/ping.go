@@ -14,7 +14,7 @@ type Ping struct {
 	Percent         int
 }
 
-func (c Ping) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c Ping) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		// Create pinger
 		pinger, err := ping.NewPinger(c.Target)
@@ -59,10 +59,13 @@ func (c Ping) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *Ping) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	if c.ServiceType == "" {
+		c.ServiceType = "Ping"
+	}
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}

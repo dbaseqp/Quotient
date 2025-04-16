@@ -1,10 +1,10 @@
 package checks
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"strings"
 	"time"
 
@@ -22,11 +22,11 @@ type DnsRecord struct {
 	Answer []string
 }
 
-func (c Dns) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c Dns) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		// Pick a record
 		record := c.Record[rand.Intn(len(c.Record))]
-		fqdn := strings.ReplaceAll(dns.Fqdn(record.Domain), "_", teamIdentifier)
+		fqdn := dns.Fqdn(strings.ReplaceAll(dns.Fqdn(record.Domain), "_", teamIdentifier))
 
 		// Setup for dns query
 		var msg dns.Msg
@@ -41,16 +41,28 @@ func (c Dns) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 		}
 
 		// Make it obey timeout via deadline
-		deadctx, cancel := context.WithDeadline(context.TODO(), time.Now().Add(time.Duration(c.Timeout)*time.Second))
-		defer cancel()
+		// deadctx, cancel := context.WithTimeout(context.TODO(), time.Duration(2)*time.Second)
+		// defer cancel()
 
 		// Send the query
-		in, err := dns.ExchangeContext(deadctx, &msg, fmt.Sprintf("%s:%d", c.Target, c.Port))
+		client := dns.Client{Timeout: time.Duration(c.Timeout-1) * time.Second, DialTimeout: time.Duration(c.Timeout-1) * time.Second}
+		// _, _ = dns.ExchangeContext(deadctx, &msg, fmt.Sprintf("%s:%d", c.Target, c.Port)) // double tap for propagation
+		in, rtt, err := client.Exchange(&msg, fmt.Sprintf("%s:%d", c.Target, c.Port))
 		if err != nil {
-			checkResult.Error = "error sending query"
-			checkResult.Debug = "record " + record.Domain + ":" + fmt.Sprint(record.Answer) + ": " + err.Error()
-			response <- checkResult
-			return
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				in, rtt, err = client.Exchange(&msg, fmt.Sprintf("%s:%d", c.Target, c.Port))
+				if err != nil {
+					checkResult.Error = "error sending query"
+					checkResult.Debug = "record " + record.Domain + ":" + fmt.Sprint(record.Answer) + fmt.Sprintf("(took %s)", rtt) + ": " + err.Error()
+					response <- checkResult
+					return
+				}
+			} else {
+				checkResult.Error = "error sending query"
+				checkResult.Debug = "record " + record.Domain + ":" + fmt.Sprint(record.Answer) + fmt.Sprintf("(took %s)", rtt) + ": " + err.Error()
+				response <- checkResult
+				return
+			}
 		}
 
 		// Check if we got any records
@@ -81,10 +93,13 @@ func (c Dns) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *Dns) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	if c.ServiceType == "" {
+		c.ServiceType = "Dns"
+	}
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}

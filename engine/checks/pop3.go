@@ -10,7 +10,7 @@ type Pop3 struct {
 	Encrypted bool
 }
 
-func (c Pop3) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
+func (c Pop3) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		// Create a dialer so we can set timeouts
 		p := pop3.New(pop3.Opt{
@@ -68,10 +68,13 @@ func (c Pop3) Run(teamID uint, teamIdentifier string, resultsChan chan Result) {
 		response <- checkResult
 	}
 
-	c.Service.Run(teamID, teamIdentifier, resultsChan, definition)
+	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
 func (c *Pop3) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	if c.ServiceType == "" {
+		c.ServiceType = "Pop3"
+	}
 	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}

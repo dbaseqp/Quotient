@@ -1,0 +1,68 @@
+[RequiredSettings]
+  EventName = "Example"
+  EventType = "rvb"
+  DBConnectURL = "postgres://engineuser:postgres_password@quotient_database:5432/engine"
+  BindAddress = "0.0.0.0"
+
+[MiscSettings]
+  EasyPCR = true
+  ShowDebugToBlueTeam = false
+  LogoImage = "/static/assets/quotient.svg"
+  StartPaused = true
+  Delay = 30
+  Jitter = 5
+  Points = 1
+  Timeout = 15
+  SlaThreshold = 5
+  SlaPenalty = 5
+
+[CredlistSettings]
+  [[CredlistSettings.Credlist]]
+    CredlistName = "Users"
+    CredlistPath = "users.credlist"
+    CredlistExplainText = "username,password"
+
+[[Admin]]
+  Name = "admin"
+  Pw = "admin"
+
+[[Team]]
+  Name = "team01"
+  Pw = "password"
+
+[[Team]]
+  Name = "team02"
+  Pw = "password"
+
+[[Team]]
+  Name = "team03"
+  Pw = "password"
+
+[[Box]]
+  Name = "leto"
+  IP = "172.19.12_.22"
+
+  [[Box.Tcp]]
+    Display = "cyclopes"
+    Port = 4444
+
+[[Box]]
+  Name = "atlas"
+  IP = "172.19.12_.25"
+
+  [[Box.Custom]]
+    Display = "cassandra"
+    CredLists = ["users.credlist"]
+    Command = "/app/checks/example.sh ROUND TARGET TEAMIDENTIFIER USERNAME PASSWORD"
+
+[[Box]]
+  Name = "titan"
+  IP = "172.19.12_.27"
+
+  [[Box.Smtp]]
+    Display = "marpessa"
+    CredLists = ["users.credlist"]
+
+  [[Box.Tcp]]
+    Port = 4444
+    Display = "daphne"

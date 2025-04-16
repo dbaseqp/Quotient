@@ -4,44 +4,74 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/lib/pq"
 )
 
 // checks for each service
 type Runner interface {
-	Run(teamID uint, identifier string, resultsChan chan Result)
+	Run(teamID uint, identifier string, roundID uint, resultsChan chan Result)
 	Runnable() bool
+	Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error
+	GetType() string
+	GetName() string
+	GetAttempts() int
+	GetCredlists() []string
 }
 
 // services will inherit Service so that config.Config can be read from file, but will not be used after initial read
 type Service struct {
-	Name         string         `toml:"-"`          // Name is the box name plus the service (ex. lunar-dns)
-	Display      string         `toml:",omitempty"` // Display is the name of the service (ex. dns)
-	CredLists    pq.StringArray `toml:",omitempty"`
-	Port         int            `toml:",omitzero"` // omitzero because custom checks might not specify port, and shouldn't be assigned 0
-	Points       int            `toml:",omitempty"`
-	Timeout      int            `toml:",omitempty"`
-	SlaPenalty   int            `toml:",omitempty"`
-	SlaThreshold int            `toml:",omitempty"`
-	LaunchTime   time.Time      `toml:",omitempty"`
-	StopTime     time.Time      `toml:",omitempty"`
-	Disabled     bool           `toml:",omitempty"`
-	Target       string         `toml:",omitempty"`
+	Name         string    `toml:"-"`          // Name is the box name plus the service (ex. lunar-dns)
+	Display      string    `toml:",omitempty"` // Display is the name of the service (ex. dns)
+	CredLists    []string  `toml:",omitempty"`
+	Port         int       `toml:",omitzero"` // omitzero because custom checks might not specify port, and shouldn't be assigned 0
+	Points       int       `toml:",omitempty"`
+	Timeout      int       `toml:",omitempty"`
+	SlaPenalty   int       `toml:",omitempty"`
+	SlaThreshold int       `toml:",omitempty"`
+	LaunchTime   time.Time `toml:",omitempty"`
+	StopTime     time.Time `toml:",omitempty"`
+	Disabled     bool      `toml:",omitempty"`
+	Target       string    `toml:",omitempty"` // Target is the IP address or hostname for the box
+	ServiceType  string    `toml:",omitempty"` // ServiceType is the name of the Runner that checks the service
+	Attempts     int       `toml:",omitempty"` // Attempts is the number of times the service has been checked
 }
 
 type Result struct {
 	ServiceName string `json:"name,omitempty"`
 	Target      string `json:"target,omitempty"`
-	TeamID      uint   `json:"teamid,omitempty"`
+	TeamID      uint   `json:"team_id,omitempty"`
 	Status      bool   `json:"status,omitempty"`
 	Debug       string `json:"debug,omitempty"`
 	Error       string `json:"error,omitempty"`
 	Points      int    `json:"points,omitempty"`
+	ServiceType string `json:"service_type,omitempty"`
+	RoundID     uint   `json:"round_id"`
+
+	// Added for runner visualization
+	RunnerID   string `json:"runner_id,omitempty"`
+	StartTime  string `json:"start_time,omitempty"`
+	EndTime    string `json:"end_time,omitempty"`
+	StatusText string `json:"status_text,omitempty"` // "running", "success", or "failed"
+}
+
+func (service *Service) GetType() string {
+	return service.ServiceType
+}
+
+func (service *Service) GetName() string {
+	return service.Name
+}
+
+func (service *Service) GetAttempts() int {
+	return service.Attempts
+}
+
+func (service *Service) GetCredlists() []string {
+	return service.CredLists
 }
 
 func (service *Service) getCreds(teamID uint) (string, string, error) {
@@ -81,6 +111,7 @@ func (service *Service) getCreds(teamID uint) (string, string, error) {
 }
 
 func (service *Service) Configure(ip string, points int, timeout int, slapenalty int, slathreshold int) error {
+	// Set defaults if they're unset for a service
 	if service.Target == "" {
 		service.Target = ip
 	}
@@ -96,16 +127,14 @@ func (service *Service) Configure(ip string, points int, timeout int, slapenalty
 	if service.SlaThreshold == 0 {
 		service.SlaThreshold = slathreshold
 	}
-	for _, list := range service.CredLists {
-		if !strings.HasSuffix(list, ".credlist") {
-			return errors.New("check " + service.Name + " has invalid credlist names")
-		}
+	if service.Attempts == 0 {
+		service.Attempts = 1
 	}
 
 	return nil
 }
 
-func (service Service) Runnable() bool {
+func (service *Service) Runnable() bool {
 	if service.Disabled {
 		return false
 	}
@@ -118,7 +147,7 @@ func (service Service) Runnable() bool {
 	return true
 }
 
-func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan Result, definition func(teamID uint, teamIdentifier string, checkResult Result, response chan Result)) {
+func (service *Service) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result, definition func(teamID uint, teamIdentifier string, checkResult Result, response chan Result)) {
 	service.Target = strings.Replace(service.Target, "_", teamIdentifier, -1)
 
 	checkResult := Result{
@@ -127,8 +156,11 @@ func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan
 		Target:      service.Target,
 		Points:      service.Points,
 		Status:      false,
+		ServiceType: service.ServiceType,
+		RoundID:     roundID,
 	}
 
+	slog.Debug("Running check", "teamID", teamID, "serviceName", service.Name, "target", service.Target)
 	response := make(chan Result)
 
 	go definition(teamID, teamIdentifier, checkResult, response)
@@ -140,7 +172,7 @@ func (service *Service) Run(teamID uint, teamIdentifier string, resultsChan chan
 		return
 	// timeout
 	case <-time.After(time.Duration(service.Timeout) * time.Second):
-		checkResult.Error = "timeout"
+		checkResult.Error = "check timeout exceeded"
 		resultsChan <- checkResult
 		return
 	}

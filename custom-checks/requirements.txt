@@ -1,0 +1,15 @@
+#Enter your python modules here on newlines: e.g.
+requests
+PyYAML
+PySocks
+smbprotocol
+dnspython
+fake_useragent
+impacket
+fake_useragent
+aes
+requests
+paramiko
+pexpect
+argparse
+beautifulsoup4
