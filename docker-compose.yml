@@ -7,6 +7,8 @@ services:
       - .env
     networks:
       - quotient_network
+    volumes:
+      - ./db:/var/lib/postgresql/data
 
   server:
     container_name: quotient_server
@@ -47,7 +49,7 @@ services:
       dockerfile: Dockerfile.runner
     deploy:
       mode: replicated
-      replicas: 10 # Adjust based on server resources
+      replicas: 15 # Adjust based on server resources
     restart: always
     #privileged: true # disable unless a runner needs priv access (e.g. wireguard)
     env_file:
@@ -80,4 +82,3 @@ services:
 networks:
   quotient_network:
     driver: bridge
-

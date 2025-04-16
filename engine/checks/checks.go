@@ -43,13 +43,19 @@ type Service struct {
 type Result struct {
 	ServiceName string `json:"name,omitempty"`
 	Target      string `json:"target,omitempty"`
-	TeamID      uint   `json:"teamid,omitempty"`
+	TeamID      uint   `json:"team_id,omitempty"`
 	Status      bool   `json:"status,omitempty"`
 	Debug       string `json:"debug,omitempty"`
 	Error       string `json:"error,omitempty"`
 	Points      int    `json:"points,omitempty"`
 	ServiceType string `json:"service_type,omitempty"`
 	RoundID     uint   `json:"round_id"`
+
+	// Added for runner visualization
+	RunnerID   string `json:"runner_id,omitempty"`
+	StartTime  string `json:"start_time,omitempty"`
+	EndTime    string `json:"end_time,omitempty"`
+	StatusText string `json:"status_text,omitempty"` // "running", "success", or "failed"
 }
 
 func (service *Service) GetType() string {

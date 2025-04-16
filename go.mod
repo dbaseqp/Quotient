@@ -7,6 +7,7 @@ require (
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c
 	github.com/corpix/uarand v0.2.0
 	github.com/emersion/go-imap v1.2.1
+	github.com/fsnotify/fsnotify v1.8.0
 	github.com/go-ldap/ldap/v3 v3.4.8
 	github.com/go-ping/ping v1.1.0
 	github.com/go-sql-driver/mysql v1.8.1

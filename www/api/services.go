@@ -58,7 +58,7 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 
 	summaries, err := db.GetTeamSummary(teamID)
 	if err != nil {
-		slog.Error("Failed to get team summary", "teamid", teamID, "err", err)
+		slog.Error("Failed to get team summary", "teamID", teamID, "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

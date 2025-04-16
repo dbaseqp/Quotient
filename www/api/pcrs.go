@@ -26,7 +26,7 @@ func GetCredlists(w http.ResponseWriter, r *http.Request) {
 		data := map[string]any{"error": "Error getting credlists"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("Error getting credlists", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
@@ -55,7 +55,7 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&form)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("Failed to decode PCR json", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
@@ -88,16 +88,20 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if err := eng.UpdateCredentials(uint(id), form.CredlistPath, form.Usernames, form.Passwords); err != nil {
+	updatedCount, err := eng.UpdateCredentials(uint(id), form.CredlistPath, form.Usernames, form.Passwords)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		data := map[string]any{"error": "Error updating PCR"}
 		d, _ := json.Marshal(data)
 		w.Write(d)
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("Error updating PCR", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
-	data := map[string]any{"message": "PCR updated"}
+	data := map[string]any{
+		"message": "PCR updated successfully",
+		"count":   updatedCount,
+	}
 	d, _ := json.Marshal(data)
 	w.Write(d)
 }
