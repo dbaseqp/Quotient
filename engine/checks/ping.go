@@ -26,7 +26,7 @@ func (c Ping) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 		}
 
 		// Send ping
-		pinger.Count = 1
+		pinger.Count = c.Count
 		pinger.Timeout = 5 * time.Second
 		pinger.SetPrivileged(true)
 		err = pinger.Run()

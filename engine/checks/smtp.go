@@ -165,8 +165,9 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 
 		body := fmt.Sprintf("Subject: %s\n\n%s\n\n", subject, fortune)
 
-		// Write the body
-		_, err = fmt.Fprintf(wc, body)
+		// Write the body using Fprint to avoid treating the contents as a
+		// format string.
+		_, err = fmt.Fprint(wc, body)
 		if err != nil {
 			checkResult.Error = "writing body failed"
 			checkResult.Debug = err.Error()
