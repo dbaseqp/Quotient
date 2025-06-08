@@ -45,13 +45,18 @@ func ResetScores(w http.ResponseWriter, r *http.Request) {
 
 func ExportScores(w http.ResponseWriter, r *http.Request) {
 	type TeamScore struct {
-		TeamID        uint   `json:"team_id"`
-		TeamName      string `json:"team_name"`
-		ServicePoints int    `json:"service_points"`
-		SlaViolations int    `json:"sla_violations"`
-		TotalPoints   int    `json:"total_points"`
+		TeamID      uint           `json:"team_id"`
+		TeamName    string         `json:"team_name"`
+		Services    []ServiceScore `json:"services"`
+		TotalPoints int            `json:"total_points"`
 	}
-	var data []TeamScore
+
+	type ServiceScore struct {
+		ServiceName   string `json:"service_name"`
+		Points        int    `json:"service_points"`
+		SlaViolations int    `json:"sla_violations"`
+		SlaPenalty    int    `json:"sla_penalty"`
+	}
 
 	teams, err := db.GetTeams()
 	if err != nil {
@@ -59,23 +64,37 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	teamScores := make(map[uint]*TeamScore)
 	for _, team := range teams {
-		servicePoints, slaCount, slaTotal, err := db.GetTeamScore(team.ID)
-		if err != nil {
-			slog.Error("failed to get team score", "team_id", team.ID, "error", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+		teamScores[team.ID] = &TeamScore{
+			TeamID:   team.ID,
+			TeamName: team.Name,
+			Services: []ServiceScore{},
 		}
+	}
 
-		teamScore := TeamScore{
-			TeamID:        team.ID,
-			TeamName:      team.Name,
-			ServicePoints: servicePoints,
-			SlaViolations: slaCount,
-			TotalPoints:   servicePoints - slaTotal,
+	serviceData, err := db.GetServiceScores()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	for _, sd := range serviceData {
+		if team, ok := teamScores[sd.TeamID]; ok {
+			service := ServiceScore{
+				ServiceName:   sd.ServiceName,
+				Points:        sd.Points,
+				SlaViolations: sd.Violations,
+				SlaPenalty:    sd.TotalPenalty,
+			}
+			team.Services = append(team.Services, service)
+			team.TotalPoints += sd.Points - sd.TotalPenalty
 		}
+	}
 
-		data = append(data, teamScore)
+	var data []TeamScore
+	for _, score := range teamScores {
+		data = append(data, *score)
 	}
 
 	d, _ := json.Marshal(data)
