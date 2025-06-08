@@ -74,6 +74,10 @@ func (service *Service) GetCredlists() []string {
 	return service.CredLists
 }
 
+func (service *Service) SetCredlists(lists []string) {
+	service.CredLists = lists
+}
+
 func (service *Service) getCreds(teamID uint) (string, string, error) {
 	// check if credlists are defined, if not return error
 	if len(service.CredLists) == 0 {
