@@ -51,39 +51,36 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 
 	type Series struct {
 		Name string
+		ID   uint
 		Data []Point
 	}
-	temp := make(map[string]map[string]Point)
+
+	var series []Series
 	for _, team := range teams {
-		temp[team.Name] = make(map[string]Point)
+		temp := make(map[string]Point)
 		for _, uniqueName := range uniqueServices {
-			temp[team.Name][uniqueName] = Point{X: uniqueName, Y: Unknown}
+			temp[uniqueName] = Point{X: uniqueName, Y: Unknown}
 		}
 		for _, check := range round.Checks {
 			if team.ID == check.TeamID {
 				if check.Result {
-					temp[team.Name][check.ServiceName] = Point{X: check.ServiceName, Y: Up}
+					temp[check.ServiceName] = Point{X: check.ServiceName, Y: Up}
 				} else {
-					temp[team.Name][check.ServiceName] = Point{X: check.ServiceName, Y: Down}
+					temp[check.ServiceName] = Point{X: check.ServiceName, Y: Down}
 				}
 			}
 		}
-	}
-
-	var series []Series
-	for teamName, teamSeries := range temp {
-		s := Series{Name: teamName}
 
 		var points []Point
-		for _, point := range teamSeries {
+		for _, point := range temp {
 			points = append(points, point)
 		}
 
-		s.Data = points
+		s := Series{Name: team.Name, ID: team.ID, Data: points}
 		series = append(series, s)
 	}
 
-	data := map[string]any{"series": series}
+	data := map[string]any{"series": series, "roundID": round.ID}
 	d, _ := json.Marshal(data)
 	w.Write(d)
 }

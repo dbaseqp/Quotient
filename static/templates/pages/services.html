@@ -135,6 +135,7 @@
             const urlParams = new URLSearchParams(window.location.search);
             const teamParam = urlParams.get('team');
             const serviceParam = urlParams.get('service');
+            const roundParam = urlParams.get('round');
 
             if (teamParam) {
                 // Set the team dropdown to the team from URL, but only if it's a valid option
@@ -148,10 +149,10 @@
 
             const TEAM_ID = document.getElementById("team-select").value;
             // We'll validate serviceParam inside fetchServices after we have the list of services
-            fetchServices(TEAM_ID, serviceParam);
+            fetchServices(TEAM_ID, serviceParam, roundParam);
         })
 
-    function fetchServices(team_id, highlightServiceName = null) {
+    function fetchServices(team_id, highlightServiceName = null, highlightRound = null) {
         fetch(`/api/services/${team_id}`)
             .then((response) => {
                 if (!response.ok) {
@@ -246,6 +247,10 @@
                         // Add a highlight class to this service
                         service.classList.add('border-primary', 'border-2')
 
+                        if (highlightRound) {
+                            service.dataset.highlightRound = highlightRound
+                        }
+
                         // Auto-click this service to show details
                         setTimeout(() => {
                             service.click()
@@ -268,6 +273,7 @@
                     button.addEventListener("click", (source) => {
                         const SERVICE_ID = source.currentTarget.getAttribute("data-service-id")
                         const TEAM_ID = document.getElementById("team-select").value
+                        const HIGHLIGHT_ROUND = source.currentTarget.getAttribute("data-highlight-round")
                         DRILLDOWN_TITLE.textContent = "Service: " + SERVICE_ID
                         DRILLDOWN_LIST.textContent = ""
                         DRILLDOWN_LIST.appendChild(DRILLDOWN_PLACEHOLDER.cloneNode(true))
@@ -287,10 +293,13 @@
                                     row.childNodes[5].textContent = a.Result
                                     row.childNodes[7].textContent = a.Debug
                                     row.childNodes[9].textContent = a.Error
-
+                                    if (HIGHLIGHT_ROUND && parseInt(HIGHLIGHT_ROUND) === a.Round.ID) {
+                                        row.classList.add('table-primary')
+                                    }
                                     DRILLDOWN_LIST.appendChild(row)
                                 }
                                 DRILLDOWN_LIST.removeChild(DRILLDOWN_LIST.childNodes[0])
+                                source.currentTarget.removeAttribute('data-highlight-round')
                             })
                     })
                 })
