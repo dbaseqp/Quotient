@@ -5,7 +5,7 @@
             <div class="row">
                 <h3>Set Team Identifiers</h3>
                 <form onsubmit="return formSubmit(event)">
-                    <table class="table">
+                    <table class="table" id="team-table">
                         <thead>
                             <tr>
                                 <th>Team Name</th>
@@ -30,9 +30,10 @@
                 fetch('/api/teams')
                     .then(response => response.json())
                     .then(data => {
-                        const TBODY = document.querySelector('tbody');
+                        const TBODY = document.querySelector('#team-table tbody');
                         data.forEach(team => {
                             const ROW = document.createElement('tr');
+                            ROW.setAttribute('data-team', team.ID);
                             const NAME_CELL = document.createElement('td');
                             NAME_CELL.textContent = team.Name;
                             const ID_CELL = document.createElement('td');
@@ -87,11 +88,14 @@
                 const formSubmit = (event) => {
                     event.preventDefault();
                     const teamsData = [];
-                    const rows = document.querySelectorAll('tbody tr');
+                    const rows = document.querySelectorAll('#team-table tbody tr');
                     rows.forEach(row => {
-                        const teamID = parseInt(row.querySelector('input').getAttribute('aria-describedby').split('-')[2]);
-                        const identifier = row.querySelector('input').value;
-                        const active = row.querySelector('button:nth-child(2)').disabled;
+                        const input = row.querySelector('input[aria-label="Team Identifier"]');
+                        if (!input) return;
+                        const teamID = parseInt(row.getAttribute('data-team'));
+                        const identifier = input.value;
+                        const activeButton = row.querySelector('.input-group button:first-of-type');
+                        const active = activeButton ? activeButton.disabled : false;
                         teamsData.push({ ID: teamID, Identifier: identifier, Active: active });
                     });
                     fetch(`/api/admin/teams`, {
@@ -114,10 +118,85 @@
                             console.error('Error updating team:', error)
                         });
                 }
-            </script>
-            <div class="row">
-
+</script>
+            <div class="row mt-5">
+                <h3>Service Check Control</h3>
+                <form onsubmit="return formSubmitChecks(event)">
+                    <table class="table" id="checks-table">
+                        <thead>
+                            <tr id="checks-header">
+                                <th>Team</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="100%">
+                                    <div class="d-flex justify-content-end">
+                                        <button class="btn btn-primary px-5" type="submit">Save</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </form>
             </div>
+            <script>
+                let SERVICE_LIST = [];
+                fetch('/api/admin/teamchecks')
+                    .then(r => r.json())
+                    .then(data => {
+                        SERVICE_LIST = data.services;
+                        const HEADER = document.getElementById('checks-header');
+                        SERVICE_LIST.forEach(s => {
+                            const th = document.createElement('th');
+                            th.textContent = s;
+                            HEADER.appendChild(th);
+                        });
+                        const TBODY = document.querySelector('#checks-table tbody');
+                        data.states.forEach(state => {
+                            const row = document.createElement('tr');
+                            row.setAttribute('data-team', state.team_id);
+                            const name = document.createElement('td');
+                            name.textContent = state.team_name;
+                            row.appendChild(name);
+                            SERVICE_LIST.forEach(s => {
+                                const cell = document.createElement('td');
+                                const cb = document.createElement('input');
+                                cb.type = 'checkbox';
+                                cb.checked = state.services[s];
+                                cb.setAttribute('data-service', s);
+                                cell.appendChild(cb);
+                                row.appendChild(cell);
+                            });
+                            TBODY.appendChild(row);
+                        });
+                    });
+
+                const formSubmitChecks = (event) => {
+                    event.preventDefault();
+                    const updates = [];
+                    const rows = document.querySelectorAll('#checks-table tbody tr');
+                    rows.forEach(row => {
+                        const teamID = parseInt(row.getAttribute('data-team'));
+                        SERVICE_LIST.forEach(service => {
+                            const cb = row.querySelector(`input[data-service="${service}"]`);
+                            if (!cb) return;
+                            updates.push({ team_id: teamID, service_name: service, enabled: cb.checked });
+                        });
+                    });
+                    fetch('/api/admin/teamchecks', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ updates })
+                    }).then(res => {
+                        if(!res.ok) throw new Error(res.status);
+                        return res.json();
+                    }).then(() => { window.location.reload(); })
+                      .catch(err => console.error('Error updating checks:', err));
+                }
+            </script>
         </div>
     </div>
 </div>

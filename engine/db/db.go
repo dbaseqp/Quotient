@@ -41,7 +41,7 @@ func Connect(connectURL string) {
 
 	err = db.AutoMigrate(&AnnouncementSchema{},
 		&TeamSchema{}, &RoundSchema{}, &ServiceCheckSchema{}, &SLASchema{}, &ManualAdjustmentSchema{},
-		&InjectSchema{}, &SubmissionSchema{},
+		&InjectSchema{}, &SubmissionSchema{}, &TeamServiceCheckSchema{},
 		// box schema must come first for automigrate to work
 		&VulnSchema{}, &BoxSchema{}, &VectorSchema{}, &AttackSchema{})
 	if err != nil {
