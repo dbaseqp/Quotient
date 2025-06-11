@@ -2,11 +2,12 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /src
 
-COPY . ./
-
-WORKDIR /src/runner
+COPY go.mod go.sum ./
 RUN go mod download
-RUN go build
+
+COPY . .
+WORKDIR /src/runner
+RUN go build -o runner
 
 # runner
 FROM alpine:3.21

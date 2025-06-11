@@ -29,6 +29,7 @@ If you encounter any issues during setup or operation, consider the following:
 - Check the logs for any error messages using `docker-compose logs`.
 - Verify that all environment variables are correctly set in the `.env` file.
 - Make sure that config values are set in `event.conf` before running the engine.
+- Set `vm.overcommit_memory=1` on the host to avoid Redis warnings. Run `sudo sysctl vm.overcommit_memory=1` or add `vm.overcommit_memory = 1` to `/etc/sysctl.conf` and reboot.
 
 ## Web setup
 
