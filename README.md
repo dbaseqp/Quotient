@@ -3,6 +3,7 @@
 ## Prerequisites
 
 Ensure you have the following installed on your system:
+
 - Docker
 - Docker Compose
 
@@ -17,6 +18,7 @@ docker-compose up --build --detach
 ## Architecture
 
 The system is designed as a group of docker components using docker compose in docker-compose.yml. These components are:
+
 1. Server - this is the scoring engine, the web frontend and API, configuration parser, and coordinator of scoring checks.
 2. Database - PostgreSQL database that keeps state for each of the checks and round information.
 3. Redis - This passes data between the runners and the scoring engine as a queue.
@@ -26,6 +28,7 @@ The system is designed as a group of docker components using docker compose in d
 ## Troubleshooting
 
 If you encounter any issues during setup or operation, consider the following:
+
 - Check the logs for any error messages using `docker-compose logs`.
 - Verify that all environment variables are correctly set in the `.env` file.
 - Make sure that config values are set in `event.conf` before running the engine.
@@ -66,7 +69,7 @@ The configuration file is broken up into sections. Only the `RequiredSettings` s
 
 #### Credential Lists
 
-Cred lists need to be CSVs specified in the `./config/credlists` directory with a `.credlist` extension. The name of the file will be used as the name of the credlist. When password change requests (PCRs) get processed, credlists will only be mutated by changing the password column of an existing user in the defined list. This means submitting a PCR with a user that does not exist will ignore that specific entry. Below is an example. See the below configuration examples to specify credlists for checks.
+Cred lists need to be CSVs specified in the `./config/credlists` directory with a `.credlist` extension. The name of the file can be specified, or will default to the filename of the credlist if unspecified. When password change requests (PCRs) get processed, credlists will only be mutated by changing the password column of an existing user in the defined list. This means submitting a PCR with a user that does not exist will ignore that specific entry. Below is an example. See the below configuration examples to specify credlists for checks.
 
 ```
 joe,s3cret
@@ -74,19 +77,31 @@ robby,mypass
 johndoe,helloworld
 ```
 
-They should be specified for each check that requires a credlist. The `credlists` field expects an array of strings of the exact file name of credlist to be used.
+They should be specified for each check that requires a credlist. The `credlists` field expects an array of strings of the credlist names to be used.
 
 ```
+[CredlistSettings]
+  [[CredlistSettings.Credlist]]
+    CredlistName = "Users"
+    CredlistPath = "users.credlist"
+    CredlistExplainText = "username,password"
+	
+	[[CredlistSettings.Credlist]]
+		CredlistName = "Web01"
+		CredlistPath = "web01.credlist"
+		CredlistExplainText = "Text that will appear on PCR page describing usage"
+
+
 [[box]]
 name = "example"
 ip = "10.100.1_.2"
 
     [[box.ssh]]
-    credlists = ["web01.credlist",]
+    credlists = ["Web01"]
 
     [[box.custom]]
     command = "/app/checks/example.sh ROUND TARGET TEAMIDENTIFIER USERNAME PASSWORD"
-    credlists = ["web01.credlist","users.credlist"]
+    credlists = ["Web01","Users"]
     regex = "example [Tt]ext"
 
 ```
@@ -219,4 +234,3 @@ This project is licensed under the GNU General Public License v3.0 - see the LIC
 ## Contact
 
 For support or questions, please open a GitHub issue.
-

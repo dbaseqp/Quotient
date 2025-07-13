@@ -23,3 +23,5 @@ runner/runner
 
 /submissions/*
 !.gitkeep
+
+db/

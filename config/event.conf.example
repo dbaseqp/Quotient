@@ -52,7 +52,7 @@
 
   [[Box.Custom]]
     Display = "cassandra"
-    CredLists = ["users.credlist"]
+    CredLists = ["Users"]
     Command = "/app/checks/example.sh ROUND TARGET TEAMIDENTIFIER USERNAME PASSWORD"
 
 [[Box]]
@@ -61,7 +61,7 @@
 
   [[Box.Smtp]]
     Display = "marpessa"
-    CredLists = ["users.credlist"]
+    CredLists = ["Users"]
 
   [[Box.Tcp]]
     Port = 4444
