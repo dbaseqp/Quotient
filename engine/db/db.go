@@ -6,11 +6,13 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"strings"
 
 	"quotient/engine/config"
 
 	"github.com/go-ldap/ldap/v3"
 	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -18,6 +20,16 @@ import (
 var (
 	db *gorm.DB
 )
+
+func dialector(connectURL string) gorm.Dialector {
+	if strings.HasPrefix(connectURL, "sqlite:") {
+		split := strings.SplitN(connectURL, ":", 2)
+		filename := split[1]
+		return sqlite.Open(fmt.Sprintf("%s?mode=rwc", filename))
+	} else {
+		return postgres.Open(connectURL)
+	}
+}
 
 func Connect(connectURL string) {
 	var err error
@@ -29,21 +41,21 @@ func Connect(connectURL string) {
 		},
 	)
 
-	db, err = gorm.Open(postgres.Open(connectURL), &gorm.Config{
+	db, err = gorm.Open(dialector(connectURL), &gorm.Config{
 		TranslateError: true,
 		Logger:         newLogger,
 	})
 	if err != nil {
-		log.Fatalf("Failed to connect database! %s", connectURL)
+		log.Fatalf("Failed to connect database %s: %w", connectURL, err)
 	}
 
 	slog.Info("Connected to DB")
 
-	err = db.AutoMigrate(&AnnouncementSchema{},
+	err = db.AutoMigrate(&AnnouncementSchema{}, &AnnouncementFileSchema{},
 		&TeamSchema{}, &RoundSchema{}, &ServiceCheckSchema{}, &SLASchema{}, &ManualAdjustmentSchema{},
-		&InjectSchema{}, &SubmissionSchema{}, &TeamServiceCheckSchema{},
+		&InjectSchema{}, &InjectFileSchema{}, &SubmissionSchema{}, &TeamServiceCheckSchema{},
 		// box schema must come first for automigrate to work
-		&VulnSchema{}, &BoxSchema{}, &VectorSchema{}, &AttackSchema{})
+		&VulnSchema{}, &BoxSchema{}, &VectorSchema{}, &AttackSchema{}, &AttackImageSchema{})
 	if err != nil {
 		log.Fatalln("Failed to auto migrate:", err)
 	}
@@ -111,8 +123,27 @@ func AddTeams(conf *config.ConfigSettings) error {
 
 func ResetScores() error {
 	// truncate servicecheckschemas, slaschemas, and roundschemas with cascade
-	if err := db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas CASCADE").Error; err != nil {
-		return err
+	if db.Dialector.Name() == "postgres" {
+		if err := db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas CASCADE").Error; err != nil {
+			return err
+		}
+	} else {
+		return db.Transaction(func(tx *gorm.DB) error {
+			// https://gorm.io/docs/delete.html#Block-Global-Delete
+			if err := tx.Where("1 = 1").Delete(&ServiceCheckSchema{}).Error; err != nil {
+				return err
+			}
+
+			if err := tx.Where("1 = 1").Delete(&RoundSchema{}).Error; err != nil {
+				return err
+			}
+
+			if err := tx.Where("1 = 1").Delete(&SLASchema{}).Error; err != nil {
+				return err
+			}
+
+			return nil
+		})
 	}
 
 	return nil

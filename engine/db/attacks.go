@@ -21,7 +21,7 @@ type AttackSchema struct {
 	Vector         VectorSchema
 	TeamID         uint
 	Narrative      string
-	EvidenceImages []string `gorm:"type:text[]"` // /submissions/red/teamID/boxID/image.png
+	EvidenceImages []AttackImageSchema `gorm:"type:text[]"` // /submissions/red/teamID/boxID/image.png
 	AccessLevel    int
 
 	StillWorks                    bool
@@ -29,6 +29,12 @@ type AttackSchema struct {
 	DataAccessPassword            bool
 	DataAccessSystemConfiguration bool
 	DataAccessDatabase            bool
+}
+
+type AttackImageSchema struct {
+	AttackBoxID  uint   `gorm:"primaryKey"`
+	AttackTeamID uint   `gorm:"primaryKey"`
+	URI          string `gorm:"primaryKey"`
 }
 
 func GetAttacks() ([]AttackSchema, error) {

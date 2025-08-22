@@ -230,9 +230,11 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pictures := r.MultipartForm.File["pictures"]
-	filenames := make([]string, len(pictures))
+	filenames := make([]db.AttackImageSchema, len(pictures))
 	for i, fileHeader := range pictures {
-		filenames[i] = fileHeader.Filename
+		filenames[i] = db.AttackImageSchema{
+			URI: fileHeader.Filename,
+		}
 	}
 
 	a := r.FormValue("vector-id")

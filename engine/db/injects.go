@@ -4,7 +4,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -15,8 +14,13 @@ type InjectSchema struct {
 	OpenTime        time.Time
 	DueTime         time.Time
 	CloseTime       time.Time
-	InjectFileNames pq.StringArray     `gorm:"type:text[]"`
+	InjectFileNames []InjectFileSchema `gorm:"foreignKey:InjectID"`
 	Submissions     []SubmissionSchema `gorm:"foreignKey:InjectID"`
+}
+
+type InjectFileSchema struct {
+	InjectID uint   `gorm:"primaryKey"`
+	FileName string `gorm:"primaryKey"`
 }
 
 // CreateInject creates a new inject in the database using the provided schema

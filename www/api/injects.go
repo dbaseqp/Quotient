@@ -212,9 +212,11 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files := r.MultipartForm.File["files"]
-	filenames := make([]string, len(files))
+	filenames := make([]db.InjectFileSchema, len(files))
 	for i, fileHeader := range files {
-		filenames[i] = fileHeader.Filename
+		filenames[i] = db.InjectFileSchema{
+			FileName: fileHeader.Filename,
+		}
 	}
 
 	inject := db.InjectSchema{
@@ -439,8 +441,8 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 				return
 			} else {
 				// Remove the file from the database
-				inject.InjectFileNames = slices.DeleteFunc(inject.InjectFileNames, func(filename string) bool {
-					return filename == dirFile.Name()
+				inject.InjectFileNames = slices.DeleteFunc(inject.InjectFileNames, func(filename db.InjectFileSchema) bool {
+					return filename.FileName == dirFile.Name()
 				})
 			}
 		}
@@ -448,9 +450,11 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 
 	files := r.MultipartForm.File["files"]
 	if len(files) > 0 {
-		var filenames []string
+		var filenames []db.InjectFileSchema
 		for _, fileHeader := range files {
-			filenames = append(filenames, fileHeader.Filename)
+			filenames = append(filenames, db.InjectFileSchema{
+				FileName: fileHeader.Filename,
+			})
 		}
 		inject.InjectFileNames = append(inject.InjectFileNames, filenames...)
 

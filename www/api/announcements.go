@@ -183,9 +183,11 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files := r.MultipartForm.File["files"]
-	filenames := make([]string, len(files))
+	filenames := make([]db.AnnouncementFileSchema, len(files))
 	for i, fileHeader := range files {
-		filenames[i] = fileHeader.Filename
+		filenames[i] = db.AnnouncementFileSchema{
+			FileName: fileHeader.Filename,
+		}
 	}
 
 	announcement := db.AnnouncementSchema{
