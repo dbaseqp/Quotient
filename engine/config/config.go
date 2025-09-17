@@ -202,6 +202,17 @@ func checkConfig(conf *ConfigSettings) error {
 		errResult = errors.Join(errResult, errors.New("no bind address specified"))
 	}
 
+	if conf.LdapSettings != (LdapAuthConfig{}) {
+		if conf.LdapSettings.LdapBindPassword == "" {
+			ldapBindPass := os.Getenv("LDAP_BIND_PASSWORD")
+			if ldapBindPass != "" {
+				conf.LdapSettings.LdapBindPassword = ldapBindPass
+			} else {
+				errResult = errors.Join(errResult, errors.New("no LDAP bind password specified"))
+			}
+		}
+	}
+
 	// check top level configs
 	for _, admin := range conf.Admin {
 		if admin.Name == "" || admin.Pw == "" {
