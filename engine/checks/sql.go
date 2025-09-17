@@ -90,11 +90,12 @@ func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 						checkResult.Status = true
 						checkResult.Debug = "found regex match: " + output + ". creds used were " + username + ":" + password
 						response <- checkResult
+						break
 					}
 				} else {
 					if strings.TrimSpace(output) == q.Output {
 						checkResult.Status = true
-						checkResult.Debug = "found exact string match: " + output + ".creds used were " + username + ":" + password
+						checkResult.Debug = "found exact string match: " + output + ". creds used were " + username + ":" + password
 						response <- checkResult
 						break
 					}
@@ -107,6 +108,7 @@ func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				response <- checkResult
 				return
 			}
+			return
 		}
 
 		checkResult.Debug = "desired output " + output + "not found in any output. creds used were " + username + ":" + password
