@@ -11,8 +11,7 @@ RUN go build -o quotient
 
 # runner
 FROM alpine:3.21
-RUN apk add fortune
-RUN apk add ca-certificates
+RUN apk add --no-cache ca-certificates
 COPY config/certs/. /usr/local/share/ca-certificates/
 RUN update-ca-certificates
 COPY --from=builder /src/quotient /usr/local/bin/quotient

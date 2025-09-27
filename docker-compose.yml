@@ -5,6 +5,8 @@ services:
     restart: always
     env_file:
       - .env
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
     networks:
       - quotient_network
     volumes:
