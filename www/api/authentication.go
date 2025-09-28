@@ -296,6 +296,9 @@ func findRolesByUsername(username string, authSource string) ([]string, error) {
 		if username == inject.Name {
 			roles = append(roles, "inject")
 		}
+		// OIDC user not found in cache after server restart
+		// User will need to re-authenticate
+		return nil, errors.New("OIDC session expired - please login again")
 	}
 
 	// Check local users only if auth source is local

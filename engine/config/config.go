@@ -104,6 +104,36 @@ type OIDCAuthConfig struct {
 	OIDCDisableLocalLogin bool
 }
 
+type OIDCAuthConfig struct {
+	// Provider Configuration
+	OIDCEnabled      bool
+	OIDCIssuerURL    string
+	OIDCClientID     string
+	OIDCClientSecret string
+	OIDCRedirectURL  string
+
+	// Security Settings
+	OIDCUsePKCE bool
+	OIDCScopes  []string
+
+	// Group Mapping
+	OIDCGroupClaim   string
+	OIDCAdminGroups  []string
+	OIDCRedGroups    []string
+	OIDCTeamGroups   []string
+	OIDCInjectGroups []string
+
+	// Token Expiration Settings (in seconds)
+	OIDCAccessTokenExpiry        int
+	OIDCRefreshTokenExpiryTeam   int
+	OIDCRefreshTokenExpiryAdmin  int
+	OIDCRefreshTokenExpiryRed    int
+	OIDCRefreshTokenExpiryInject int
+
+	// UI Settings
+	OIDCDisableLocalLogin bool
+}
+
 type SslConfig struct {
 	HttpsCert string `toml:"httpscert,omitempty" json:"httpscert,omitempty"`
 	HttpsKey  string `toml:"httpskey,omitempty" json:"httpskey,omitempty"`
