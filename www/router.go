@@ -30,6 +30,11 @@ func (router *Router) Start() {
 	api.SetConfig(router.Config)
 	api.SetEngine(router.Engine)
 
+	// Initialize OIDC if enabled
+	if err := api.InitOIDC(); err != nil {
+		slog.Error("Failed to initialize OIDC", "error", err)
+	}
+
 	// api routes
 	/******************************************
 	|                                         |
@@ -42,6 +47,10 @@ func (router *Router) Start() {
 	UNAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Cors, middleware.Authentication("anonymous", "team", "admin", "red"))
 	// public API routes
 	mux.HandleFunc("POST /api/login", api.Login)
+
+	// OIDC routes (public)
+	mux.HandleFunc("GET /auth/oidc/login", api.OIDCLoginHandler)
+	mux.HandleFunc("GET /auth/oidc/callback", api.OIDCCallbackHandler)
 
 	mux.HandleFunc("GET /api/graphs/services", UNAUTH(api.GetServiceStatus))
 	mux.HandleFunc("GET /api/graphs/scores", UNAUTH(api.GetScoreStatus))

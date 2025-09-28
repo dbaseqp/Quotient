@@ -28,6 +28,9 @@ type ConfigSettings struct {
 	// LDAP settings
 	LdapSettings LdapAuthConfig `toml:"LdapSettings,omitempty" json:"LdapSettings,omitempty"`
 
+	// OIDC settings
+	OIDCSettings OIDCAuthConfig `toml:"OIDCSettings,omitempty" json:"OIDCSettings,omitempty"`
+
 	// Optional settings
 	SslSettings SslConfig `toml:"SslSettings,omitempty" json:"SslSettings,omitempty"`
 
@@ -69,6 +72,31 @@ type LdapAuthConfig struct {
 	LdapTeamGroupDn  string
 }
 
+type OIDCAuthConfig struct {
+	// Provider Configuration
+	OIDCEnabled      bool
+	OIDCIssuerURL    string
+	OIDCClientID     string
+	OIDCClientSecret string
+	OIDCRedirectURL  string
+
+	// Security Settings
+	OIDCUsePKCE bool
+	OIDCScopes  []string
+
+	// Group Mapping
+	OIDCGroupClaim  string
+	OIDCAdminGroups []string
+	OIDCRedGroups   []string
+	OIDCTeamGroups  []string
+
+	// Token Expiration Settings (in seconds)
+	OIDCAccessTokenExpiry       int
+	OIDCRefreshTokenExpiryTeam  int
+	OIDCRefreshTokenExpiryAdmin int
+	OIDCRefreshTokenExpiryRed   int
+}
+
 type SslConfig struct {
 	HttpsCert string `toml:"httpscert,omitempty" json:"httpscert,omitempty"`
 	HttpsKey  string `toml:"httpskey,omitempty" json:"httpskey,omitempty"`
@@ -82,6 +110,8 @@ type MiscConfig struct {
 	LogFile             string
 
 	StartPaused bool
+
+	TeamCount int // Auto-generate teams (team01, team02, ...) if > 0
 
 	// Round settings
 	Delay  int
@@ -293,6 +323,44 @@ func checkConfig(conf *ConfigSettings) error {
 
 	if conf.MiscSettings.SlaPenalty == 0 {
 		conf.MiscSettings.SlaPenalty = conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
+	}
+
+	// OIDC settings defaults
+	if conf.OIDCSettings.OIDCEnabled {
+		if conf.OIDCSettings.OIDCIssuerURL == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no issuer URL specified"))
+		}
+		if conf.OIDCSettings.OIDCClientID == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no client ID specified"))
+		}
+		if conf.OIDCSettings.OIDCClientSecret == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no client secret specified"))
+		}
+		if conf.OIDCSettings.OIDCRedirectURL == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no redirect URL specified"))
+		}
+
+		// Set defaults
+		if len(conf.OIDCSettings.OIDCScopes) == 0 {
+			conf.OIDCSettings.OIDCScopes = []string{"openid", "profile", "email", "groups", "offline_access"}
+		}
+		if conf.OIDCSettings.OIDCGroupClaim == "" {
+			conf.OIDCSettings.OIDCGroupClaim = "groups"
+		}
+		if conf.OIDCSettings.OIDCAccessTokenExpiry == 0 {
+			conf.OIDCSettings.OIDCAccessTokenExpiry = 3600 // 1 hour
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryTeam == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryTeam = 86400 // 1 day
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryAdmin == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryAdmin = 2592000 // 30 days
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryRed == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryRed = 172800 // 2 days
+		}
+		// PKCE is enabled by default
+		conf.OIDCSettings.OIDCUsePKCE = true
 	}
 
 	// =======================================
