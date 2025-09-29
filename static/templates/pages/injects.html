@@ -510,8 +510,8 @@
                 <p>${inject.Description}</p>
                 <h5>Inject Details</h5>
                 <ul>
-                    <li id="pane__due--${inject.ID}"><p><strong>Due Time:</strong> ${inject.DueTime.toLocaleString()}</p></li>
-                    <li id="pane__close--${inject.ID}"><p><strong>Close Time:</strong> ${inject.CloseTime.toLocaleString()}</p></li>
+                    <li><p><strong>Due Time:</strong> <span id="pane__due--${inject.ID}">${inject.DueTime.toLocaleString()}</span></p></li>
+                    <li><p><strong>Close Time:</strong> <span id="pane__close--${inject.ID}">${inject.CloseTime.toLocaleString()}</span></p></li>
                     </ul>
                     `
                     description.appendChild(descTemp)
