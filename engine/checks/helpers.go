@@ -33,11 +33,12 @@ func FileHash(fileName string) (string, error) {
 // StringHash returns the sha256sum of the string
 func StringHash(fileContent string) (string, error) {
 	hasher := sha256.New()
-	_, err := hasher.Write([]byte(fileContent))
-	if err != nil {
+	if _, err := hasher.Write([]byte(fileContent)); err != nil {
 		return "", err
 	}
-	return hexEncode(string(hasher.Sum(nil))), nil
+	// Directly encode the byte slice returned by hasher.Sum to avoid
+	// corrupting non-UTF8 bytes when converting to and from strings.
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 func GetFile(fileName string) (string, error) {
@@ -50,8 +51,4 @@ func GetFile(fileName string) (string, error) {
 		return "", err
 	}
 	return string(fileContent), nil
-}
-
-func hexEncode(inputString string) string {
-	return hex.EncodeToString([]byte(inputString))
 }

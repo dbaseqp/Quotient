@@ -29,6 +29,7 @@ If you encounter any issues during setup or operation, consider the following:
 - Check the logs for any error messages using `docker-compose logs`.
 - Verify that all environment variables are correctly set in the `.env` file.
 - Make sure that config values are set in `event.conf` before running the engine.
+- Set `vm.overcommit_memory=1` on the host to avoid Redis warnings. Run `sudo sysctl vm.overcommit_memory=1` or add `vm.overcommit_memory = 1` to `/etc/sysctl.conf` and reboot.
 
 ## Web setup
 
@@ -103,7 +104,7 @@ DBConnectURL = "postgres://engineuser:password@quotient_database:5432/engine"
 BindAddress = "0.0.0.0"
 ```
 
-The "DBConnectURL" will use values you popualte in the `.env` file. The `BindAddress` is the IP address the scoring engine will bind to. If you are deploying in the Docker container, this can be set to `0.0.0.0`.
+The "DBConnectURL" will use values you populate in the `.env` file. The `BindAddress` is the IP address the scoring engine will bind to. If you are deploying in the Docker container, this can be set to `0.0.0.0`.
 
 #### Ldap Settings
 
@@ -149,7 +150,7 @@ SlaPenalty = 50
 #### UI Settings
 
 ```toml
-[UiSettings]
+[UISettings]
 DisableInfoPage = true
 DisableGraphsForBlueTeam = true
 ShowAnnouncementsForRedTeam = true
@@ -205,6 +206,8 @@ ip = "10.100.1_.2"
 ```
 
 Custom checks can be added to the `./custom-checks/` directory. It is very common to make the custom check simply run some other script that you have written that has the necessary logic to check the service. The script should return a 0 if the service is up and anything else if it is down. The script should be executable. The script will be mounted in the `/app/checks/` directory of the runner. If the script invokes external dependencies or needs to have a specific run time, this should be added to the Dockerfile.runner and the runner rebuilt and redeployed.
+
+For a detailed walkthrough of writing custom checks, see [docs/custom-checks.md](docs/custom-checks.md).
 
 ## Contributing
 

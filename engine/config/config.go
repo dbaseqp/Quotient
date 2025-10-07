@@ -295,6 +295,13 @@ func checkConfig(conf *ConfigSettings) error {
 	dupeBoxMap := make(map[string]bool)
 	runnerNames := make(map[string]bool)
 
+	// build a map of credlist names to file paths for quick lookup
+	credMap := map[string]string{}
+	for _, cl := range conf.CredlistSettings.Credlist {
+		credMap[cl.CredlistName] = cl.CredlistPath
+		credMap[cl.CredlistPath] = cl.CredlistPath
+	}
+
 	// ACTUALLY DO CHECKS FOR BOX AND SERVICE CONFIGURATION
 	for i := range conf.Box {
 		if conf.Box[i].Name == "" {
@@ -338,18 +345,17 @@ func checkConfig(conf *ConfigSettings) error {
 					runnerNames[check.GetName()] = true
 				}
 
-				// check if the credlist is a defined credlist
-				found := false
+				// translate credlist names to their file paths
+				credPaths := make([]string, 0, len(check.GetCredlists()))
 				for _, list := range check.GetCredlists() {
-					if slices.ContainsFunc(conf.CredlistSettings.Credlist, func(credlist Credlist) bool {
-						return credlist.CredlistName == list
-					}) {
-						found = true
-						break
+					if path, ok := credMap[list]; ok {
+						credPaths = append(credPaths, path)
+					} else {
+						errResult = errors.Join(errResult, fmt.Errorf("credlist not found for %s", check.GetName()))
 					}
 				}
-				if !found && len(check.GetCredlists()) > 0 {
-					errResult = errors.Join(errResult, fmt.Errorf("credlist not found for %s", check.GetName()))
+				if setter, ok := check.(interface{ SetCredlists([]string) }); ok && len(credPaths) > 0 {
+					setter.SetCredlists(credPaths)
 				}
 
 				allChecks = append(allChecks, check)

@@ -8,7 +8,13 @@ services:
     networks:
       - quotient_network
     volumes:
-      - ./db:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 3s
 
   server:
     container_name: quotient_server
@@ -22,7 +28,8 @@ services:
     ports:
       - 80:80
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - quotient_network
     volumes:
@@ -42,6 +49,12 @@ services:
     networks:
       - quotient_network
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD variable is not set}"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 3s
 
   runner:
     build:
@@ -49,19 +62,22 @@ services:
       dockerfile: Dockerfile.runner
     deploy:
       mode: replicated
-      replicas: 15 # Adjust based on server resources
+      replicas: 5 # Adjust based on server resources
     restart: always
-    #privileged: true # disable unless a runner needs priv access (e.g. wireguard)
+    privileged: false # disable unless a runner needs priv access (e.g. wireguard)
     env_file:
       - .env
     depends_on:
-      - redis
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
     networks:
       - quotient_network
     volumes:
       - ./submissions:/app/submissions
       - ./custom-checks:/app/checks
+      - ./config/scoredfiles:/app/config/scoredfiles
     tmpfs:
       - /tmp:size=32m
 
@@ -74,11 +90,15 @@ services:
       - .env
     network_mode: host # Use host networking for divisor
     depends_on:
-      - redis
-    privileged: true
+      redis:
+        condition: service_healthy
+    privileged: true # Needed to manage networks
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Needed to read runner names
 
 networks:
   quotient_network:
     driver: bridge
+
+volumes:
+  db_data:

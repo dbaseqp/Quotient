@@ -378,6 +378,14 @@ func (se *ScoringEngine) rvb() error {
 			if !r.Runnable() {
 				continue
 			}
+			enabled, err := db.IsTeamServiceEnabled(team.ID, r.GetName())
+			if err != nil {
+				slog.Error("failed to check service state", "team", team.ID, "service", r.GetName(), "error", err)
+				continue
+			}
+			if !enabled {
+				continue
+			}
 			// serialize the entire check definition to JSON
 			data, err := json.Marshal(r)
 			if err != nil {
