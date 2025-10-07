@@ -141,8 +141,8 @@
                                 console.error('Error fetching scoring data:', error)
                             });
                     }
-                    function exportJSON() {
-                        fetchScores();
+                    async function exportJSON() {
+                        await fetchScores();
                         const dataStr = JSON.stringify(scoreData, null, 2);
                         const dataBlob = new Blob([dataStr], {type: 'application/json'});
                         const url = URL.createObjectURL(dataBlob);
@@ -154,8 +154,8 @@
                         document.body.removeChild(link);
                         URL.revokeObjectURL(url);
                     }
-                    function exportCSV() {
-                        fetchScores();
+                    async function exportCSV() {
+                        await fetchScores();
                         const headers = ['Team', 'Service', 'Service Points', 'SLA Violations', 'SLA Penalty', 'Total Points'];
                         const csvRows = [headers.join(',')];
 
