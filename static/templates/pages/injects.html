@@ -425,7 +425,9 @@
     const PLACEHOLDER_TAB = document.getElementById("tab--placeholder")
     const PLACEHOLDER_PANE = document.getElementById("pane--placeholder")
 
-    fetch("/api/injects")
+    // Function to fetch injects data and update the UI
+    function fetchAndUpdateInjects() {
+        fetch("/api/injects")
         .then((response) => {
             if (!response.ok) {
                 Promise.reject(response)
@@ -559,5 +561,13 @@
         .catch((error) => {
             console.error(error)
         });
+    }
+
+    // Initial load
+    fetchAndUpdateInjects();
+
+    // Set up auto-refresh every 30 seconds
+    const REFRESH_INTERVAL = 30000; // 30 seconds
+    setInterval(fetchAndUpdateInjects, REFRESH_INTERVAL);
 </script>
 {{ end }}

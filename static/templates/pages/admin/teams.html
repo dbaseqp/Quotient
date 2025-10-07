@@ -2,88 +2,228 @@
 <div class="d-flex w-100 h-100">
     <div class="pt-4 w-100 h-100 overflow-y-scroll">
         <div class="container">
+            <!-- Alert for feedback messages -->
+            <div id="alertContainer" class="row mb-3" style="display: none;">
+                <div id="alertMessage" class="alert" role="alert"></div>
+            </div>
             <div class="row">
                 <h3>Set Team Identifiers</h3>
-                <form onsubmit="return formSubmit(event)">
-                    <table class="table" id="team-table">
-                        <thead>
-                            <tr>
-                                <th>Team Name</th>
-                                <th>Identifier</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="2">
-                                    <div class="d-flex justify-content-end">
-                                        <button class="btn btn-primary px-5" type="submit">Save</button>
-                                    </div>
-                                </td>
-                            </tr>
-                        </tfoot>
-                    </table>
+                <form onsubmit="return formSubmit(event)" id="teamForm">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="sticky-top bg-white">
+                                <tr>
+                                    <th>Team Name</th>
+                                    <th>
+                                        Identifier
+                                        <button id="generateIdentifiers" class="btn btn-sm btn-primary ms-2" 
+                                                data-bs-toggle="tooltip" title="Extract numbers from team names to use as identifiers">
+                                            Generate IDs
+                                        </button>
+                                    </th>
+                                    <th class="text-center">
+                                        Status
+                                        <div class="btn-group btn-group-sm ms-2">
+                                            <button id="setAllActive" class="btn btn-success" 
+                                                    data-bs-toggle="tooltip" title="Set all teams to active">
+                                                All Active
+                                            </button>
+                                            <button id="setAllInactive" class="btn btn-danger" 
+                                                    data-bs-toggle="tooltip" title="Set all teams to inactive">
+                                                All Inactive
+                                            </button>
+                                        </div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="3">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span id="teamCount" class="text-muted"></span>
+                                            <button class="btn btn-primary px-5" type="submit" 
+                                                    data-bs-toggle="tooltip" title="Save changes">Save</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
                 </form>
             </div>
             <script>
+                // Initialize tooltips
+                document.addEventListener('DOMContentLoaded', function() {
+                    // Initialize tooltips if Bootstrap's tooltip JS is available
+                    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+                        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                        tooltipTriggerList.map(function (tooltipTriggerEl) {
+                            return new bootstrap.Tooltip(tooltipTriggerEl);
+                        });
+                    }
+                });
+                // Function to extract numbers from team name (e.g., "team01" -> "01")
+                const extractIdentifierFromName = (name) => {
+                    const matches = name.match(/\d+/);
+                    return matches ? matches[0] : '';
+                };
+
+                // Show alert message
+                const showAlert = (message, type) => {
+                    const alertContainer = document.getElementById('alertContainer');
+                    const alertMessage = document.getElementById('alertMessage');
+                    alertMessage.textContent = message;
+                    alertMessage.className = `alert alert-${type}`;
+                    alertContainer.style.display = 'block';
+                    // Auto-hide after 5 seconds
+                    setTimeout(() => {
+                        alertContainer.style.display = 'none';
+                    }, 5000);
+                };
+                // Track changes to show unsaved changes indicator
+                let hasUnsavedChanges = false;
+                let changedFields = new Set();
+                const markAsChanged = (field) => {
+                    hasUnsavedChanges = true;
+                    // Add to set of changed fields if provided
+                    if (field) {
+                        changedFields.add(field);
+                    }
+                    document.querySelector('form button[type="submit"]').classList.remove('btn-primary');
+                    document.querySelector('form button[type="submit"]').classList.add('btn-warning');
+                    document.querySelector('form button[type="submit"]').textContent = 'Save*';
+                };
+                const markAsSaved = () => {
+                    hasUnsavedChanges = false;
+                    changedFields.clear();
+                    // Reset save button
+                    document.querySelector('form button[type="submit"]').classList.remove('btn-warning');
+                    document.querySelector('form button[type="submit"]').classList.add('btn-primary');
+                    document.querySelector('form button[type="submit"]').textContent = 'Save';
+                    // Remove highlighting from all changed fields
+                    document.querySelectorAll('input.border-warning').forEach(input => {
+                        input.classList.remove('border-warning');
+                    });
+                };
+                // Warn before leaving page with unsaved changes
+                window.addEventListener('beforeunload', (e) => {
+                    if (hasUnsavedChanges) {
+                        e.preventDefault();
+                        e.returnValue = '';
+                        return '';
+                    }
+                });
+
+                // Set all teams to active
+                document.getElementById('setAllActive').addEventListener('click', (e) => {
+                    e.preventDefault(); // Prevent form submission
+                    const toggles = document.querySelectorAll('tbody tr .form-check-input');
+                    let changed = false;
+                    toggles.forEach(toggle => {
+                        if (!toggle.checked) {
+                            toggle.checked = true;
+                            toggle.classList.add('border-warning');
+                            markAsChanged(toggle);
+                            changed = true;
+                        }
+                    });
+                });
+
+                // Set all teams to inactive
+                document.getElementById('setAllInactive').addEventListener('click', (e) => {
+                    e.preventDefault(); // Prevent form submission
+                    const toggles = document.querySelectorAll('tbody tr .form-check-input');
+                    let changed = false;
+                    toggles.forEach(toggle => {
+                        if (toggle.checked) {
+                            toggle.checked = false;
+                            toggle.classList.add('border-warning');
+                            markAsChanged(toggle);
+                            changed = true;
+                        }
+                    });
+                });
+
+                // Generate identifiers from team names
+                document.getElementById('generateIdentifiers').addEventListener('click', (e) => {
+                    e.preventDefault(); // Prevent form submission
+                    const rows = document.querySelectorAll('tbody tr');
+                    let changed = false;
+                    rows.forEach(row => {
+                        const teamName = row.querySelector('td:first-child').textContent;
+                        const identifierInput = row.querySelector('input[type="text"]');
+                        const newIdentifier = extractIdentifierFromName(teamName);
+                        if (identifierInput.value !== newIdentifier) {
+                            identifierInput.value = newIdentifier;
+                            identifierInput.classList.add('border-warning');
+                            markAsChanged(identifierInput);
+                            changed = true;
+                        }
+                    });
+                });
+
                 fetch('/api/teams')
                     .then(response => response.json())
                     .then(data => {
                         const TBODY = document.querySelector('#team-table tbody');
                         data.forEach(team => {
                             const ROW = document.createElement('tr');
+                            // Team name cell
                             ROW.setAttribute('data-team', team.ID);
                             const NAME_CELL = document.createElement('td');
                             NAME_CELL.textContent = team.Name;
+                            // Identifier cell
                             const ID_CELL = document.createElement('td');
-
-                            const INPUT_GROUP = document.createElement('div');
-                            INPUT_GROUP.classList.add('input-group', 'mb-3');
-
                             const ID_INPUT = document.createElement('input');
                             ID_INPUT.type = 'text';
                             ID_INPUT.classList.add('form-control');
                             ID_INPUT.value = team.Identifier;
                             ID_INPUT.setAttribute('aria-label', 'Team Identifier');
                             ID_INPUT.setAttribute('aria-describedby', `button-addon-${team.ID}`);
-                            const ACTIVE_BUTTON = document.createElement('button');
-                            ACTIVE_BUTTON.classList.add('btn', 'btn-secondary');
-                            ACTIVE_BUTTON.type = 'button';
-                            ACTIVE_BUTTON.textContent = 'Active';
-                            ACTIVE_BUTTON.disabled = team.Active;
-
-                            const INACTIVE_BUTTON = document.createElement('button');
-                            INACTIVE_BUTTON.classList.add('btn', 'btn-secondary');
-                            INACTIVE_BUTTON.type = 'button';
-                            INACTIVE_BUTTON.textContent = 'Inactive';
-                            INACTIVE_BUTTON.disabled = !team.Active;
-
-                            ACTIVE_BUTTON.addEventListener('click', () => {
-                                if (!ACTIVE_BUTTON.disabled) {
-                                    ACTIVE_BUTTON.disabled = true;
-                                    INACTIVE_BUTTON.disabled = false;
-                                }
+                            // Track changes and highlight changed fields
+                            ID_INPUT.addEventListener('input', () => {
+                                ID_INPUT.classList.add('border-warning');
+                                markAsChanged(ID_INPUT);
                             });
-
-                            INACTIVE_BUTTON.addEventListener('click', () => {
-                                if (!INACTIVE_BUTTON.disabled) {
-                                    INACTIVE_BUTTON.disabled = true;
-                                    ACTIVE_BUTTON.disabled = false;
-                                }
+                            ID_CELL.appendChild(ID_INPUT);
+                            // Status cell with toggle switch
+                            const STATUS_CELL = document.createElement('td');
+                            STATUS_CELL.classList.add('text-center');
+                            const TOGGLE_DIV = document.createElement('div');
+                            TOGGLE_DIV.classList.add('form-check', 'form-switch', 'd-inline-block');
+                            const TOGGLE_INPUT = document.createElement('input');
+                            TOGGLE_INPUT.classList.add('form-check-input');
+                            TOGGLE_INPUT.type = 'checkbox';
+                            TOGGLE_INPUT.role = 'switch';
+                            TOGGLE_INPUT.id = `active-toggle-${team.ID}`;
+                            TOGGLE_INPUT.checked = team.Active;
+                            // Track changes and highlight changed fields
+                            TOGGLE_INPUT.addEventListener('change', () => {
+                                TOGGLE_INPUT.classList.add('border-warning');
+                                markAsChanged(TOGGLE_INPUT);
                             });
-
-                            INPUT_GROUP.appendChild(ID_INPUT);
-                            INPUT_GROUP.appendChild(ACTIVE_BUTTON);
-                            INPUT_GROUP.appendChild(INACTIVE_BUTTON);
-                            ID_CELL.appendChild(INPUT_GROUP);
-
+                            const TOGGLE_LABEL = document.createElement('label');
+                            TOGGLE_LABEL.classList.add('form-check-label');
+                            TOGGLE_LABEL.htmlFor = `active-toggle-${team.ID}`;
+                            TOGGLE_LABEL.textContent = 'Active';
+                            TOGGLE_DIV.appendChild(TOGGLE_INPUT);
+                            TOGGLE_DIV.appendChild(TOGGLE_LABEL);
+                            STATUS_CELL.appendChild(TOGGLE_DIV);
+                            // Add cells to row
                             ROW.appendChild(NAME_CELL);
                             ROW.appendChild(ID_CELL);
+                            ROW.appendChild(STATUS_CELL);
                             TBODY.appendChild(ROW);
                         });
+                        // Update team count
+                        document.getElementById('teamCount').textContent = `${data.length} teams`;
                     })
-                    .catch(error => console.error('Error fetching teams:', error));
+                    .catch(error => {
+                        console.error('Error fetching teams:', error);
+                        showAlert('Failed to load teams. Please try refreshing the page.', 'danger');
+                    });
 
                 const formSubmit = (event) => {
                     event.preventDefault();
@@ -98,6 +238,10 @@
                         const active = activeButton ? activeButton.disabled : false;
                         teamsData.push({ ID: teamID, Identifier: identifier, Active: active });
                     });
+                    // Show loading state
+                    const submitButton = document.querySelector('form button[type="submit"]');
+                    submitButton.disabled = true;
+                    submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
                     fetch(`/api/admin/teams`, {
                         method: 'POST',
                         headers: {
@@ -112,10 +256,17 @@
                             return response.json();
                         })
                         .then((data) => {
-                            window.location.reload()
+                            showAlert('Teams updated successfully!', 'success');
+                            // Reset button state and mark as saved
+                            submitButton.disabled = false;
+                            markAsSaved(); // This will set the correct text and style
                         })
                         .catch(error => {
-                            console.error('Error updating team:', error)
+                            console.error('Error updating team:', error);
+                            showAlert('Failed to update teams. Please try again.', 'danger');
+                            // Reset button state but keep the warning style
+                            submitButton.disabled = false;
+                            submitButton.textContent = 'Save*';
                         });
                 }
 </script>

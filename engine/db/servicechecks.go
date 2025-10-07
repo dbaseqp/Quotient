@@ -167,6 +167,36 @@ func LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
 	return nil
 }
 
+type ServiceScoreData struct {
+	TeamID       uint
+	ServiceName  string
+	Points       int
+	Violations   int
+	TotalPenalty int
+}
+
+func GetServiceScores() ([]ServiceScoreData, error) {
+	var results []ServiceScoreData
+
+	err := db.Model(&ServiceCheckSchema{}).
+		Select(`
+			service_check_schemas.team_id,
+			service_check_schemas.service_name,
+			SUM(CASE WHEN service_check_schemas.result = ? THEN service_check_schemas.points ELSE 0 END) as points,
+			COUNT(sla_schemas.round_id) as violations,
+			COALESCE(SUM(sla_schemas.penalty), 0) as total_penalty
+		`, true).
+		Joins("LEFT JOIN sla_schemas ON service_check_schemas.team_id = sla_schemas.team_id AND service_check_schemas.service_name = sla_schemas.service_name").
+		Group("service_check_schemas.team_id, service_check_schemas.service_name").
+		Find(&results).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
 func LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) error {
 	rows, err := db.Table("service_check_schemas").Select("team_id, service_name, result").Rows()
 	if err != nil {
