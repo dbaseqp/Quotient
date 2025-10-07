@@ -34,9 +34,14 @@ func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
-		// Run query
-		q := c.Query[rand.Intn(len(c.Query))]
+		// Select a random query
+		// If no queries defined, just use empty query
+		var q queryData
+		if len(c.Query) != 0 {
+			q = c.Query[rand.Intn(len(c.Query))]
+		}
 
+		// Open the DB handle
 		db, err := sql.Open(c.Kind, fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", username, password, c.Target, c.Port, q.Database))
 		if err != nil {
 			checkResult.Error = "creating db handle failed"
@@ -46,7 +51,7 @@ func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		}
 		defer db.Close()
 
-		// Check db connection
+		// Check DB connection
 		err = db.PingContext(context.TODO())
 		if err != nil {
 			checkResult.Error = "db connection or login failed"
@@ -55,62 +60,91 @@ func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
-		// Query the DB
-		var rows *sql.Rows
-		if q.Command == "" {
-			checkResult.Debug = "no query command, only checking connection. creds used were " + username + ":" + password
+		// If no query command to run, return success
+		if len(c.Query) == 0 || q.Command == "" {
+			checkResult.Debug = "no query command specified, only checking connection. creds used were " + username + ":" + password
 			checkResult.Status = true
 			response <- checkResult
+			return
 		}
 
+		// Query the DB
+		var rows *sql.Rows
 		rows, err = db.QueryContext(context.TODO(), q.Command)
 		if err != nil {
-			checkResult.Error = "could not query db for database " + q.Command
+			checkResult.Error = "could not query db with command " + q.Command
 			checkResult.Debug = err.Error()
 			response <- checkResult
 			return
 		}
 		defer rows.Close()
 
-		var output string
-		if q.Output != "" {
-			// Check the rows
-			for rows.Next() {
-				// Grab a value
-				err := rows.Scan(&output)
-				if err != nil {
-					checkResult.Error = "could not get row values"
-					checkResult.Debug = err.Error()
-					response <- checkResult
-					return
-				}
-				if q.UseRegex {
-					re := regexp.MustCompile(q.Output)
-					if re.Match([]byte(output)) {
-						checkResult.Status = true
-						checkResult.Debug = "found regex match: " + output + ". creds used were " + username + ":" + password
-						response <- checkResult
-					}
-				} else {
-					if strings.TrimSpace(output) == q.Output {
-						checkResult.Status = true
-						checkResult.Debug = "found exact string match: " + output + ".creds used were " + username + ":" + password
-						response <- checkResult
-						break
-					}
-				}
-			}
-			// Check for error in the rows
-			if rows.Err() != nil {
-				checkResult.Error = "sql rows experienced an error"
-				checkResult.Debug = rows.Err().Error()
+		// If no output to check, return success
+		if q.Output == "" {
+			checkResult.Debug = "ran query sucessfully and no output to check against. creds used were " + username + ":" + password
+			checkResult.Status = true
+			response <- checkResult
+			return
+		}
+
+		// Check the rows
+		re := regexp.MustCompile(q.Output)
+		cols, err := rows.Columns()
+		if err != nil {
+			// handle error
+			checkResult.Error = "could not get sql columns"
+			checkResult.Debug = err.Error()
+			response <- checkResult
+			return
+		}
+
+		// Make a slice for the values
+		row := make([][]byte, len(cols))
+		rowPtr := make([]any, len(cols))
+		for i := range row {
+			rowPtr[i] = &row[i]
+		}
+
+		for rows.Next() {
+			// Grab a value
+			err := rows.Scan(rowPtr...)
+			if err != nil {
+				checkResult.Error = "could not get row values"
+				checkResult.Debug = err.Error()
 				response <- checkResult
 				return
 			}
+
+			// TODO: by default we check against the first column
+			// Check the regex match
+			if q.UseRegex {
+				if re.Match(row[0]) {
+					checkResult.Status = true
+					checkResult.Debug = "found regex match: " + string(row[0]) + ". creds used were " + username + ":" + password
+					response <- checkResult
+					return
+				}
+				// Check the direct string match
+			} else {
+				if strings.TrimSpace(string(row[0])) == q.Output {
+					checkResult.Status = true
+					checkResult.Debug = "found exact string match: " + string(row[0]) + ". creds used were " + username + ":" + password
+					response <- checkResult
+					return
+				}
+			}
 		}
 
-		checkResult.Debug = "desired output " + output + "not found in any output. creds used were " + username + ":" + password
-		checkResult.Error = "output incorrect"
+		// Check for error in the rows
+		if rows.Err() != nil {
+			checkResult.Error = "sql rows experienced an error"
+			checkResult.Debug = rows.Err().Error()
+			response <- checkResult
+			return
+		}
+
+		// No matches found
+		checkResult.Debug = "no matching output found for query. creds used were " + username + ":" + password
 		response <- checkResult
 	}
 
@@ -141,6 +175,5 @@ func (c *Sql) Verify(box string, ip string, points int, timeout int, slapenalty 
 			regexp.MustCompile(q.Output)
 		}
 	}
-
 	return nil
 }

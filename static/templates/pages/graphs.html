@@ -146,7 +146,8 @@
                                         const teamID = TEAMMAP[series[i].name]
                                         const serviceName = status.x
                                         const pointID = `status-${teamID}-${j}`
-
+                                        const rowHeight = STATUSCHART.w.globals.gridHeight / series.length;
+                                        
                                         let point = {
                                             x: serviceName,
                                             y: STATUSCHART.w.globals.yRange[0],
@@ -154,7 +155,7 @@
                                             id: pointID,
                                             image: {
                                                 path: img,
-                                                offsetY: (5+(series.length-1)*17)-i*17,
+                                                offsetY: (rowHeight * series.length) + (rowHeight / 2) - (i * rowHeight) - rowHeight,
                                             },
                                             click: () => {
                                                 if (teamID !== undefined) {
