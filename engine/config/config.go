@@ -92,11 +92,14 @@ type OIDCAuthConfig struct {
 	OIDCInjectGroups []string
 
 	// Token Expiration Settings (in seconds)
-	OIDCAccessTokenExpiry         int
-	OIDCRefreshTokenExpiryTeam    int
-	OIDCRefreshTokenExpiryAdmin   int
-	OIDCRefreshTokenExpiryRed     int
-	OIDCRefreshTokenExpiryInject  int
+	OIDCAccessTokenExpiry        int
+	OIDCRefreshTokenExpiryTeam   int
+	OIDCRefreshTokenExpiryAdmin  int
+	OIDCRefreshTokenExpiryRed    int
+	OIDCRefreshTokenExpiryInject int
+
+	// UI Settings
+	OIDCDisableLocalLogin bool
 }
 
 type SslConfig struct {

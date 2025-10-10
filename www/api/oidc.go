@@ -401,6 +401,14 @@ func mapGroupsToRoles(groups []string) []string {
 		}
 	}
 
+	// Check inject groups
+	for _, injectGroup := range conf.OIDCSettings.OIDCInjectGroups {
+		if matchesGroup(groups, injectGroup) {
+			roles = append(roles, "inject")
+			break
+		}
+	}
+
 	// Check red groups
 	for _, redGroup := range conf.OIDCSettings.OIDCRedGroups {
 		if matchesGroup(groups, redGroup) {

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/corpix/uarand"
@@ -43,8 +44,18 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				InsecureSkipVerify: true,
 			},
 		}
-		client := &http.Client{Transport: tr}
-		req, err := http.NewRequest("GET", fmt.Sprintf("%s://%s:%d%s", c.Scheme, c.Target, c.Port, u.Path), nil)
+		// Set client timeout to slightly less than check timeout to get better error messages
+		clientTimeout := time.Duration(c.Timeout-1) * time.Second
+		if clientTimeout < 1*time.Second {
+			clientTimeout = 30 * time.Second // fallback default
+		}
+		client := &http.Client{
+			Transport: tr,
+			Timeout:   clientTimeout,
+		}
+
+		requestURL := fmt.Sprintf("%s://%s:%d%s", c.Scheme, c.Target, c.Port, u.Path)
+		req, err := http.NewRequest("GET", requestURL, nil)
 		if err != nil {
 			checkResult.Error = "error creating web request"
 			checkResult.Debug = err.Error()
@@ -54,10 +65,17 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 
 		req.Header.Set("User-Agent", ua)
 
+		// Store request info for timeout debugging
+		checkResult.Debug = fmt.Sprintf("Attempting GET %s", requestURL)
+
 		resp, err := client.Do(req)
 		if err != nil {
 			checkResult.Error = "web request errored out"
-			checkResult.Debug = err.Error() + " for url " + u.Path
+			if strings.Contains(err.Error(), "Client.Timeout exceeded") {
+				checkResult.Debug = fmt.Sprintf("HTTP request to %s timed out after %v (TCP connection may have succeeded but server did not respond)", requestURL, clientTimeout)
+			} else {
+				checkResult.Debug = err.Error() + " for url " + u.Path
+			}
 			response <- checkResult
 			return
 		}
