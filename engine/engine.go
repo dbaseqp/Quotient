@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"quotient/engine/checks"
 	"quotient/engine/config"
@@ -471,6 +473,16 @@ func (se *ScoringEngine) rvb() error {
 	return nil
 }
 
+func sanitizeDBString(s string) string {
+	// remove nulls
+	s = strings.ReplaceAll(s, "\x00", "")
+	// if invalid UTF-8, replace with �
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "")
+	}
+	return s
+}
+
 func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 	if len(results) == 0 {
 		slog.Warn("No results collected for round", "round", se.CurrentRound)
@@ -483,11 +495,11 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 		dbResults = append(dbResults, db.ServiceCheckSchema{
 			TeamID:      result.TeamID,
 			RoundID:     uint(se.CurrentRound),
-			ServiceName: result.ServiceName,
+			ServiceName: sanitizeDBString(result.ServiceName),
 			Points:      result.Points,
 			Result:      result.Status,
-			Error:       result.Error,
-			Debug:       result.Debug,
+			Error:       sanitizeDBString(result.Error),
+			Debug:       sanitizeDBString(result.Debug),
 		})
 	}
 
