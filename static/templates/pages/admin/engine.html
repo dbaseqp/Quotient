@@ -39,42 +39,44 @@
                     </div>
                 </div>
                 <script>
-                    const PROGRESS = document.getElementById('roundProgress');
-                    let LASTROUND = 0;
+                    const PROGRESS = document.getElementById("roundProgress");
+                    let LASTROUND = null;
                     let CURRENTROUND = 0;
                     let NEXTROUND = 0;
                     let RUNNING = false;
 
-                    document.getElementById('pauseButton').addEventListener('click', () => {
-                        fetch('/api/engine/pause', {
-                            method: 'POST',
+                    document.getElementById("pauseButton").addEventListener("click", () => {
+                        fetch("/api/engine/pause", {
+                            method: "POST",
                             headers: {
-                                'Content-Type': 'application/json',
+                                "Content-Type": "application/json",
                             },
                             body: JSON.stringify({
-                                pause: document.getElementById('pauseButton').textContent.includes('Pause'),
+                                pause: document.getElementById("pauseButton").textContent.includes("Pause"),
                             }),
                         })
                             .then(response => response.json())
                             .then((data) => {
                                 window.location.reload()
                             })
-                            .catch(error => console.error('Error pausing engine:', error));
+                            .catch(error => console.error("Error pausing engine:", error));
                     });
-                    document.getElementById('resetButton').addEventListener('click', () => {
+
+                    document.getElementById("resetButton").addEventListener("click", () => {
                         if (confirm("This will reset all scores and the engine but keep injects and their submissions. Are you sure?")) {
-                            fetch('/api/engine/reset')
+                            fetch("/api/engine/reset")
                                 .then(response => response.json())
                                 .then((data) => {
                                     window.location.reload()
                                 })
                                 .catch(error => {
-                                    console.error('Error resetting engine:', error)
+                                    console.error("Error resetting engine:", error)
                                 });
                         }
                     });
+
                     function getEngineData() {
-                        fetch('/api/engine')
+                        fetch("/api/engine")
                             .then(response => response.json())
                             .then(data => {
                                 LASTROUND = data["last_round"];
@@ -86,78 +88,88 @@
                                 let current_round_time = new Date(CURRENTROUND).toLocaleString();
                                 let next_round_time = new Date(NEXTROUND).toLocaleString();
 
-                                document.getElementById('round__number').textContent = `Round ${LASTROUND.ID} was at ${last_round_start_time}.
+                                document.getElementById("round__number").textContent = `Round ${LASTROUND.ID} was at ${last_round_start_time}.
                                 Round ${LASTROUND.ID + 1} started at ${current_round_time} and should end at ${next_round_time}.`;
 
-                                const PAUSE_BUTTON = document.getElementById('pauseButton')
+                                const PAUSE_BUTTON = document.getElementById("pauseButton")
+                                PAUSE_BUTTON.classList.remove("btn-warning", "btn-success");
                                 if (RUNNING) {
-                                    PAUSE_BUTTON.textContent = 'Pause Engine';
-                                    PAUSE_BUTTON.classList.add('btn-warning');
+                                    PAUSE_BUTTON.textContent = "Pause Engine";
+                                    PAUSE_BUTTON.classList.add("btn-warning");
                                 } else {
-                                    PAUSE_BUTTON.textContent = 'Resume Engine';
-                                    PAUSE_BUTTON.classList.add('btn-success');
+                                    PAUSE_BUTTON.textContent = "Resume Engine";
+                                    PAUSE_BUTTON.classList.add("btn-success");
                                 }
+                                updateProgress();
                             })
-                            .catch(error => console.error('Error fetching engine status:', error));
+                            .catch(error => console.error("Error fetching engine status:", error));
                     }
+
                     function updateProgress() {
-                        const now = Date.now() / 1000; // current time in seconds
+                        if (!LASTROUND || !CURRENTROUND || !NEXTROUND) {
+                            return;
+                        }
+
+                        const now = Date.now() / 1000;
                         let last_round_start_time = new Date(CURRENTROUND) / 1000;
                         let next_round_start_time = new Date(NEXTROUND) / 1000;
 
                         const elapsed = now - last_round_start_time;
                         const duration = next_round_start_time - last_round_start_time;
 
-                        const progress = Math.round((elapsed / duration) * 100);
+                        if (duration <= 0) {
+                            return;
+                        }
 
-                        if (progress >= 100) {
-                            PROGRESS.textContent = '100%';
-                            PROGRESS.style.width = '100%';
-                            PROGRESS.setAttribute('aria-valuenow', 100);
-                            if (RUNNING) {
-                                window.location.reload();
-                            }
+                        const progress = Math.min(100, Math.max(0, Math.round((elapsed / duration) * 100)));
+
+                        if (progress >= 100 && RUNNING) {
+                            PROGRESS.textContent = "100%";
+                            PROGRESS.style.width = "100%";
+                            PROGRESS.setAttribute("aria-valuenow", 100);
+                            getEngineData();
                             return;
                         }
 
                         PROGRESS.textContent = `${progress}%`;
-
                         PROGRESS.style.width = `${progress}%`;
-                        PROGRESS.setAttribute('aria-valuenow', progress);
+                        PROGRESS.setAttribute("aria-valuenow", progress);
                     }
                     function fetchScores() {
-                        fetch('/api/engine/export/scores')
+                        fetch("/api/engine/export/scores")
                             .then((response) => {
                                 if (!response.ok) {
-                                    throw new Error('Network response was not ok');
+                                    throw new Error("Network response was not ok");
                                 }
                                 return response.json()
                             })
                             .then((data) => {
                                 scoreData = data;
-                                document.getElementById('scoringData').textContent = JSON.stringify(data, null, 2);
+                                document.getElementById("scoringData").textContent = JSON.stringify(data, null, 2);
                             })
                             .catch(error => {
-                                console.error('Error fetching scoring data:', error)
+                                console.error("Error fetching scoring data:", error)
                             });
                     }
+
                     async function exportJSON() {
                         await fetchScores();
                         const dataStr = JSON.stringify(scoreData, null, 2);
-                        const dataBlob = new Blob([dataStr], {type: 'application/json'});
+                        const dataBlob = new Blob([dataStr], {type: "application/json"});
                         const url = URL.createObjectURL(dataBlob);
-                        const link = document.createElement('a');
+                        const link = document.createElement("a");
                         link.href = url;
-                        link.download = 'scoring_data.json';
+                        link.download = "scoring_data.json";
                         document.body.appendChild(link);
                         link.click();
                         document.body.removeChild(link);
                         URL.revokeObjectURL(url);
                     }
+
                     async function exportCSV() {
                         await fetchScores();
-                        const headers = ['Team', 'Service', 'Service Points', 'SLA Violations', 'SLA Penalty', 'Total Points'];
-                        const csvRows = [headers.join(',')];
+                        const headers = ["Team", "Service", "Service Points", "SLA Violations", "SLA Penalty", "Total Points"];
+                        const csvRows = [headers.join(",")];
 
                         scoreData.forEach(team => {
                             team.services.forEach(service => {
@@ -169,16 +181,16 @@
                                     service.sla_penalty,
                                     team.total_points
                                 ];
-                                csvRows.push(row.join(','));
+                                csvRows.push(row.join(","));
                             });
                         });
 
-                        const csvStr = csvRows.join('\n');
-                        const dataBlob = new Blob([csvStr], {type: 'text/csv'});
+                        const csvStr = csvRows.join("\n");
+                        const dataBlob = new Blob([csvStr], {type: "text/csv"});
                         const url = URL.createObjectURL(dataBlob);
-                        const link = document.createElement('a');
+                        const link = document.createElement("a");
                         link.href = url;
-                        link.download = 'scoring_data.csv';
+                        link.download = "scoring_data.csv";
                         document.body.appendChild(link);
                         link.click();
                         document.body.removeChild(link);
@@ -186,10 +198,7 @@
                     }
 
                     fetchScores();
-                    getEngineData()
-                    updateProgress()
-
-                    // update every second
+                    getEngineData();
                     setInterval(updateProgress, 1000);
                 </script>
             </div>

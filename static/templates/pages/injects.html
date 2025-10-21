@@ -554,9 +554,14 @@
             const TOOLTIPS = new bootstrap.Tooltip(document.body, {
                 selector: '[data-bs-toggle="tooltip"]'
             });
-            const table = new DataTable('.submission-table', {
-                order: [[2, 'desc']], // Sort by the third column (Submission Time) in descending order
-            })
+            // Only initialize DataTables on elements that aren't already initialized
+            document.querySelectorAll('.submission-table').forEach(table => {
+                if (!table.classList.contains('dataTable')) {
+                    new DataTable(table, {
+                        order: [[2, 'desc']], // Sort by the third column (Submission Time) in descending order
+                    });
+                }
+            });
         })
         .catch((error) => {
             console.error(error)
