@@ -24,13 +24,15 @@ func GetTeams(w http.ResponseWriter, r *http.Request) {
 
 		// Check if this is an OIDC user
 		var teamToShow *db.TeamSchema
+		var isOIDCUser bool
 		if userInfo, exists := GetOIDCUserInfo(username); exists {
+			isOIDCUser = true
 			// Map OIDC user to team based on their groups
 			teamToShow = mapOIDCUserToTeam(teams, userInfo.Groups)
 		}
 
-		// Fall back to username-based lookup for local users
-		if teamToShow == nil {
+		// Fall back to username-based lookup only for non-OIDC users
+		if !isOIDCUser && teamToShow == nil {
 			me, err := db.GetTeamByUsername(username)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -99,12 +101,30 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
-		me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+		username := r.Context().Value("username").(string)
+
+		var userTeamID uint
+		if userInfo, exists := GetOIDCUserInfo(username); exists {
+			// OIDC user - get team from group mapping
+			teams, err := db.GetTeams()
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if team := mapOIDCUserToTeam(teams, userInfo.Groups); team != nil {
+				userTeamID = team.ID
+			}
+		} else {
+			// Local user - get team from username
+			me, err := db.GetTeamByUsername(username)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			userTeamID = me.ID
 		}
-		if teamID != me.ID {
+
+		if teamID != userTeamID {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
@@ -151,12 +171,30 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
-		me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+		username := r.Context().Value("username").(string)
+
+		var userTeamID uint
+		if userInfo, exists := GetOIDCUserInfo(username); exists {
+			// OIDC user - get team from group mapping
+			teams, err := db.GetTeams()
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if team := mapOIDCUserToTeam(teams, userInfo.Groups); team != nil {
+				userTeamID = team.ID
+			}
+		} else {
+			// Local user - get team from username
+			me, err := db.GetTeamByUsername(username)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			userTeamID = me.ID
 		}
-		if teamID != me.ID {
+
+		if teamID != userTeamID {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
