@@ -36,10 +36,11 @@ type ConfigSettings struct {
 	// Restrict information
 	UISettings UIConfig `toml:"UISettings,omitempty" json:"UISettings,omitempty"`
 
-	Admin []Admin
-	Red   []Red
-	Team  []Team
-	Box   []Box
+	Admin  []Admin
+	Red    []Red
+	Team   []Team
+	Inject []Inject
+	Box    []Box
 }
 
 type RequiredConfig struct {
@@ -60,13 +61,14 @@ type Credlist struct {
 }
 
 type LdapAuthConfig struct {
-	LdapConnectUrl   string
-	LdapBindDn       string
-	LdapBindPassword string
-	LdapSearchBaseDn string
-	LdapAdminGroupDn string
-	LdapRedGroupDn   string
-	LdapTeamGroupDn  string
+	LdapConnectUrl    string
+	LdapBindDn        string
+	LdapBindPassword  string
+	LdapSearchBaseDn  string
+	LdapAdminGroupDn  string
+	LdapRedGroupDn    string
+	LdapTeamGroupDn   string
+	LdapInjectGroupDn string
 }
 
 type SslConfig struct {
@@ -108,6 +110,7 @@ type User struct {
 type Admin User
 type Red User
 type Team User
+type Inject User
 
 type Box struct {
 	Name string
@@ -216,6 +219,11 @@ func checkConfig(conf *ConfigSettings) error {
 	for _, team := range conf.Team {
 		if team.Name == "" || team.Pw == "" {
 			errResult = errors.Join(errResult, errors.New("team "+team.Name+" missing required property"))
+		}
+	}
+	for _, inject := range conf.Inject {
+		if inject.Name == "" || inject.Pw == "" {
+			errResult = errors.Join(errResult, errors.New("inject "+inject.Name+" missing required property"))
 		}
 	}
 
