@@ -5,7 +5,14 @@ import (
 	"log/slog"
 	"net/http"
 	"quotient/engine/db"
+	"regexp"
 )
+
+var validIdentifierRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+func isValidIdentifier(identifier string) bool {
+	return validIdentifierRegex.MatchString(identifier)
+}
 
 func PauseEngine(w http.ResponseWriter, r *http.Request) {
 	type Form struct {
@@ -149,6 +156,14 @@ func UpdateTeams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, team := range form.Teams {
+		// Validate identifier format to prevent command injection
+		if !isValidIdentifier(team.Identifier) {
+			w.WriteHeader(http.StatusBadRequest)
+			d, _ := json.Marshal(map[string]string{"error": "Invalid identifier format. Only alphanumeric, hyphens, and underscores allowed."})
+			w.Write(d)
+			return
+		}
+
 		if err := db.UpdateTeam(uint(team.TeamID), team.Identifier, team.Active); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
