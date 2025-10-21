@@ -13,3 +13,4 @@ paramiko
 pexpect
 argparse
 beautifulsoup4
+vncdotool
