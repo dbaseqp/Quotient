@@ -26,7 +26,7 @@
             {{ if or (and (contains .roles "team") (not .config.UISettings.DisableGraphsForBlueTeam) ) (contains .roles "admin") (contains .roles "red") }}
             {{ template "navbutton" (dict "pipe" . "title" "Graphs" "href" "/graphs" "icon" "bi-graph-up") }}
             {{ end }}
-            {{ if or (contains .roles "team") (contains .roles "admin") }}
+            {{ if or (contains .roles "team") (contains .roles "admin") (contains .roles "inject") }}
             {{ template "navbutton" (dict "pipe" . "title" "Services" "href" "/services" "icon" "bi-speedometer2") }}
             {{ template "navbutton" (dict "pipe" . "title" "Injects" "href" "/injects" "icon" "bi-envelope") }}
             {{ template "navbutton" (dict "pipe" . "title" "PCRs" "href" "/pcr" "icon" "bi-key") }}
