@@ -417,6 +417,14 @@ func mapGroupsToRoles(groups []string) []string {
 		}
 	}
 
+	// Check inject groups
+	for _, injectGroup := range conf.OIDCSettings.OIDCInjectGroups {
+		if matchesGroup(groups, injectGroup) {
+			roles = append(roles, "inject")
+			break
+		}
+	}
+
 	return roles
 }
 
@@ -448,6 +456,13 @@ func getRefreshTokenExpiry(roles []string) int {
 	}
 	if slices.Contains(roles, "red") {
 		expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryRed
+		if expiry == 0 {
+			return defaultExpiry
+		}
+		return expiry
+	}
+	if slices.Contains(roles, "inject") {
+		expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryInject
 		if expiry == 0 {
 			return defaultExpiry
 		}

@@ -85,16 +85,18 @@ type OIDCAuthConfig struct {
 	OIDCScopes  []string
 
 	// Group Mapping
-	OIDCGroupClaim  string
-	OIDCAdminGroups []string
-	OIDCRedGroups   []string
-	OIDCTeamGroups  []string
+	OIDCGroupClaim   string
+	OIDCAdminGroups  []string
+	OIDCRedGroups    []string
+	OIDCTeamGroups   []string
+	OIDCInjectGroups []string
 
 	// Token Expiration Settings (in seconds)
-	OIDCAccessTokenExpiry       int
-	OIDCRefreshTokenExpiryTeam  int
-	OIDCRefreshTokenExpiryAdmin int
-	OIDCRefreshTokenExpiryRed   int
+	OIDCAccessTokenExpiry         int
+	OIDCRefreshTokenExpiryTeam    int
+	OIDCRefreshTokenExpiryAdmin   int
+	OIDCRefreshTokenExpiryRed     int
+	OIDCRefreshTokenExpiryInject  int
 }
 
 type SslConfig struct {
@@ -110,8 +112,6 @@ type MiscConfig struct {
 	LogFile             string
 
 	StartPaused bool
-
-	TeamCount int // Auto-generate teams (team01, team02, ...) if > 0
 
 	// Round settings
 	Delay  int
@@ -347,6 +347,9 @@ func checkConfig(conf *ConfigSettings) error {
 		}
 		if conf.OIDCSettings.OIDCRefreshTokenExpiryRed == 0 {
 			conf.OIDCSettings.OIDCRefreshTokenExpiryRed = 172800 // 2 days
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryInject == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryInject = 86400 // 1 day
 		}
 		// PKCE is enabled by default
 		conf.OIDCSettings.OIDCUsePKCE = true
