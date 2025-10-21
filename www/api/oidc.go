@@ -658,9 +658,10 @@ func ValidateOIDCToken(token string) (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"username": username,
-		"groups":   groups,
-		"roles":    roles,
+		"username":   username,
+		"groups":     groups,
+		"roles":      roles,
+		"authSource": "oidc",
 	}, nil
 }
 
