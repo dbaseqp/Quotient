@@ -91,6 +91,32 @@ func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchem
 	return nil
 }
 
+// getUserTeamID returns the team ID for a given username, supporting both OIDC and local users
+func getUserTeamID(username string) (uint, error) {
+	// Check if this is an OIDC user
+	if userInfo, exists := GetOIDCUserInfo(username); exists {
+		teams, err := db.GetTeams()
+		if err != nil {
+			return 0, err
+		}
+		teamToShow := mapOIDCUserToTeam(teams, userInfo.Groups)
+		if teamToShow != nil {
+			return teamToShow.ID, nil
+		}
+		return 0, fmt.Errorf("OIDC user not mapped to any team")
+	}
+
+	// Fall back to username-based lookup for local users
+	me, err := db.GetTeamByUsername(username)
+	if err != nil {
+		return 0, err
+	}
+	if me.ID == 0 {
+		return 0, fmt.Errorf("user not associated with any team")
+	}
+	return me.ID, nil
+}
+
 func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 	temp, err := strconv.ParseUint(r.PathValue("team_id"), 10, 32)
 	if err != nil {
@@ -101,30 +127,13 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
-		username := r.Context().Value("username").(string)
-
-		var userTeamID uint
-		if userInfo, exists := GetOIDCUserInfo(username); exists {
-			// OIDC user - get team from group mapping
-			teams, err := db.GetTeams()
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			if team := mapOIDCUserToTeam(teams, userInfo.Groups); team != nil {
-				userTeamID = team.ID
-			}
-		} else {
-			// Local user - get team from username
-			me, err := db.GetTeamByUsername(username)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			userTeamID = me.ID
+		myTeamID, err := getUserTeamID(r.Context().Value("username").(string))
+		if err != nil {
+			slog.Error("Failed to get user's team", "username", r.Context().Value("username").(string), "err", err)
+			w.WriteHeader(http.StatusForbidden)
+			return
 		}
-
-		if teamID != userTeamID {
+		if teamID != myTeamID {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
@@ -171,30 +180,13 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
-		username := r.Context().Value("username").(string)
-
-		var userTeamID uint
-		if userInfo, exists := GetOIDCUserInfo(username); exists {
-			// OIDC user - get team from group mapping
-			teams, err := db.GetTeams()
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			if team := mapOIDCUserToTeam(teams, userInfo.Groups); team != nil {
-				userTeamID = team.ID
-			}
-		} else {
-			// Local user - get team from username
-			me, err := db.GetTeamByUsername(username)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			userTeamID = me.ID
+		myTeamID, err := getUserTeamID(r.Context().Value("username").(string))
+		if err != nil {
+			slog.Error("Failed to get user's team", "username", r.Context().Value("username").(string), "err", err)
+			w.WriteHeader(http.StatusForbidden)
+			return
 		}
-
-		if teamID != userTeamID {
+		if teamID != myTeamID {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
