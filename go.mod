@@ -21,6 +21,7 @@ require (
 	github.com/miekg/dns v1.1.62
 	github.com/mitchellh/go-vnc v0.0.0-20150629162542-723ed9867aed
 	github.com/pmezard/go-difflib v1.0.0
+	github.com/ramr/go-reaper v0.3.1
 	github.com/redis/go-redis/v9 v9.7.0
 	golang.org/x/crypto v0.33.0
 	gorm.io/driver/postgres v1.5.9
