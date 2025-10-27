@@ -182,6 +182,11 @@ func auth(username string, password string) (map[string]any, error) {
 			return map[string]any{"username": username}, nil
 		}
 	}
+	for _, inject := range conf.Inject {
+		if username == inject.Name && password == inject.Pw {
+			return map[string]any{"username": username}, nil
+		}
+	}
 
 	// auth from other sources
 	// if ldap configs are present, try to auth against ldap
@@ -249,6 +254,10 @@ func auth(username string, password string) (map[string]any, error) {
 				if memberOf == conf.LdapSettings.LdapTeamGroupDn {
 					return map[string]any{"username": username}, nil
 				}
+
+				if memberOf == conf.LdapSettings.LdapInjectGroupDn {
+					return map[string]any{"username": username}, nil
+				}
 			}
 		}
 
@@ -273,6 +282,11 @@ func findRolesByUsername(username string) ([]string, error) {
 	for _, team := range conf.Team {
 		if username == team.Name {
 			roles = append(roles, "team")
+		}
+	}
+	for _, inject := range conf.Inject {
+		if username == inject.Name {
+			roles = append(roles, "inject")
 		}
 	}
 
@@ -317,6 +331,10 @@ func findRolesByUsername(username string) ([]string, error) {
 
 				if memberOf == conf.LdapSettings.LdapTeamGroupDn {
 					roles = append(roles, "team")
+				}
+
+				if memberOf == conf.LdapSettings.LdapInjectGroupDn {
+					roles = append(roles, "inject")
 				}
 			}
 		}

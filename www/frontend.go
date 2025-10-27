@@ -52,7 +52,7 @@ func (router *Router) pageData(r *http.Request, unique map[string]any) map[strin
 
 	if data["roles"] != nil {
 		roles := data["roles"].([]string)
-		if slices.Contains(roles, "admin") {
+		if slices.Contains(roles, "admin") || slices.Contains(roles, "inject") {
 			data["home"] = "/announcements"
 		} else if slices.Contains(roles, "red") {
 			data["home"] = "/graphs"
@@ -72,7 +72,7 @@ func (router *Router) HomePage(w http.ResponseWriter, r *http.Request) {
 func (router *Router) LoginPage(w http.ResponseWriter, r *http.Request) {
 	if username, roles := api.Authenticate(w, r); username != "" {
 		var home string
-		if slices.Contains(roles, "admin") {
+		if slices.Contains(roles, "admin") || slices.Contains(roles, "inject") {
 			home = "/announcements"
 		} else if slices.Contains(roles, "red") {
 			home = "/graphs"
