@@ -1,5 +1,7 @@
 # Quotient
 
+Quotient is a scoring engine used for Red vs Blue competitions. It is used as the scoring engine for Western Regional Collegiate Cyber Defense Competition and other competitions where services have to be maintained while red teams are attacking them.
+
 ## Prerequisites
 
 Ensure you have the following installed on your system:
