@@ -2,6 +2,9 @@
 <div class="d-flex w-100 h-100">
     <div class="nav-pills d-flex flex-column h-100 overflow-y-scroll justify-content-start align-items-center bg-body-secondary"
         role="tablist" id="tab-container">
+        <button class="btn btn-warning rounded-0 w-100 d-none" onclick="refreshInjects()" id="refresh--btn">
+            Refresh
+        </button>
         {{ if contains .roles "admin" }}
         <button class="btn btn-primary rounded-0 w-100" data-bs-toggle="modal" data-bs-target="#create__form">
             Create Inject
@@ -91,7 +94,8 @@
                         return;
                     } else {
                         console.log(data);
-                        window.location.reload();
+                        bootstrap.Modal.getInstance(document.getElementById('create__form')).hide();
+                        refreshInjects();
                     }
                 });
             };
@@ -250,7 +254,8 @@
                         return;
                     } else {
                         console.log(data);
-                        window.location.reload();
+                        bootstrap.Modal.getInstance(document.getElementById('edit__form')).hide();
+                        refreshInjects();
                     }
                 });
             };
@@ -293,7 +298,8 @@
                         return;
                     } else {
                         console.log(data);
-                        window.location.reload();
+                        bootstrap.Modal.getInstance(document.getElementById('delete__form')).hide();
+                        refreshInjects();
                     }
                 });
             };
@@ -382,7 +388,7 @@
                                             return;
                                         } else {
                                             console.log(data);
-                                            window.location.reload();
+                                            refreshInjects();
                                         }
                                     });
                                 };
@@ -424,6 +430,27 @@
     const PANE_CONTAINER = document.getElementById("pane-container")
     const PLACEHOLDER_TAB = document.getElementById("tab--placeholder")
     const PLACEHOLDER_PANE = document.getElementById("pane--placeholder")
+    const REFRESH_BTN = document.getElementById("refresh--btn")
+
+    let prevData;
+
+    // Function to refresh injects without full page reload
+    function refreshInjects() {
+        // Clear existing tabs and panes (except placeholder)
+        const existingTabs = TAB_CONTAINER.querySelectorAll('[id^="tab--"]:not(#tab--placeholder)');
+        const existingPanes = PANE_CONTAINER.querySelectorAll('[id^="pane--"]:not(#pane--placeholder)');
+        existingTabs.forEach(tab => tab.remove());
+        existingPanes.forEach(pane => pane.remove());
+
+        // Reset prevData to force re-render
+        prevData = undefined;
+
+        // Hide refresh button
+        REFRESH_BTN.classList.add("d-none");
+
+        // Fetch and update
+        fetchAndUpdateInjects();
+    }
 
     // Function to fetch injects data and update the UI
     function fetchAndUpdateInjects() {
@@ -435,6 +462,17 @@
             return response.json()
         })
         .then((data) => {
+            PLACEHOLDER_TAB.classList.add("d-none")
+            PLACEHOLDER_PANE.classList.add("d-none")
+            if (!data || data.length === 0) {
+                return
+            }
+            if (prevData === undefined) {
+                prevData = data
+            } else if (JSON.stringify(prevData) != JSON.stringify(data)) {
+                REFRESH_BTN.classList.remove("d-none")
+                return
+            }
             let tabs = [];
             let panes = [];
             for (const inject of data) {
@@ -558,9 +596,14 @@
             const TOOLTIPS = new bootstrap.Tooltip(document.body, {
                 selector: '[data-bs-toggle="tooltip"]'
             });
-            const table = new DataTable('.submission-table', {
-                order: [[2, 'desc']], // Sort by the third column (Submission Time) in descending order
-            })
+            // Only initialize DataTables on elements that aren't already initialized
+            document.querySelectorAll('.submission-table').forEach(table => {
+                if (!table.classList.contains('dataTable')) {
+                    new DataTable(table, {
+                        order: [[2, 'desc']], // Sort by the third column (Submission Time) in descending order
+                    });
+                }
+            });
         })
         .catch((error) => {
             console.error(error)
