@@ -30,8 +30,8 @@ type ScoringEngine struct {
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
+	CompStartResetDone    bool
 
-	// Config update handling
 	configPath string
 }
 
@@ -134,7 +134,16 @@ func (se *ScoringEngine) Start() {
 				se.CurrentRoundStartTime = time.Now()
 				se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
 
-				// run the round logic
+				if !se.CompStartResetDone && se.Config.MiscSettings.CompetitionStart != "" && se.Config.HasCompetitionStarted() {
+					slog.Info("Competition start time reached, resetting scores")
+					if err := se.ResetScores(); err != nil {
+						slog.Error("Failed to reset scores at competition start", "error", err)
+					} else {
+						se.CompStartResetDone = true
+						slog.Info("Scores reset successfully at competition start")
+					}
+				}
+
 				var err error
 				switch se.Config.RequiredSettings.EventType {
 				case "koth":

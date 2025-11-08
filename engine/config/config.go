@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -83,7 +84,8 @@ type MiscConfig struct {
 	LogoImage           string
 	LogFile             string
 
-	StartPaused bool
+	StartPaused      bool
+	CompetitionStart string `toml:",omitempty"`
 
 	// Round settings
 	Delay  int
@@ -303,6 +305,13 @@ func checkConfig(conf *ConfigSettings) error {
 		conf.MiscSettings.SlaPenalty = conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
 	}
 
+	if conf.MiscSettings.CompetitionStart != "" {
+		_, err := time.Parse(time.RFC3339, conf.MiscSettings.CompetitionStart)
+		if err != nil {
+			errResult = errors.Join(errResult, fmt.Errorf("CompetitionStart must be in RFC3339 format (e.g., 2025-11-15T09:00:00-06:00): %w", err))
+		}
+	}
+
 	// =======================================
 	// prepare for box config checking
 	// sort boxes by IP
@@ -410,4 +419,19 @@ func (conf *ConfigSettings) AllChecks() []checks.Runner {
 		out = append(out, box.Runners...)
 	}
 	return out
+}
+
+// HasCompetitionStarted checks if the competition has started based on CompetitionStart time
+func (conf *ConfigSettings) HasCompetitionStarted() bool {
+	if conf.MiscSettings.CompetitionStart == "" {
+		return true
+	}
+
+	startTime, err := time.Parse(time.RFC3339, conf.MiscSettings.CompetitionStart)
+	if err != nil {
+		slog.Warn("Failed to parse CompetitionStart time", "value", conf.MiscSettings.CompetitionStart, "error", err)
+		return true
+	}
+
+	return time.Now().After(startTime)
 }

@@ -14,6 +14,10 @@ const (
 )
 
 func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
+	if !CheckCompetitionStarted(w, r) {
+		return
+	}
+
 	round, err := db.GetLastRound()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -86,6 +90,10 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
+	if !CheckCompetitionStarted(w, r) {
+		return
+	}
+
 	scores, err := db.GetServiceCheckSumByRound()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -162,6 +170,10 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
+	if !CheckCompetitionStarted(w, r) {
+		return
+	}
+
 	teams, err := db.GetTeams()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

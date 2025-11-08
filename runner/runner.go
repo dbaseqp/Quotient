@@ -11,8 +11,8 @@ import (
 	"quotient/engine"
 	"quotient/engine/checks"
 
-	"github.com/redis/go-redis/v9"
 	reaper "github.com/ramr/go-reaper"
+	"github.com/redis/go-redis/v9"
 )
 
 // Global variable to store the runner ID

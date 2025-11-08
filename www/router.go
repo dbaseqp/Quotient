@@ -80,6 +80,7 @@ func (router *Router) Start() {
 	TEAMAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin"))
 	// team auth API routes
 	mux.HandleFunc("GET /api/teams", TEAMAUTH(api.GetTeams))
+	mux.HandleFunc("GET /api/metadata", TEAMAUTH(api.GetMetadata))
 	mux.HandleFunc("GET /api/services/{team_id}", TEAMAUTH(api.GetTeamSummary))
 	mux.HandleFunc("GET /api/services/{team_id}/{service_name}", TEAMAUTH(api.GetServiceAll))
 	mux.HandleFunc("GET /api/injects", TEAMAUTH(api.GetInjects))

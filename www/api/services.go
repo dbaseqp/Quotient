@@ -36,6 +36,10 @@ func GetTeams(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
+	if !CheckCompetitionStarted(w, r) {
+		return
+	}
+
 	temp, err := strconv.ParseUint(r.PathValue("team_id"), 10, 32)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -86,6 +90,10 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetServiceAll(w http.ResponseWriter, r *http.Request) {
+	if !CheckCompetitionStarted(w, r) {
+		return
+	}
+
 	temp, err := strconv.ParseUint(r.PathValue("team_id"), 10, 32)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
