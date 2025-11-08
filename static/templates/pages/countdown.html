@@ -1,0 +1,52 @@
+{{ define "content"}}
+{{ template "page" . }}
+{{ end }}
+
+{{ define "page" }}
+<div class="d-flex flex-grow-1 flex-column justify-content-center align-items-center w-100 h-100" style="height:0px;">
+    <div class="d-flex h-100 w-100 bg-primary-subtle justify-content-center align-items-center" id="countdown__container">
+        <div class="d-flex flex-column justify-content-center align-items-center text-center p-4">
+            <img class="mb-4" style="max-width: 300px; max-height: 200px;" src="{{ .config.MiscSettings.LogoImage }}">
+            <h2 class="mb-3">{{ .config.RequiredSettings.EventName }}</h2>
+            <h4 class="mb-4 text-muted">Competition starts in:</h4>
+            <div id="countdown" class="display-3 fw-bold mb-4"></div>
+            <p class="text-muted">The page will automatically reload when the competition begins.</p>
+        </div>
+    </div>
+</div>
+<script>
+    const startTime = new Date("{{ .competitionStart }}").getTime();
+
+    function updateCountdown() {
+        const now = new Date().getTime();
+        const distance = startTime - now;
+
+        if (distance < 0) {
+            document.getElementById("countdown").innerHTML = "Starting...";
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+            return;
+        }
+
+        const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+        let countdownText = "";
+        if (days > 0) {
+            countdownText = days + "d " + hours + "h " + minutes + "m " + seconds + "s";
+        } else if (hours > 0) {
+            countdownText = hours + "h " + minutes + "m " + seconds + "s";
+        } else {
+            countdownText = minutes + "m " + seconds + "s";
+        }
+
+        document.getElementById("countdown").innerHTML = countdownText;
+    }
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+</script>
+{{ end }}
