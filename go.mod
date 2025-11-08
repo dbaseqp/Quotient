@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	al.essio.dev/pkg/shellescape v1.5.0
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c
+	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/corpix/uarand v0.2.0
 	github.com/emersion/go-imap v1.2.1
 	github.com/fsnotify/fsnotify v1.8.0
@@ -24,6 +25,7 @@ require (
 	github.com/ramr/go-reaper v0.3.1
 	github.com/redis/go-redis/v9 v9.7.0
 	golang.org/x/crypto v0.33.0
+	golang.org/x/oauth2 v0.24.0
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.11
 )
@@ -41,6 +43,7 @@ require (
 	github.com/emersion/go-textwrapper v0.0.0-20200911093747-65d896831594 // indirect
 	github.com/geoffgarside/ber v1.1.0 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.5 // indirect
+	github.com/go-jose/go-jose/v4 v4.0.2 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
