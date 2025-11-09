@@ -145,6 +145,7 @@ func (se *ScoringEngine) Start() {
 				se.CurrentRoundStartTime = time.Now()
 				se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
 
+				// Check if CompetitionStart was set after engine startup
 				if !se.CompStartResetDone && se.Config.MiscSettings.CompetitionStart != "" && se.Config.HasCompetitionStarted() {
 					slog.Info("Competition start time reached, resetting scores")
 					if err := se.ResetScores(); err != nil {
