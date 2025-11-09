@@ -1,11 +1,13 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
+	"time"
 
 	"quotient/engine/config"
 
@@ -111,7 +113,10 @@ func AddTeams(conf *config.ConfigSettings) error {
 
 func ResetScores() error {
 	// truncate servicecheckschemas, slaschemas, and roundschemas with cascade
-	if err := db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas CASCADE").Error; err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := db.WithContext(ctx).Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas CASCADE").Error; err != nil {
 		return err
 	}
 
