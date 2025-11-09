@@ -101,17 +101,6 @@ func (se *ScoringEngine) Start() {
 
 	se.NextRoundStartTime = time.Time{}
 
-	// Check if competition has already started and reset scores if needed
-	if !se.CompStartResetDone && se.Config.MiscSettings.CompetitionStart != "" && se.Config.HasCompetitionStarted() {
-		slog.Info("Competition has already started, resetting scores")
-		if err := se.ResetScores(); err != nil {
-			slog.Error("Failed to reset scores at engine start", "error", err)
-		} else {
-			se.CompStartResetDone = true
-			slog.Info("Scores reset successfully at engine start")
-		}
-	}
-
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "quotient_redis:6379"
