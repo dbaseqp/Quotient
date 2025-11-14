@@ -35,6 +35,9 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 		}
 
 		params := *winrm.DefaultParameters
+		params.TransportDecorator = func() winrm.Transporter {
+			return &winrm.ClientNTLM{}
+		}
 
 		// Run bad attempts if specified
 		for range c.BadAttempts {
@@ -52,10 +55,11 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 			return
 		}
 
-		// If any commands specified, run them
+		// If any commands specified, run them; otherwise run a simple connectivity test
+		var powershellCmd string
 		if len(c.Command) > 0 {
 			r := c.Command[rand.Intn(len(c.Command))]
-			powershellCmd := winrm.Powershell(r.Command)
+			powershellCmd = winrm.Powershell(r.Command)
 			bufOut := new(bytes.Buffer)
 			bufErr := new(bytes.Buffer)
 			_, err = client.Run(powershellCmd, bufOut, bufErr)
@@ -89,6 +93,17 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 						return
 					}
 				}
+			}
+		} else {
+			powershellCmd = winrm.Powershell("hostname")
+			bufOut := new(bytes.Buffer)
+			bufErr := new(bytes.Buffer)
+			_, err = client.Run(powershellCmd, bufOut, bufErr)
+			if err != nil {
+				checkResult.Error = "connection test failed with creds " + username + ":" + password
+				checkResult.Debug = err.Error()
+				response <- checkResult
+				return
 			}
 		}
 		checkResult.Status = true
