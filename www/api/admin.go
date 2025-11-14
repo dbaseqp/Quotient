@@ -44,18 +44,18 @@ func ResetScores(w http.ResponseWriter, r *http.Request) {
 }
 
 func ExportScores(w http.ResponseWriter, r *http.Request) {
-	type TeamScore struct {
-		TeamID      uint           `json:"team_id"`
-		TeamName    string         `json:"team_name"`
-		Services    []ServiceScore `json:"services"`
-		TotalPoints int            `json:"total_points"`
-	}
-
 	type ServiceScore struct {
 		ServiceName   string `json:"service_name"`
 		Points        int    `json:"service_points"`
 		SlaViolations int    `json:"sla_violations"`
 		SlaPenalty    int    `json:"sla_penalty"`
+	}
+
+	type TeamScore struct {
+		TeamID      uint           `json:"team_id"`
+		TeamName    string         `json:"team_name"`
+		Services    []ServiceScore `json:"services"`
+		TotalPoints int            `json:"total_points"`
 	}
 
 	teams, err := db.GetTeams()
