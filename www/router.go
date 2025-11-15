@@ -59,7 +59,7 @@ func (router *Router) Start() {
 	|                                         |
 	******************************************/
 
-	ALLAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin", "red"))
+	ALLAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin", "red", "inject"))
 	// general auth API routes
 	mux.HandleFunc("GET /api/logout", ALLAUTH(api.Logout))
 
@@ -77,7 +77,7 @@ func (router *Router) Start() {
 	|                                         |
 	******************************************/
 
-	TEAMAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin"))
+	TEAMAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin", "inject"))
 	// team auth API routes
 	mux.HandleFunc("GET /api/teams", TEAMAUTH(api.GetTeams))
 	mux.HandleFunc("GET /api/metadata", TEAMAUTH(api.GetMetadata))
