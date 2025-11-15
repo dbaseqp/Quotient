@@ -342,6 +342,9 @@
                     <hr class="my-4">
                     {{ if contains .roles "admin" }}
                     <div class="d-flex">
+                        <button class="btn btn-outline-secondary rounded-1 m-2" onclick="return downloadSubmissions(event)">
+                            Download all submissions
+                        </button>
                         <button class="btn btn-outline-secondary rounded-1 m-2" data-bs-toggle="modal"
                             data-bs-target="#edit__form">
                             Edit
@@ -455,103 +458,103 @@
     // Function to fetch injects data and update the UI
     function fetchAndUpdateInjects() {
         fetch("/api/injects")
-        .then((response) => {
-            if (!response.ok) {
-                Promise.reject(response)
-            }
-            return response.json()
-        })
-        .then((data) => {
-            PLACEHOLDER_TAB.classList.add("d-none")
-            PLACEHOLDER_PANE.classList.add("d-none")
-            if (!data || data.length === 0) {
-                return
-            }
-            if (prevData === undefined) {
-                prevData = data
-            } else if (JSON.stringify(prevData) != JSON.stringify(data)) {
-                REFRESH_BTN.classList.remove("d-none")
-                return
-            }
-            let tabs = [];
-            let panes = [];
-            for (const inject of data) {
-                inject.OpenTime = (new Date(inject.OpenTime))
-                inject.DueTime = (new Date(inject.DueTime))
-                inject.CloseTime = (new Date(inject.CloseTime))
-                let tab = PLACEHOLDER_TAB.cloneNode(true)
-                let pane = PLACEHOLDER_PANE.cloneNode(true)
-                tab.classList.remove("active", "placeholder-glow")
-                pane.classList.remove("active", "placeholder-glow")
+            .then((response) => {
+                if (!response.ok) {
+                    Promise.reject(response)
+                }
+                return response.json()
+            })
+            .then((data) => {
+                PLACEHOLDER_TAB.classList.add("d-none")
+                PLACEHOLDER_PANE.classList.add("d-none")
+                if (!data || data.length === 0) {
+                    return
+                }
+                if (prevData === undefined) {
+                    prevData = data
+                } else if (JSON.stringify(prevData) != JSON.stringify(data)) {
+                    REFRESH_BTN.classList.remove("d-none")
+                    return
+                }
+                let tabs = [];
+                let panes = [];
+                for (const inject of data) {
+                    inject.OpenTime = (new Date(inject.OpenTime))
+                    inject.DueTime = (new Date(inject.DueTime))
+                    inject.CloseTime = (new Date(inject.CloseTime))
+                    let tab = PLACEHOLDER_TAB.cloneNode(true)
+                    let pane = PLACEHOLDER_PANE.cloneNode(true)
+                    tab.classList.remove("active", "placeholder-glow")
+                    pane.classList.remove("active", "placeholder-glow")
 
 
-                let title = tab.querySelector("#tab__title--placeholder")
-                let a = tab.querySelector("#tab__subject--placeholder")
-                let time = tab.querySelector("#tab__time--placeholder")
-                let status = tab.querySelector("#tab__status--placeholder")
+                    let title = tab.querySelector("#tab__title--placeholder")
+                    let a = tab.querySelector("#tab__subject--placeholder")
+                    let time = tab.querySelector("#tab__time--placeholder")
+                    let status = tab.querySelector("#tab__status--placeholder")
 
-                title.className = ""
-                a.className = ""
-                time.className = ""
-                if (inject.Submissions && inject.Submissions.length > 0) {
-                    status.innerHTML = `<i class="bi bi-check2-circle text-success-emphasis" data-bs-toggle="tooltip"
+                    title.className = ""
+                    a.className = ""
+                    time.className = ""
+                    if (inject.Submissions && inject.Submissions.length > 0) {
+                        status.innerHTML = `<i class="bi bi-check2-circle text-success-emphasis" data-bs-toggle="tooltip"
                         data-bs-title="Submitted"></i>`
 
-                    let table = pane.querySelector("#pane__submissions--placeholder")
-                    let tbody = table.querySelector("tbody")
-                    for (const submission of inject.Submissions) {
-                        let tr = document.createElement("tr")
-                        let team = document.createElement("td")
-                        let number = document.createElement("td")
-                        let time = document.createElement("td")
-                        let attachment = document.createElement("td")
-                        let a = document.createElement("a")
-                        a.href = `/injects/${inject.ID}/submissions/${submission.Team.ID}/${submission.Version}`
-                        a.textContent = submission.SubmissionFileName
-                        a.target = "_blank"
-                        attachment.appendChild(a)
-                        team.textContent = submission.Team.Name
-                        number.textContent = submission.Version
-                        time.textContent = new Date(submission.SubmissionTime).toLocaleString()
-                        tr.appendChild(team)
-                        tr.appendChild(number)
-                        tr.appendChild(time)
-                        tr.appendChild(attachment)
-                        tbody.appendChild(tr)
-                    }
-                } else if (inject.CloseTime < new Date()) {
-                    status.innerHTML = `<i class="bi bi-lock text-danger-emphasis" data-bs-toggle="tooltip"
+                        let table = pane.querySelector("#pane__submissions--placeholder")
+                        let tbody = table.querySelector("tbody")
+                        for (const submission of inject.Submissions) {
+                            let tr = document.createElement("tr")
+                            let team = document.createElement("td")
+                            let number = document.createElement("td")
+                            let time = document.createElement("td")
+                            let attachment = document.createElement("td")
+                            let a = document.createElement("a")
+                            a.href = `/injects/${inject.ID}/submissions/${submission.Team.ID}/${submission.Version}`
+                            a.textContent = submission.SubmissionFileName
+                            a.target = "_blank"
+                            attachment.appendChild(a)
+                            team.textContent = submission.Team.Name
+                            number.textContent = submission.Version
+                            time.textContent = new Date(submission.SubmissionTime).toLocaleString()
+                            tr.appendChild(team)
+                            tr.appendChild(number)
+                            tr.appendChild(time)
+                            tr.appendChild(attachment)
+                            tbody.appendChild(tr)
+                        }
+                    } else if (inject.CloseTime < new Date()) {
+                        status.innerHTML = `<i class="bi bi-lock text-danger-emphasis" data-bs-toggle="tooltip"
                         data-bs-title="Closed from submissions"></i>`
-                } else if (inject.DueTime < new Date()) {
-                    status.innerHTML = `<i class="bi bi-alarm text-warning" data-bs-toggle="tooltip"
+                    } else if (inject.DueTime < new Date()) {
+                        status.innerHTML = `<i class="bi bi-alarm text-warning" data-bs-toggle="tooltip"
                         data-bs-title="Accepting late submissions"></i>`
-                } else {
-                    status.innerHTML = `<i class="bi bi-unlock text-success-emphasis" data-bs-toggle="tooltip"
+                    } else {
+                        status.innerHTML = `<i class="bi bi-unlock text-success-emphasis" data-bs-toggle="tooltip"
                         data-bs-title="Open for submissions"></i>`
-                }
-                title.textContent = inject.Title
-                a.textContent = inject.Title
-                time.textContent = inject.OpenTime.toLocaleString()
+                    }
+                    title.textContent = inject.Title
+                    a.textContent = inject.Title
+                    time.textContent = inject.OpenTime.toLocaleString()
 
-                let from = pane.querySelector("#pane__from--placeholder")
-                let subject = pane.querySelector("#pane__subject--placeholder")
-                let description = pane.querySelector("#pane__description--placeholder")
+                    let from = pane.querySelector("#pane__from--placeholder")
+                    let subject = pane.querySelector("#pane__subject--placeholder")
+                    let description = pane.querySelector("#pane__description--placeholder")
 
-                
-                from.className = ""
-                subject.className = ""
-                description.className = ""
-                
-                from.textContent = inject.Title
-                subject.textContent = inject.Title
-                                
-                let descTemp = document.createElement("div")
 
-                let descPara = document.createElement("p")
-                descPara.textContent = inject.Description
-                descTemp.appendChild(descPara)
+                    from.className = ""
+                    subject.className = ""
+                    description.className = ""
 
-                descTemp.innerHTML += `
+                    from.textContent = inject.Title
+                    subject.textContent = inject.Title
+
+                    let descTemp = document.createElement("div")
+
+                    let descPara = document.createElement("p")
+                    descPara.textContent = inject.Description
+                    descTemp.appendChild(descPara)
+
+                    descTemp.innerHTML += `
                 <h5>Inject Details</h5>
                 <ul>
                     <li><p><strong>Due Time:</strong> <span id="pane__due--${inject.ID}">${inject.DueTime.toLocaleString()}</span></p></li>
@@ -559,55 +562,55 @@
                     </ul>
                     `
                     description.appendChild(descTemp)
-                    
+
                     if (inject.InjectFileNames != null && inject.InjectFileNames.length > 0) {
-                    let files = document.createElement("div")
-                    files.className = "d-flex flex-column"
-                    let header = document.createElement("h5")
-                    header.textContent = "Inject Attachments"
-                    files.appendChild(header)
-                    let ul = document.createElement("ul")
-                    files.appendChild(ul)
-                    for (const file of inject.InjectFileNames) {
-                        let li = document.createElement("li")
-                        let a = document.createElement("a")
-                        a.href = `/injects/${inject.ID}/${file}`
-                        a.textContent = file
-                        a.target = "_blank"
-                        li.appendChild(a)
-                        ul.appendChild(li)
+                        let files = document.createElement("div")
+                        files.className = "d-flex flex-column"
+                        let header = document.createElement("h5")
+                        header.textContent = "Inject Attachments"
+                        files.appendChild(header)
+                        let ul = document.createElement("ul")
+                        files.appendChild(ul)
+                        for (const file of inject.InjectFileNames) {
+                            let li = document.createElement("li")
+                            let a = document.createElement("a")
+                            a.href = `/injects/${inject.ID}/${file}`
+                            a.textContent = file
+                            a.target = "_blank"
+                            li.appendChild(a)
+                            ul.appendChild(li)
+                        }
+                        description.appendChild(files)
                     }
-                    description.appendChild(files)
+
+                    tab.setHTMLUnsafe(tab.outerHTML.replaceAll("placeholder", inject.ID))
+                    pane.setHTMLUnsafe(pane.outerHTML.replaceAll("placeholder", inject.ID))
+                    tabs.push(tab.firstChild)
+                    panes.push(pane.firstChild)
                 }
-                
-                tab.setHTMLUnsafe(tab.outerHTML.replaceAll("placeholder", inject.ID))
-                pane.setHTMLUnsafe(pane.outerHTML.replaceAll("placeholder", inject.ID))
-                tabs.push(tab.firstChild)
-                panes.push(pane.firstChild)
-            }
-            PLACEHOLDER_TAB.classList.add("d-none")
-            PLACEHOLDER_PANE.classList.add("d-none")
-            for (let i = 0; i < tabs.length; i++) {
-                TAB_CONTAINER.appendChild(tabs[i])
-                PANE_CONTAINER.appendChild(panes[i])
-            }
-        })
-        .then(() => {
-            const TOOLTIPS = new bootstrap.Tooltip(document.body, {
-                selector: '[data-bs-toggle="tooltip"]'
-            });
-            // Only initialize DataTables on elements that aren't already initialized
-            document.querySelectorAll('.submission-table').forEach(table => {
-                if (!table.classList.contains('dataTable')) {
-                    new DataTable(table, {
-                        order: [[2, 'desc']], // Sort by the third column (Submission Time) in descending order
-                    });
+                PLACEHOLDER_TAB.classList.add("d-none")
+                PLACEHOLDER_PANE.classList.add("d-none")
+                for (let i = 0; i < tabs.length; i++) {
+                    TAB_CONTAINER.appendChild(tabs[i])
+                    PANE_CONTAINER.appendChild(panes[i])
                 }
+            })
+            .then(() => {
+                const TOOLTIPS = new bootstrap.Tooltip(document.body, {
+                    selector: '[data-bs-toggle="tooltip"]'
+                });
+                // Only initialize DataTables on elements that aren't already initialized
+                document.querySelectorAll('.submission-table').forEach(table => {
+                    if (!table.classList.contains('dataTable')) {
+                        new DataTable(table, {
+                            order: [[2, 'desc']], // Sort by the third column (Submission Time) in descending order
+                        });
+                    }
+                });
+            })
+            .catch((error) => {
+                console.error(error)
             });
-        })
-        .catch((error) => {
-            console.error(error)
-        });
     }
 
     // Initial load

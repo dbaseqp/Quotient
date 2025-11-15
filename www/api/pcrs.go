@@ -105,3 +105,66 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	d, _ := json.Marshal(data)
 	w.Write(d)
 }
+
+func ResetPcr(w http.ResponseWriter, r *http.Request) {
+	// get teamid from request
+	// somehow determine which credlist to change
+	type Form struct {
+		TeamID       string `json:"team_id"`
+		CredlistPath string `json:"credlist_id"`
+	}
+
+	var form Form
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&form)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		slog.Error("Failed to decode PCR json", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		return
+	}
+	req_roles := r.Context().Value("roles").([]string)
+	if !slices.Contains(req_roles, "admin") {
+		if conf.MiscSettings.EasyPCR {
+			me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				data := map[string]any{"error": "Error looking up team"}
+				d, _ := json.Marshal(data)
+				w.Write(d)
+				return
+			}
+			if form.TeamID != fmt.Sprint(me.ID) {
+				w.WriteHeader(http.StatusForbidden)
+				data := map[string]any{"error": "PCR not allowed"}
+				d, _ := json.Marshal(data)
+				w.Write(d)
+				return
+			}
+		} else {
+			w.WriteHeader(http.StatusForbidden)
+			data := map[string]any{"error": "PCR reset not allowed"}
+			d, _ := json.Marshal(data)
+			w.Write(d)
+			return
+		}
+	}
+
+	id, err := strconv.Atoi(form.TeamID)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err := eng.ResetCredentials(uint(id), form.CredlistPath); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		data := map[string]any{"error": "Error resetting PCR"}
+		d, _ := json.Marshal(data)
+		w.Write(d)
+		slog.Error("Error resetting PCR", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		return
+	}
+	data := map[string]any{
+		"message": "PCR reset successfully",
+	}
+	d, _ := json.Marshal(data)
+	w.Write(d)
+}
