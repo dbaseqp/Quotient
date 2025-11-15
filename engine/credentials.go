@@ -179,3 +179,28 @@ func (se *ScoringEngine) GetCredlists() (any, error) {
 	}
 	return credlists, nil
 }
+
+func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string) error {
+	se.CredentialsMutex[teamID].Lock()
+	defer se.CredentialsMutex[teamID].Unlock()
+	submissionPath := fmt.Sprintf("submissions/pcrs/%d/%s", teamID, credlistName)
+	sourcePath := fmt.Sprintf("config/credlists/%s", credlistName)
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to open source file %s: %v", sourcePath, err)
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(submissionPath)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file %s: %v", submissionPath, err)
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		return fmt.Errorf("failed to copy file: %v", err)
+	}
+
+	return nil
+}
