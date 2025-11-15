@@ -128,6 +128,9 @@ func ResetPcr(w http.ResponseWriter, r *http.Request) {
 			me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
+				data := map[string]any{"error": "Error looking up team"}
+				d, _ := json.Marshal(data)
+				w.Write(d)
 				return
 			}
 			if form.TeamID != fmt.Sprint(me.ID) {

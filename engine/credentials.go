@@ -181,6 +181,19 @@ func (se *ScoringEngine) GetCredlists() (any, error) {
 }
 
 func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string) error {
+	// check if the credlist name is in the config
+	validCredlist := false
+
+	for _, c := range se.Config.CredlistSettings.Credlist {
+		if c.CredlistPath == credlistName {
+			validCredlist = true
+			break
+		}
+	}
+	if !validCredlist {
+		return fmt.Errorf("invalid credlist name")
+	}
+
 	se.CredentialsMutex[teamID].Lock()
 	defer se.CredentialsMutex[teamID].Unlock()
 	submissionPath := fmt.Sprintf("submissions/pcrs/%d/%s", teamID, credlistName)
