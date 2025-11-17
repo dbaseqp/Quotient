@@ -176,7 +176,11 @@ func (router *Router) AdministrateAppearancePage(w http.ResponseWriter, r *http.
 }
 
 func (router *Router) GraphPage(w http.ResponseWriter, r *http.Request) {
-	roles := r.Context().Value("roles").([]string)
+	var roles []string
+	if r.Context().Value("roles") != nil {
+		roles = r.Context().Value("roles").([]string)
+	}
+
 	if !slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && !router.Config.HasCompetitionStarted() {
 		page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/countdown.html"))
 		if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Competition Starting Soon", "competitionStart": router.Config.MiscSettings.CompetitionStart})); err != nil {
