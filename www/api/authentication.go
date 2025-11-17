@@ -105,7 +105,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		Value:    cookie,
 		MaxAge:   int((time.Hour * 24).Seconds()),
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}),
+		Secure:   conf.SslSettings != (config.SslConfig{}) || conf.OIDCSettings.OIDCEnabled,
 		Path:     "/",
 	})
 
@@ -118,7 +118,7 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 		Value:    "",
 		MaxAge:   0,
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}),
+		Secure:   conf.SslSettings != (config.SslConfig{}) || conf.OIDCSettings.OIDCEnabled,
 		Path:     "/",
 	})
 	slog.Info("Successful logout", "username", r.Context().Value("username"))
@@ -133,23 +133,27 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 			return "", nil
 		}
 		slog.Error(err.Error())
-		w.WriteHeader(http.StatusBadRequest)
 		return "", nil
 	}
 
 	var value map[string]any
 	if err := CookieEncoder.Decode(COOKIENAME, token.Value, &value); err != nil {
 		slog.Error(err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
 		return "", nil
 	}
 
 	username := value["username"].(string)
-	roles, err := findRolesByUsername(username)
+
+	// Extract auth source (default to "local" for backward compatibility)
+	authSource := "local"
+	if source, ok := value["authSource"].(string); ok {
+		authSource = source
+	}
+
+	roles, err := findRolesByUsername(username, authSource)
 
 	if err != nil {
 		slog.Error(err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
 		return "", nil
 	}
 
@@ -159,7 +163,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 		Value:    token.Value,
 		MaxAge:   int((time.Hour * 24).Seconds()),
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}),
+		Secure:   conf.SslSettings != (config.SslConfig{}) || conf.OIDCSettings.OIDCEnabled,
 		Path:     "/",
 	})
 
@@ -169,22 +173,22 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 func auth(username string, password string) (map[string]any, error) {
 	for _, admin := range conf.Admin {
 		if username == admin.Name && password == admin.Pw {
-			return map[string]any{"username": username}, nil
+			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
 	for _, team := range conf.Team {
 		if username == team.Name && password == team.Pw {
-			return map[string]any{"username": username}, nil
+			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
 	for _, red := range conf.Red {
 		if username == red.Name && password == red.Pw {
-			return map[string]any{"username": username}, nil
+			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
 	for _, inject := range conf.Inject {
 		if username == inject.Name && password == inject.Pw {
-			return map[string]any{"username": username}, nil
+			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
 
@@ -241,48 +245,52 @@ func auth(username string, password string) (map[string]any, error) {
 			return nil, err
 		}
 
+		hasAuthorizedRole := false
 		for _, entry := range sr.Entries {
 			for _, memberOf := range entry.GetAttributeValues("memberOf") {
-				if memberOf == conf.LdapSettings.LdapAdminGroupDn {
-					return map[string]any{"username": username}, nil
-				}
-
-				if memberOf == conf.LdapSettings.LdapRedGroupDn {
-					return map[string]any{"username": username}, nil
-				}
-
-				if memberOf == conf.LdapSettings.LdapTeamGroupDn {
-					return map[string]any{"username": username}, nil
+				if memberOf == conf.LdapSettings.LdapAdminGroupDn ||
+					memberOf == conf.LdapSettings.LdapRedGroupDn ||
+					memberOf == conf.LdapSettings.LdapTeamGroupDn {
+					hasAuthorizedRole = true
+					break
 				}
 
 				if memberOf == conf.LdapSettings.LdapInjectGroupDn {
-					return map[string]any{"username": username}, nil
+					return map[string]any{"username": username, "authSource": "ldap"}, nil
 				}
+			}
+			if hasAuthorizedRole {
+				break
 			}
 		}
 
-		return map[string]any{"username": username}, nil
+		if !hasAuthorizedRole {
+			return nil, errors.New("LDAP user has no authorized roles")
+		}
+
+		return map[string]any{"username": username, "authSource": "ldap"}, nil
+	}
+
+	// Add OIDC support for token-based auth
+	if conf.OIDCSettings.OIDCEnabled && username == "" && password != "" {
+		// Password field contains OIDC token
+		return ValidateOIDCToken(password)
 	}
 
 	return nil, errors.New("no auth source matched credentials")
 }
 
-func findRolesByUsername(username string) ([]string, error) {
+func findRolesByUsername(username string, authSource string) ([]string, error) {
 	roles := make([]string, 0)
-	for _, admin := range conf.Admin {
-		if username == admin.Name {
-			roles = append(roles, "admin")
+
+	// Only check OIDC users if auth source is OIDC
+	if authSource == "oidc" {
+		if userInfo, exists := GetOIDCUserInfo(username); exists {
+			return userInfo.Roles, nil
 		}
-	}
-	for _, red := range conf.Red {
-		if username == red.Name {
-			roles = append(roles, "red")
-		}
-	}
-	for _, team := range conf.Team {
-		if username == team.Name {
-			roles = append(roles, "team")
-		}
+		// OIDC user not found in cache after server restart
+		// User will need to re-authenticate
+		return nil, errors.New("OIDC session expired - please login again")
 	}
 	for _, inject := range conf.Inject {
 		if username == inject.Name {
@@ -290,9 +298,32 @@ func findRolesByUsername(username string) ([]string, error) {
 		}
 	}
 
-	// find roles from other sources
+	// Check local users only if auth source is local
+	if authSource == "local" {
+		for _, admin := range conf.Admin {
+			if username == admin.Name {
+				roles = append(roles, "admin")
+			}
+		}
+		for _, red := range conf.Red {
+			if username == red.Name {
+				roles = append(roles, "red")
+			}
+		}
+		for _, team := range conf.Team {
+			if username == team.Name {
+				roles = append(roles, "team")
+			}
+		}
 
-	if conf.LdapSettings != (config.LdapAuthConfig{}) {
+		if len(roles) > 0 {
+			return roles, nil
+		}
+		return nil, errors.New("local user has no roles")
+	}
+
+	// Check LDAP users only if auth source is LDAP
+	if authSource == "ldap" && conf.LdapSettings != (config.LdapAuthConfig{}) {
 		conn, err := ldap.DialURL(conf.LdapSettings.LdapConnectUrl)
 		if err != nil {
 			return nil, err
@@ -338,7 +369,13 @@ func findRolesByUsername(username string) ([]string, error) {
 				}
 			}
 		}
+
+		if len(roles) > 0 {
+			return roles, nil
+		}
+		return nil, errors.New("LDAP user has no authorized roles")
 	}
 
-	return roles, nil
+	// Unknown auth source
+	return nil, fmt.Errorf("unknown auth source: %s", authSource)
 }
