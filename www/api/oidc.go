@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -465,12 +466,7 @@ func getRefreshTokenExpiry(roles []string) int {
 	return expiry
 }
 
-// OIDC user session storage
-var (
-	oidcUsers   = make(map[string]*OidcUserInfo)
-	oidcUsersMu sync.RWMutex
-)
-
+// OIDC user session storage (stored in Redis)
 type OidcUserInfo struct {
 	Username     string
 	Groups       []string
@@ -480,39 +476,151 @@ type OidcUserInfo struct {
 }
 
 func storeOIDCUserInfo(username string, groups []string, roles []string, expiresAt time.Time, refreshToken string) {
-	oidcUsersMu.Lock()
-	oidcUsers[username] = &OidcUserInfo{
+	userInfo := &OidcUserInfo{
 		Username:     username,
 		Groups:       groups,
 		Roles:        roles,
 		ExpiresAt:    expiresAt,
 		RefreshToken: refreshToken,
 	}
-	oidcUsersMu.Unlock()
-	slog.Debug("Stored OIDC user session", "username", username, "expires_at", expiresAt.Format(time.RFC3339), "expires_in_hours", time.Until(expiresAt).Hours())
+
+	// Serialize to JSON
+	data, err := json.Marshal(userInfo)
+	if err != nil {
+		slog.Error("Failed to marshal OIDC user info", "username", username, "error", err)
+		return
+	}
+
+	// Store in Redis with TTL
+	ctx := context.Background()
+	key := fmt.Sprintf("oidc:session:%s", username)
+	ttl := time.Until(expiresAt)
+
+	if eng != nil && eng.RedisClient != nil {
+		err = eng.RedisClient.Set(ctx, key, data, ttl).Err()
+		if err != nil {
+			slog.Error("Failed to store OIDC session in Redis", "username", username, "error", err)
+			return
+		}
+		slog.Debug("Stored OIDC user session in Redis", "username", username, "expires_at", expiresAt.Format(time.RFC3339), "expires_in_hours", time.Until(expiresAt).Hours())
+	} else {
+		slog.Warn("Redis client not available, OIDC session not persisted", "username", username)
+	}
 }
 
 func GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
-	oidcUsersMu.RLock()
-	info, exists := oidcUsers[username]
-	oidcUsersMu.RUnlock()
-
-	if !exists {
-		slog.Debug("OIDC user not found in cache", "username", username)
+	// Try to get from Redis
+	if eng == nil || eng.RedisClient == nil {
+		slog.Warn("Redis client not available, cannot retrieve OIDC session", "username", username)
 		return nil, false
 	}
 
-	// Check if session has expired
+	ctx := context.Background()
+	key := fmt.Sprintf("oidc:session:%s", username)
+
+	// Attempt to retrieve from Redis
+	data, err := eng.RedisClient.Get(ctx, key).Result()
+	if err != nil {
+		if err.Error() == "redis: nil" {
+			slog.Debug("OIDC user not found in Redis", "username", username)
+		} else {
+			slog.Error("Failed to retrieve OIDC session from Redis", "username", username, "error", err)
+		}
+
+		// Try to refresh the session if we had a cached refresh token
+		// This would require storing refresh tokens separately, which we'll skip for now
+		return nil, false
+	}
+
+	// Deserialize from JSON
+	var info OidcUserInfo
+	if err := json.Unmarshal([]byte(data), &info); err != nil {
+		slog.Error("Failed to unmarshal OIDC user info", "username", username, "error", err)
+		// Delete corrupted data
+		eng.RedisClient.Del(ctx, key)
+		return nil, false
+	}
+
+	// Check if session has expired (Redis TTL should handle this, but double-check)
 	if time.Now().After(info.ExpiresAt) {
-		slog.Info("OIDC session expired", "username", username, "expired_at", info.ExpiresAt.Format(time.RFC3339), "now", time.Now().Format(time.RFC3339))
-		// Remove expired session
-		oidcUsersMu.Lock()
-		delete(oidcUsers, username)
-		oidcUsersMu.Unlock()
+		slog.Info("OIDC session expired", "username", username, "expired_at", info.ExpiresAt.Format(time.RFC3339))
+		eng.RedisClient.Del(ctx, key)
+
+		// Try to refresh using refresh token if available
+		if info.RefreshToken != "" {
+			if refreshed := tryRefreshOIDCSession(username, &info); refreshed {
+				return GetOIDCUserInfo(username) // Recursive call to get refreshed session
+			}
+		}
+
 		return nil, false
 	}
 
-	return info, exists
+	return &info, true
+}
+
+// tryRefreshOIDCSession attempts to refresh an OIDC session using the refresh token
+func tryRefreshOIDCSession(username string, oldInfo *OidcUserInfo) bool {
+	if oauth2Config == nil || oldInfo.RefreshToken == "" {
+		return false
+	}
+
+	ctx := context.Background()
+
+	// Create a token with the refresh token
+	token := &oauth2.Token{
+		RefreshToken: oldInfo.RefreshToken,
+	}
+
+	// Use the token source to get a fresh token
+	tokenSource := oauth2Config.TokenSource(ctx, token)
+	newToken, err := tokenSource.Token()
+	if err != nil {
+		slog.Warn("Failed to refresh OIDC token", "username", username, "error", err)
+		return false
+	}
+
+	// Extract and verify the new ID token
+	rawIDToken, ok := newToken.Extra("id_token").(string)
+	if !ok {
+		slog.Warn("No ID token in refreshed response", "username", username)
+		return false
+	}
+
+	idToken, err := oidcVerifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		slog.Warn("Failed to verify refreshed ID token", "username", username, "error", err)
+		return false
+	}
+
+	// Extract claims
+	var claims IDTokenClaims
+	if err := idToken.Claims(&claims); err != nil {
+		slog.Warn("Failed to extract claims from refreshed token", "username", username, "error", err)
+		return false
+	}
+
+	// Extract user info from new claims
+	newUsername, groups, roles := extractUserInfoFromClaims(&claims)
+	if newUsername != username {
+		slog.Error("Username mismatch after refresh", "expected", username, "got", newUsername)
+		return false
+	}
+
+	// Calculate new expiration
+	expirySeconds := getRefreshTokenExpiry(roles)
+	expiresAt := time.Now().Add(time.Duration(expirySeconds) * time.Second)
+
+	// Store the refreshed session
+	newRefreshToken := newToken.RefreshToken
+	if newRefreshToken == "" {
+		newRefreshToken = oldInfo.RefreshToken // Reuse old refresh token if new one not provided
+	}
+
+	storeOIDCUserInfo(username, groups, roles, expiresAt, newRefreshToken)
+	slog.Info("Successfully refreshed OIDC session", "username", username, "new_expiry", expiresAt.Format(time.RFC3339))
+
+	return true
 }
 
 // extractUserInfoFromClaims extracts username, groups, and roles from OIDC claims
