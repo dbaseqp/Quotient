@@ -130,26 +130,21 @@ func OIDCLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate PKCE challenge
+	codeVerifier, err := generateCodeVerifier()
+	if err != nil {
+		slog.Error("Failed to generate code verifier", "error", err)
+		http.Error(w, "Failed to initiate authentication", http.StatusInternalServerError)
+		return
+	}
+
+	codeChallenge := generateCodeChallenge(codeVerifier)
+
 	// Prepare auth URL options
 	authURLOpts := []oauth2.AuthCodeOption{
 		oidc.Nonce(nonce),
-	}
-
-	// Generate PKCE challenge if enabled
-	var codeVerifier string
-	if conf.OIDCSettings.OIDCUsePKCE {
-		codeVerifier, err = generateCodeVerifier()
-		if err != nil {
-			slog.Error("Failed to generate code verifier", "error", err)
-			http.Error(w, "Failed to initiate authentication", http.StatusInternalServerError)
-			return
-		}
-
-		codeChallenge := generateCodeChallenge(codeVerifier)
-		authURLOpts = append(authURLOpts,
-			oauth2.SetAuthURLParam("code_challenge", codeChallenge),
-			oauth2.SetAuthURLParam("code_challenge_method", "S256"),
-		)
+		oauth2.SetAuthURLParam("code_challenge", codeChallenge),
+		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
 	}
 
 	// Store session
@@ -245,16 +240,10 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prepare token exchange options
-	tokenOpts := []oauth2.AuthCodeOption{}
-	if conf.OIDCSettings.OIDCUsePKCE && session.CodeVerifier != "" {
-		tokenOpts = append(tokenOpts,
-			oauth2.SetAuthURLParam("code_verifier", session.CodeVerifier),
-		)
-	}
-
-	// Exchange code for tokens
-	oauth2Token, err := oauth2Config.Exchange(ctx, code, tokenOpts...)
+	// Exchange code for tokens with PKCE verifier
+	oauth2Token, err := oauth2Config.Exchange(ctx, code,
+		oauth2.SetAuthURLParam("code_verifier", session.CodeVerifier),
+	)
 	if err != nil {
 		slog.Error("Failed to exchange authorization code", "error", err)
 		http.Error(w, "Failed to complete authentication", http.StatusInternalServerError)

@@ -83,8 +83,7 @@ type OIDCAuthConfig struct {
 	OIDCRedirectURL  string
 
 	// Security Settings
-	OIDCUsePKCE bool
-	OIDCScopes  []string
+	OIDCScopes []string
 
 	// Group Mapping
 	OIDCGroupClaim   string
@@ -94,37 +93,6 @@ type OIDCAuthConfig struct {
 	OIDCInjectGroups []string
 
 	// Token Expiration Settings (in seconds)
-	OIDCAccessTokenExpiry        int
-	OIDCRefreshTokenExpiryTeam   int
-	OIDCRefreshTokenExpiryAdmin  int
-	OIDCRefreshTokenExpiryRed    int
-	OIDCRefreshTokenExpiryInject int
-
-	// UI Settings
-	OIDCDisableLocalLogin bool
-}
-
-type OIDCAuthConfig struct {
-	// Provider Configuration
-	OIDCEnabled      bool
-	OIDCIssuerURL    string
-	OIDCClientID     string
-	OIDCClientSecret string
-	OIDCRedirectURL  string
-
-	// Security Settings
-	OIDCUsePKCE bool
-	OIDCScopes  []string
-
-	// Group Mapping
-	OIDCGroupClaim   string
-	OIDCAdminGroups  []string
-	OIDCRedGroups    []string
-	OIDCTeamGroups   []string
-	OIDCInjectGroups []string
-
-	// Token Expiration Settings (in seconds)
-	OIDCAccessTokenExpiry        int
 	OIDCRefreshTokenExpiryTeam   int
 	OIDCRefreshTokenExpiryAdmin  int
 	OIDCRefreshTokenExpiryRed    int
@@ -388,9 +356,6 @@ func checkConfig(conf *ConfigSettings) error {
 		if conf.OIDCSettings.OIDCGroupClaim == "" {
 			conf.OIDCSettings.OIDCGroupClaim = "groups"
 		}
-		if conf.OIDCSettings.OIDCAccessTokenExpiry == 0 {
-			conf.OIDCSettings.OIDCAccessTokenExpiry = 3600 // 1 hour
-		}
 		if conf.OIDCSettings.OIDCRefreshTokenExpiryTeam == 0 {
 			conf.OIDCSettings.OIDCRefreshTokenExpiryTeam = 86400 // 1 day
 		}
@@ -403,8 +368,6 @@ func checkConfig(conf *ConfigSettings) error {
 		if conf.OIDCSettings.OIDCRefreshTokenExpiryInject == 0 {
 			conf.OIDCSettings.OIDCRefreshTokenExpiryInject = 86400 // 1 day
 		}
-		// PKCE is enabled by default
-		conf.OIDCSettings.OIDCUsePKCE = true
 	}
 
 	// =======================================
