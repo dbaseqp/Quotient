@@ -160,6 +160,7 @@ func OIDCLoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Generate authorization URL
 	authURL := oauth2Config.AuthCodeURL(state, authURLOpts...)
+	slog.Info("OIDC login initiated", "redirect_uri", oauth2Config.RedirectURL, "auth_url", authURL)
 
 	// Set CSRF cookie
 	http.SetCookie(w, &http.Cookie{

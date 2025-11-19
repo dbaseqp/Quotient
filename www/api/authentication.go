@@ -28,6 +28,11 @@ const COOKIENAME = "quotient"
 
 // cookieSecure returns whether cookies should use the Secure flag (HTTPS only)
 func cookieSecure() bool {
+	// If OIDC is enabled and using HTTPS callback, enforce secure cookies
+	if conf.OIDCSettings.OIDCEnabled && strings.HasPrefix(conf.OIDCSettings.OIDCRedirectURL, "https://") {
+		return true
+	}
+	// Otherwise, use secure cookies only if SSL is configured
 	return conf.SslSettings != (config.SslConfig{})
 }
 
