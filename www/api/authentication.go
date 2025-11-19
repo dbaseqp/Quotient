@@ -271,12 +271,6 @@ func auth(username string, password string) (map[string]any, error) {
 		return map[string]any{"username": username, "authSource": "ldap"}, nil
 	}
 
-	// Add OIDC support for token-based auth
-	if conf.OIDCSettings.OIDCEnabled && username == "" && password != "" {
-		// Password field contains OIDC token
-		return ValidateOIDCToken(password)
-	}
-
 	return nil, errors.New("no auth source matched credentials")
 }
 
@@ -287,14 +281,6 @@ func findRolesByUsername(username string, authSource string) ([]string, error) {
 	if authSource == "oidc" {
 		if userInfo, exists := GetOIDCUserInfo(username); exists {
 			return userInfo.Roles, nil
-		}
-		// OIDC user not found in cache after server restart
-		// User will need to re-authenticate
-		return nil, errors.New("OIDC session expired - please login again")
-	}
-	for _, inject := range conf.Inject {
-		if username == inject.Name {
-			roles = append(roles, "inject")
 		}
 		// OIDC user not found in cache after server restart
 		// User will need to re-authenticate
@@ -316,6 +302,11 @@ func findRolesByUsername(username string, authSource string) ([]string, error) {
 		for _, team := range conf.Team {
 			if username == team.Name {
 				roles = append(roles, "team")
+			}
+		}
+		for _, inject := range conf.Inject {
+			if username == inject.Name {
+				roles = append(roles, "inject")
 			}
 		}
 
