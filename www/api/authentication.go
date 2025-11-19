@@ -26,6 +26,11 @@ var (
 
 const COOKIENAME = "quotient"
 
+// cookieSecure returns whether cookies should use the Secure flag (HTTPS only)
+func cookieSecure() bool {
+	return conf.SslSettings != (config.SslConfig{})
+}
+
 func init() {
 	if _, err := os.Stat("config/COOKIEKEY"); err != nil {
 		w, err := os.Create("config/COOKIEKEY")
@@ -105,7 +110,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		Value:    cookie,
 		MaxAge:   int((time.Hour * 24).Seconds()),
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}) || conf.OIDCSettings.OIDCEnabled,
+		Secure:   cookieSecure(),
 		Path:     "/",
 	})
 
@@ -118,7 +123,7 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 		Value:    "",
 		MaxAge:   0,
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}) || conf.OIDCSettings.OIDCEnabled,
+		Secure:   cookieSecure(),
 		Path:     "/",
 	})
 	slog.Info("Successful logout", "username", r.Context().Value("username"))
@@ -163,7 +168,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 		Value:    token.Value,
 		MaxAge:   int((time.Hour * 24).Seconds()),
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}) || conf.OIDCSettings.OIDCEnabled,
+		Secure:   cookieSecure(),
 		Path:     "/",
 	})
 

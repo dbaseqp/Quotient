@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"quotient/engine/config"
 	"slices"
 	"strings"
 	"sync"
@@ -168,7 +167,7 @@ func OIDCLoginHandler(w http.ResponseWriter, r *http.Request) {
 		Value:    state,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}) || conf.OIDCSettings.OIDCEnabled,
+		Secure:   cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   600, // 10 minutes
 	})
@@ -209,8 +208,8 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}) || conf.OIDCSettings.OIDCEnabled,
-		SameSite: http.SameSiteStrictMode,
+		Secure:   cookieSecure(),
+		SameSite: http.SameSiteLaxMode,
 	})
 
 	// Retrieve session
@@ -329,7 +328,7 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		Value:    encodedCookie,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}) || conf.OIDCSettings.OIDCEnabled,
+		Secure:   cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   cookieMaxAge,
 	})
@@ -355,7 +354,7 @@ func OIDCLogoutHandler(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}),
+		Secure:   cookieSecure(),
 		SameSite: http.SameSiteStrictMode,
 	})
 
