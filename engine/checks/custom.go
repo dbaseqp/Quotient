@@ -50,9 +50,6 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 
 		// Create command with timeout context
 		timeout := time.Duration(c.Timeout) * time.Second
-		if timeout == 0 {
-			timeout = 30 * time.Second // fallback if timeout not set
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", formedCommand)
