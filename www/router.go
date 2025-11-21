@@ -128,20 +128,21 @@ func (router *Router) Start() {
 	|                                         |
 	******************************************/
 
-	ADMINAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("admin", "inject"))
+	INJECTAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("admin", "inject"))
 	// admin auth API routes
-	mux.HandleFunc("POST /api/announcements/create", ADMINAUTH(api.CreateAnnouncement))
-	mux.HandleFunc("POST /api/announcements/{id}", ADMINAUTH(api.UpdateAnnouncement))
-	mux.HandleFunc("DELETE /api/announcements/{id}", ADMINAUTH(api.DeleteAnnouncement))
+	mux.HandleFunc("POST /api/announcements/create", INJECTAUTH(api.CreateAnnouncement))
+	mux.HandleFunc("POST /api/announcements/{id}", INJECTAUTH(api.UpdateAnnouncement))
+	mux.HandleFunc("DELETE /api/announcements/{id}", INJECTAUTH(api.DeleteAnnouncement))
 
-	mux.HandleFunc("POST /api/injects/create", ADMINAUTH(api.CreateInject))
-	mux.HandleFunc("POST /api/injects/{id}", ADMINAUTH(api.UpdateInject))
-	mux.HandleFunc("DELETE /api/injects/{id}", ADMINAUTH(api.DeleteInject))
+	mux.HandleFunc("POST /api/injects/create", INJECTAUTH(api.CreateInject))
+	mux.HandleFunc("POST /api/injects/{id}", INJECTAUTH(api.UpdateInject))
+	mux.HandleFunc("DELETE /api/injects/{id}", INJECTAUTH(api.DeleteInject))
 
 	// router.HandleFunc("POST /api/engine/service/create", ADMINAUTH(api.CreateService))
 	// router.HandleFunc("POST /api/engine/service/update", ADMINAUTH(api.UpdateService))
 	// router.HandleFunc("DELETE /api/engine/service/delete", ADMINAUTH(api.DeleteService))
 
+	ADMINAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("admin"))
 	mux.HandleFunc("POST /api/engine/pause", ADMINAUTH(api.PauseEngine))
 	mux.HandleFunc("GET /api/engine/reset", ADMINAUTH(api.ResetScores))
 	mux.HandleFunc("GET /api/engine", ADMINAUTH(api.GetEngine))
@@ -153,13 +154,12 @@ func (router *Router) Start() {
 	mux.HandleFunc("GET /api/engine/export/scores", ADMINAUTH(api.ExportScores))
 	mux.HandleFunc("GET /api/engine/export/config", ADMINAUTH(api.ExportConfig))
 
-	ADMINONLYAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("admin"))
 	// admin-only WWW routes (inject role excluded)
-	mux.HandleFunc("GET /admin", ADMINONLYAUTH(router.AdminPage))
-	mux.HandleFunc("GET /admin/engine", ADMINONLYAUTH(router.AdministrateEnginePage))
-	mux.HandleFunc("GET /admin/runners", ADMINONLYAUTH(router.AdministrateRunnersPage))
-	mux.HandleFunc("GET /admin/teams", ADMINONLYAUTH(router.AdministrateTeamsPage))
-	mux.HandleFunc("GET /admin/appearance", ADMINONLYAUTH(router.AdministrateAppearancePage))
+	mux.HandleFunc("GET /admin", ADMINAUTH(router.AdminPage))
+	mux.HandleFunc("GET /admin/engine", ADMINAUTH(router.AdministrateEnginePage))
+	mux.HandleFunc("GET /admin/runners", ADMINAUTH(router.AdministrateRunnersPage))
+	mux.HandleFunc("GET /admin/teams", ADMINAUTH(router.AdministrateTeamsPage))
+	mux.HandleFunc("GET /admin/appearance", ADMINAUTH(router.AdministrateAppearancePage))
 
 	// start server
 	server := http.Server{
