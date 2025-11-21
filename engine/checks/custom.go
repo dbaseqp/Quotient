@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"al.essio.dev/pkg/shellescape"
 )
@@ -45,7 +47,12 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 		formedCommand = strings.Replace(formedCommand, "PASSWORD", shellescape.Quote(password), -1)
 		slog.Debug("CUSTOM CHECK COMMAND", "command", formedCommand)
 		checkResult.Debug = formedCommand
-		cmd := exec.Command("/bin/sh", "-c", formedCommand)
+
+		// Create command with timeout context
+		timeout := time.Duration(c.Timeout) * time.Second
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", formedCommand)
 
 		tmpfilePath := fmt.Sprintf("/tmp/custom-check-%d-%d-%s", roundID, teamID, c.Name)
 		tmpfile, err := os.Create(tmpfilePath)
