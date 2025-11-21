@@ -98,6 +98,7 @@ func (router *Router) Start() {
 
 	mux.HandleFunc("GET /services", TEAMAUTH(router.ServicesPage))
 	mux.HandleFunc("GET /api/pcrs", TEAMAUTH(api.GetPcrs))
+	mux.HandleFunc("POST /api/pcrs/reset", TEAMAUTH(api.ResetPcr))
 	mux.HandleFunc("GET /api/credlists", TEAMAUTH(api.GetCredlists))
 	mux.HandleFunc("POST /api/pcrs/submit", TEAMAUTH(api.CreatePcr))
 
