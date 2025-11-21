@@ -177,7 +177,7 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") && team.ID != teamID {
+	if !slices.Contains(req_roles, "admin") && !slices.Contains(req_roles, "inject") && team.ID != teamID {
 		w.WriteHeader(http.StatusForbidden)
 		data := map[string]any{"error": "Forbidden"}
 		d, _ := json.Marshal(data)

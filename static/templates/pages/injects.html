@@ -5,7 +5,7 @@
         <button class="btn btn-warning rounded-0 w-100 d-none" onclick="refreshInjects()" id="refresh--btn">
             Refresh
         </button>
-        {{ if contains .roles "admin" }}
+        {{ if or (contains .roles "admin") (contains .roles "inject") }}
         <button class="btn btn-primary rounded-0 w-100" data-bs-toggle="modal" data-bs-target="#create__form">
             Create Inject
         </button>
@@ -340,7 +340,7 @@
                     <span id="pane__from--placeholder" class="placeholder col-4"></span>
                     <span id="pane__subject--placeholder" class="placeholder col-6"></span>
                     <hr class="my-4">
-                    {{ if contains .roles "admin" }}
+                    {{ if or (contains .roles "admin") (contains .roles "inject") }}
                     <div class="d-flex">
                         <button class="btn btn-outline-secondary rounded-1 m-2" data-bs-toggle="modal"
                             data-bs-target="#edit__form">
@@ -481,8 +481,8 @@
                 inject.CloseTime = (new Date(inject.CloseTime))
                 let tab = PLACEHOLDER_TAB.cloneNode(true)
                 let pane = PLACEHOLDER_PANE.cloneNode(true)
-                tab.classList.remove("active", "placeholder-glow")
-                pane.classList.remove("active", "placeholder-glow")
+                tab.classList.remove("active", "placeholder-glow", "d-none")
+                pane.classList.remove("active", "placeholder-glow", "d-none")
 
 
                 let title = tab.querySelector("#tab__title--placeholder")
@@ -580,10 +580,18 @@
                     description.appendChild(files)
                 }
                 
-                tab.setHTMLUnsafe(tab.outerHTML.replaceAll("placeholder", inject.ID))
-                pane.setHTMLUnsafe(pane.outerHTML.replaceAll("placeholder", inject.ID))
-                tabs.push(tab.firstChild)
-                panes.push(pane.firstChild)
+                // Update IDs and attributes
+                tab.id = `tab--${inject.ID}`
+                tab.setAttribute('data-bs-target', `#pane--${inject.ID}`)
+                tab.setAttribute('aria-controls', `pane--${inject.ID}`)
+                pane.id = `pane--${inject.ID}`
+
+                // Replace placeholder in innerHTML
+                tab.innerHTML = tab.innerHTML.replaceAll("placeholder", inject.ID)
+                pane.innerHTML = pane.innerHTML.replaceAll("placeholder", inject.ID)
+
+                tabs.push(tab)
+                panes.push(pane)
             }
             PLACEHOLDER_TAB.classList.add("d-none")
             PLACEHOLDER_PANE.classList.add("d-none")
