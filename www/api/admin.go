@@ -8,7 +8,7 @@ import (
 	"regexp"
 )
 
-var validIdentifierRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+var validIdentifierRegex = regexp.MustCompile(`^[0-9]{1,3}+$`)
 
 func isValidIdentifier(identifier string) bool {
 	return validIdentifierRegex.MatchString(identifier)
