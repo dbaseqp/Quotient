@@ -45,7 +45,7 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			},
 		}
 		// Set client timeout to slightly less than check timeout to get better error messages
-		clientTimeout := time.Duration(c.Timeout-1) * time.Second
+		clientTimeout := time.Duration(c.Timeout) * time.Second
 		client := &http.Client{
 			Transport: tr,
 			Timeout:   clientTimeout,
