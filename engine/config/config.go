@@ -10,7 +10,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -115,8 +114,7 @@ type MiscConfig struct {
 	LogoImage           string
 	LogFile             string
 
-	StartPaused      bool
-	CompetitionStart string `toml:",omitempty"`
+	StartPaused bool
 
 	// Round settings
 	Delay  int
@@ -479,19 +477,4 @@ func (conf *ConfigSettings) AllChecks() []checks.Runner {
 		out = append(out, box.Runners...)
 	}
 	return out
-}
-
-// HasCompetitionStarted checks if the competition has started based on CompetitionStart time
-func (conf *ConfigSettings) HasCompetitionStarted() bool {
-	if conf.MiscSettings.CompetitionStart == "" {
-		return true
-	}
-
-	startTime, err := time.Parse(time.RFC3339, conf.MiscSettings.CompetitionStart)
-	if err != nil {
-		slog.Warn("Failed to parse CompetitionStart time", "value", conf.MiscSettings.CompetitionStart, "error", err)
-		return true
-	}
-
-	return time.Now().After(startTime)
 }

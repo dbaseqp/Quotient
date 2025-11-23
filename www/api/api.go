@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"quotient/engine"
 	"quotient/engine/config"
+	"quotient/engine/db"
 	"strings"
 )
 
@@ -40,7 +41,7 @@ func CheckCompetitionStarted(w http.ResponseWriter, r *http.Request) bool {
 		}
 	}
 
-	if !conf.HasCompetitionStarted() {
+	if !db.GetCompetitionStarted() {
 		w.WriteHeader(http.StatusForbidden)
 		d, _ := json.Marshal(map[string]string{"error": "Competition has not started"})
 		w.Write(d)

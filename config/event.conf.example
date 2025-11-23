@@ -9,9 +9,6 @@
   ShowDebugToBlueTeam = false
   LogoImage = "/static/assets/quotient.svg"
   StartPaused = true
-  # CompetitionStart = "2025-11-15T09:00:00-06:00"  # RFC3339 format
-  # When set, restricts non-admin access to competition data and automatically resets scores at start time
-  # Admins can still access all pages and test service checks before competition begins
   Delay = 30
   Jitter = 5
   Points = 1
