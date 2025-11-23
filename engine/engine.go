@@ -31,6 +31,7 @@ type ScoringEngine struct {
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
 
+	// Config update handling
 	configPath string
 }
 
@@ -133,6 +134,7 @@ func (se *ScoringEngine) Start() {
 				se.CurrentRoundStartTime = time.Now()
 				se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
 
+				// run the round logic
 				var err error
 				switch se.Config.RequiredSettings.EventType {
 				case "koth":
