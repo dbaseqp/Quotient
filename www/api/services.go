@@ -2,11 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"quotient/engine/db"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 func GetTeams(w http.ResponseWriter, r *http.Request) {
@@ -18,21 +20,101 @@ func GetTeams(w http.ResponseWriter, r *http.Request) {
 	}
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
-		me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+		username := r.Context().Value("username").(string)
+
+		// Check if this is an OIDC user
+		var teamToShow *db.TeamSchema
+		var isOIDCUser bool
+		if userInfo, exists := GetOIDCUserInfo(username); exists {
+			isOIDCUser = true
+			// Map OIDC user to team based on their groups
+			teamToShow = mapOIDCUserToTeam(teams, userInfo.Groups)
 		}
-		for _, team := range teams {
-			if team.ID == me.ID {
-				teams = []db.TeamSchema{team}
-				break
+
+		// Fall back to username-based lookup only for non-OIDC users
+		if !isOIDCUser && teamToShow == nil {
+			me, err := db.GetTeamByUsername(username)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
 			}
+			if me.ID != 0 {
+				teamToShow = &me
+			}
+		}
+
+		// Filter teams to show only the user's team
+		if teamToShow != nil {
+			for _, team := range teams {
+				if team.ID == teamToShow.ID {
+					teams = []db.TeamSchema{team}
+					break
+				}
+			}
+		} else {
+			// No team found for user, return empty array
+			teams = []db.TeamSchema{}
 		}
 	}
 
 	d, _ := json.Marshal(teams)
 	w.Write(d)
+}
+
+// mapOIDCUserToTeam maps an OIDC user to a team based on their groups
+func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchema {
+	// Extract team number from group names that match OIDCTeamGroups patterns
+	// Assumes last two digits indicate team number (e.g., "WCComps_Quotient_Blue_Team01" -> team01)
+	for _, group := range userGroups {
+		// Check if this group matches any of the configured team group patterns
+		for _, pattern := range conf.OIDCSettings.OIDCTeamGroups {
+			// Simple wildcard matching (e.g., "WCComps_Quotient_Blue*")
+			basePattern := strings.TrimSuffix(pattern, "*")
+			if strings.HasPrefix(group, basePattern) {
+				// Extract last two digits from the group name
+				if len(group) >= 2 {
+					lastTwo := group[len(group)-2:]
+					if num, err := strconv.Atoi(lastTwo); err == nil {
+						// Look for matching team (e.g., 01 -> team01)
+						teamName := fmt.Sprintf("team%02d", num)
+						for i := range teams {
+							if teams[i].Name == teamName {
+								return &teams[i]
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// getUserTeamID returns the team ID for a given username, supporting both OIDC and local users
+func getUserTeamID(username string) (uint, error) {
+	// Check if this is an OIDC user
+	if userInfo, exists := GetOIDCUserInfo(username); exists {
+		teams, err := db.GetTeams()
+		if err != nil {
+			return 0, err
+		}
+		teamToShow := mapOIDCUserToTeam(teams, userInfo.Groups)
+		if teamToShow != nil {
+			return teamToShow.ID, nil
+		}
+		return 0, fmt.Errorf("OIDC user not mapped to any team")
+	}
+
+	// Fall back to username-based lookup for local users
+	me, err := db.GetTeamByUsername(username)
+	if err != nil {
+		return 0, err
+	}
+	if me.ID == 0 {
+		return 0, fmt.Errorf("user not associated with any team")
+	}
+	return me.ID, nil
 }
 
 func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
@@ -49,12 +131,13 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
-		me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
+		myTeamID, err := getUserTeamID(r.Context().Value("username").(string))
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			slog.Error("Failed to get user's team", "username", r.Context().Value("username").(string), "err", err)
+			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		if teamID != me.ID {
+		if teamID != myTeamID {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
@@ -105,12 +188,13 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
-		me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
+		myTeamID, err := getUserTeamID(r.Context().Value("username").(string))
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			slog.Error("Failed to get user's team", "username", r.Context().Value("username").(string), "err", err)
+			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		if teamID != me.ID {
+		if teamID != myTeamID {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}

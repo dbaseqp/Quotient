@@ -29,6 +29,9 @@ type ConfigSettings struct {
 	// LDAP settings
 	LdapSettings LdapAuthConfig `toml:"LdapSettings,omitempty" json:"LdapSettings,omitempty"`
 
+	// OIDC settings
+	OIDCSettings OIDCAuthConfig `toml:"OIDCSettings,omitempty" json:"OIDCSettings,omitempty"`
+
 	// Optional settings
 	SslSettings SslConfig `toml:"SslSettings,omitempty" json:"SslSettings,omitempty"`
 
@@ -70,6 +73,34 @@ type LdapAuthConfig struct {
 	LdapRedGroupDn    string
 	LdapTeamGroupDn   string
 	LdapInjectGroupDn string
+}
+
+type OIDCAuthConfig struct {
+	// Provider Configuration
+	OIDCEnabled      bool
+	OIDCIssuerURL    string
+	OIDCClientID     string
+	OIDCClientSecret string
+	OIDCRedirectURL  string
+
+	// Security Settings
+	OIDCScopes []string
+
+	// Group Mapping
+	OIDCGroupClaim   string
+	OIDCAdminGroups  []string
+	OIDCRedGroups    []string
+	OIDCTeamGroups   []string
+	OIDCInjectGroups []string
+
+	// Token Expiration Settings (in seconds)
+	OIDCRefreshTokenExpiryTeam   int
+	OIDCRefreshTokenExpiryAdmin  int
+	OIDCRefreshTokenExpiryRed    int
+	OIDCRefreshTokenExpiryInject int
+
+	// UI Settings
+	OIDCDisableLocalLogin bool
 }
 
 type SslConfig struct {
@@ -305,10 +336,39 @@ func checkConfig(conf *ConfigSettings) error {
 		conf.MiscSettings.SlaPenalty = conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
 	}
 
-	if conf.MiscSettings.CompetitionStart != "" {
-		_, err := time.Parse(time.RFC3339, conf.MiscSettings.CompetitionStart)
-		if err != nil {
-			errResult = errors.Join(errResult, fmt.Errorf("CompetitionStart must be in RFC3339 format (e.g., 2025-11-15T09:00:00-06:00): %w", err))
+	// OIDC settings defaults
+	if conf.OIDCSettings.OIDCEnabled {
+		if conf.OIDCSettings.OIDCIssuerURL == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no issuer URL specified"))
+		}
+		if conf.OIDCSettings.OIDCClientID == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no client ID specified"))
+		}
+		if conf.OIDCSettings.OIDCClientSecret == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no client secret specified"))
+		}
+		if conf.OIDCSettings.OIDCRedirectURL == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no redirect URL specified"))
+		}
+
+		// Set defaults
+		if len(conf.OIDCSettings.OIDCScopes) == 0 {
+			conf.OIDCSettings.OIDCScopes = []string{"openid", "profile", "email", "groups", "offline_access"}
+		}
+		if conf.OIDCSettings.OIDCGroupClaim == "" {
+			conf.OIDCSettings.OIDCGroupClaim = "groups"
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryTeam == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryTeam = 86400 // 1 day
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryAdmin == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryAdmin = 2592000 // 30 days
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryRed == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryRed = 172800 // 2 days
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryInject == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryInject = 86400 // 1 day
 		}
 	}
 
