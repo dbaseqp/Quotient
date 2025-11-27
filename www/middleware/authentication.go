@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"quotient/www/api"
 	"slices"
@@ -27,9 +26,7 @@ func Authentication(roles ...string) Middleware {
 					return
 				}
 				if strings.HasPrefix(r.URL.Path, "/api/") {
-					w.WriteHeader(http.StatusUnauthorized)
-					d, _ := json.Marshal(map[string]any{"error": "unauthorized"})
-					w.Write(d)
+					api.WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
 					return
 				}
 				http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
@@ -45,9 +42,7 @@ func Authentication(roles ...string) Middleware {
 					return
 				}
 			}
-			w.WriteHeader(http.StatusForbidden)
-			d, _ := json.Marshal(map[string]any{"error": "forbidden"})
-			w.Write(d)
+			api.WriteJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		}
 	}
 }

@@ -85,16 +85,32 @@ func (service *Service) getCreds(teamID uint) (string, string, error) {
 	}
 
 	// pick which list to use
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	credListName := service.CredLists[rng.Intn(len(service.CredLists))]
+	rng := rand.New(rand.NewSource(time.Now().UnixNano())) // #nosec G404 -- non-crypto RNG for credlist selection
+	credListName := service.CredLists[rng.Intn(len(service.CredLists))] // #nosec G404 -- non-crypto selection of credlist to use
 
-	// get the credlist from the filesystem
-	filePath := fmt.Sprintf("submissions/pcrs/%d/%s", teamID, credListName)
-	file, err := os.Open(filePath)
+	// get the credlist from the filesystem using os.Root for path safety
+	baseDir := "submissions/pcrs"
+	relativePath := fmt.Sprintf("%d/%s", teamID, credListName)
+
+	root, err := os.OpenRoot(baseDir)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to open pcrs directory: %w", err)
+	}
+	defer func() {
+		if err := root.Close(); err != nil {
+			slog.Error("failed to close pcrs root directory", "error", err)
+		}
+	}()
+
+	file, err := root.Open(relativePath)
 	if err != nil {
 		return "", "", err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Error("failed to close credlist file", "error", err)
+		}
+	}()
 
 	reader := csv.NewReader(file)
 	records, err := reader.ReadAll()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -52,24 +53,58 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 		timeout := time.Duration(c.Timeout) * time.Second
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", formedCommand)
+		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", formedCommand) // #nosec G204 -- custom checks intentionally run user-defined commands
 
-		tmpfilePath := fmt.Sprintf("/tmp/custom-check-%d-%d-%s", roundID, teamID, c.Name)
-		tmpfile, err := os.Create(tmpfilePath)
+		// Use os.Root to safely handle temp file operations
+		tmpRoot, err := os.OpenRoot("/tmp")
+		if err != nil {
+			checkResult.Error = "error opening tmp directory"
+			checkResult.Debug = err.Error()
+			response <- checkResult
+			return
+		}
+		defer func() {
+			if err := tmpRoot.Close(); err != nil {
+				slog.Error("failed to close tmp root directory", "error", err)
+			}
+		}()
+
+		tmpfileName := fmt.Sprintf("custom-check-%d-%d-%s", roundID, teamID, c.Name)
+		tmpfile, err := tmpRoot.Create(tmpfileName)
 		if err != nil {
 			checkResult.Error = "error creating tmpfile"
 			checkResult.Debug = err.Error()
 			response <- checkResult
 			return
 		}
-		defer tmpfile.Close()
-		defer os.Remove(tmpfilePath)
+		defer func() {
+			if err := tmpfile.Close(); err != nil {
+				slog.Error("failed to close custom check tmpfile", "error", err)
+			}
+			if err := tmpRoot.Remove(tmpfileName); err != nil {
+				slog.Error("failed to remove custom check tmpfile", "error", err)
+			}
+		}()
 
 		cmd.Stdout = tmpfile
 		cmd.Stderr = tmpfile
 
 		err = cmd.Run()
-		raw, err2 := os.ReadFile(tmpfilePath)
+
+		// Read back the temp file using the root
+		tmpfileRead, err2 := tmpRoot.Open(tmpfileName)
+		if err2 != nil {
+			checkResult.Debug += fmt.Sprintf("\nerror opening tmpfile for reading:\n%s", err2.Error())
+			response <- checkResult
+			return
+		}
+		defer func() {
+			if err := tmpfileRead.Close(); err != nil {
+				slog.Error("failed to close custom check tmpfile after reading", "error", err)
+			}
+		}()
+
+		raw, err2 := io.ReadAll(tmpfileRead)
 		if err2 != nil {
 			checkResult.Debug += fmt.Sprintf("\nerror reading tmpfile:\n%s", err2.Error())
 			response <- checkResult

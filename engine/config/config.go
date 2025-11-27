@@ -176,7 +176,7 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 	tempConf := ConfigSettings{}
 	fileContent, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("configuration file ("+path+") not found:", err)
+		return fmt.Errorf("configuration file (%s) not found: %w", path, err)
 	}
 
 	slog.Debug("Decoding TOML configuration")
