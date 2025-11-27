@@ -67,12 +67,30 @@ The configuration file is broken up into sections. Only the `RequiredSettings` s
 
 #### Credential Lists
 
-Cred lists need to be CSVs specified in the `./config/credlists` directory with a `.credlist` extension. The name of the file will be used as the name of the credlist. When password change requests (PCRs) get processed, credlists will only be mutated by changing the password column of an existing user in the defined list. This means submitting a PCR with a user that does not exist will ignore that specific entry. Below is an example. See the below configuration examples to specify credlists for checks.
+Cred lists need to be CSVs specified in the `./config/credlists` directory with a `.credlist` extension. When password change requests (PCRs) get processed, credlists will only be mutated by changing the password column of an existing user in the defined list. This means submitting a PCR with a user that does not exist will ignore that specific entry. Below is an example. See the below configuration examples to specify credlists for checks. You will have to map the files to a credlist name in a top-level config section for each credlist.
 
 ```
+# example contents of a .credlist file
 joe,s3cret
 robby,mypass
 johndoe,helloworld
+```
+
+```
+# Example top-level credlist config
+[CredlistSettings]
+  [[CredlistSettings.Credlist]]
+    CredlistName = "DomainUsersWindows"
+    CredlistPath = "domain_users_windows.credlist"
+    CredlistExplainText = "username,password"
+  [[CredlistSettings.Credlist]]
+    CredlistName = "DomainUsersLinux"
+    CredlistPath = "domain_users_linux.credlist"
+    CredlistExplainText = "username,password"
+  [[CredlistSettings.Credlist]]
+    CredlistName = "SQLUsers"
+    CredlistPath = "sql_users.credlist"
+    CredlistExplainText = "username,password"
 ```
 
 They should be specified for each check that requires a credlist. The `credlists` field expects an array of strings of the exact file name of credlist to be used.
