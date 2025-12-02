@@ -50,6 +50,27 @@ func ResetScores(w http.ResponseWriter, r *http.Request) {
 	w.Write(d)
 }
 
+func SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
+	type Form struct {
+		Started bool `json:"started"`
+	}
+
+	var form Form
+	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	slog.Info("competition started toggle requested", "started", form.Started)
+	if err := db.SetCompetitionStarted(form.Started); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	d := []byte(`{"status": "success"}`)
+	w.Write(d)
+}
+
 func ExportScores(w http.ResponseWriter, r *http.Request) {
 	type ServiceScore struct {
 		ServiceName   string `json:"service_name"`
@@ -132,10 +153,11 @@ func GetEngine(w http.ResponseWriter, r *http.Request) {
 	}
 
 	d, _ := json.Marshal(map[string]any{
-		"last_round":         lastRound,
-		"current_round_time": eng.CurrentRoundStartTime,
-		"next_round_time":    eng.NextRoundStartTime,
-		"running":            !eng.IsEnginePaused,
+		"last_round":          lastRound,
+		"current_round_time":  eng.CurrentRoundStartTime,
+		"next_round_time":     eng.NextRoundStartTime,
+		"running":             !eng.IsEnginePaused,
+		"competition_started": db.GetCompetitionStarted(),
 	})
 	w.Write(d)
 }
