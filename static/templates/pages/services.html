@@ -107,6 +107,22 @@
     const DRILLDOWN_PLACEHOLDER = document.getElementById("drilldown__row--placeholder")
     const DRILLDOWN_LIST = document.getElementById("drilldown__list")
 
+    function updateUrlParams(params) {
+        const url = new URL(window.location)
+        for (const [key, value] of Object.entries(params)) {
+            if (value === null || value === undefined) {
+                url.searchParams.delete(key)
+            } else {
+                url.searchParams.set(key, value)
+            }
+        }
+        window.history.replaceState({}, '', url)
+    }
+
+    document.getElementById('offcanvas').addEventListener('hidden.bs.offcanvas', () => {
+        updateUrlParams({ service: null, round: null })
+    })
+
     fetch("/api/teams")
         .then((response) => {
             if (!response.ok) {
@@ -127,6 +143,7 @@
             team_select.addEventListener("change", (source) => {
                 SERVICE_CONTAINER.innerHTML = ""
                 const TEAM_ID = source.currentTarget.value
+                updateUrlParams({ team: TEAM_ID, service: null, round: null })
                 fetchServices(TEAM_ID)
             })
         })
@@ -274,6 +291,7 @@
                         const SERVICE_ID = source.currentTarget.getAttribute("data-service-id")
                         const TEAM_ID = document.getElementById("team-select").value
                         const HIGHLIGHT_ROUND = source.currentTarget.getAttribute("data-highlight-round")
+                        updateUrlParams({ team: TEAM_ID, service: SERVICE_ID, round: HIGHLIGHT_ROUND })
                         DRILLDOWN_TITLE.textContent = "Service: " + SERVICE_ID
                         DRILLDOWN_LIST.textContent = ""
                         DRILLDOWN_LIST.appendChild(DRILLDOWN_PLACEHOLDER.cloneNode(true))
