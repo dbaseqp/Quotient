@@ -234,9 +234,9 @@
                         if (!input) return;
                         const teamID = parseInt(row.getAttribute('data-team'));
                         const identifier = input.value;
-                        const activeButton = row.querySelector('.input-group button:first-of-type');
-                        const active = activeButton ? activeButton.disabled : false;
-                        teamsData.push({ ID: teamID, Identifier: identifier, Active: active });
+                        const activeToggle = row.querySelector('.form-check-input');
+                        const active = activeToggle ? activeToggle.checked : false;
+                        teamsData.push({ id: teamID, identifier: identifier, active: active });
                     });
                     // Show loading state
                     const submitButton = document.querySelector('form button[type="submit"]');
