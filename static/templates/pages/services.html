@@ -299,7 +299,7 @@
                                     DRILLDOWN_LIST.appendChild(row)
                                 }
                                 DRILLDOWN_LIST.removeChild(DRILLDOWN_LIST.childNodes[0])
-                                source.currentTarget.removeAttribute('data-highlight-round')
+                                if (source.currentTarget) source.currentTarget.removeAttribute('data-highlight-round')
                             })
                     })
                 })
