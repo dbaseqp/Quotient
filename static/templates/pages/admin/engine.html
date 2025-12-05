@@ -8,6 +8,7 @@
                         <h3>Engine Controls</h3>
                         <button id="pauseButton" class="btn rounded-0"></button>
                         <button id="resetButton" class="btn btn-danger rounded-0">Reset Scores</button>
+                        <button id="competitionStartButton" class="btn rounded-0"></button>
                     </div>
                 </div>
                 <div class="row mb-3">
@@ -44,6 +45,7 @@
                     let CURRENTROUND = 0;
                     let NEXTROUND = 0;
                     let RUNNING = false;
+                    let COMPETITION_STARTED = false;
 
                     document.getElementById('pauseButton').addEventListener('click', () => {
                         fetch('/api/engine/pause', {
@@ -73,6 +75,29 @@
                                 });
                         }
                     });
+                    document.getElementById('competitionStartButton').addEventListener('click', () => {
+                        const action = COMPETITION_STARTED ? 'stop' : 'start';
+                        const message = COMPETITION_STARTED
+                            ? "This will prevent non-admin users from accessing the competition. Are you sure?"
+                            : "This will allow non-admin users to access the competition. Are you sure?";
+
+                        if (confirm(message)) {
+                            fetch('/api/competition/start', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    started: !COMPETITION_STARTED,
+                                }),
+                            })
+                                .then(response => response.json())
+                                .then((data) => {
+                                    window.location.reload()
+                                })
+                                .catch(error => console.error('Error toggling competition start:', error));
+                        }
+                    });
                     function getEngineData() {
                         fetch('/api/engine')
                             .then(response => response.json())
@@ -81,6 +106,7 @@
                                 CURRENTROUND = data["current_round_time"];
                                 NEXTROUND = data["next_round_time"];
                                 RUNNING = data["running"];
+                                COMPETITION_STARTED = data["competition_started"];
 
                                 let last_round_start_time = new Date(LASTROUND.StartTime).toLocaleString();
                                 let current_round_time = new Date(CURRENTROUND).toLocaleString();
@@ -96,6 +122,15 @@
                                 } else {
                                     PAUSE_BUTTON.textContent = 'Resume Engine';
                                     PAUSE_BUTTON.classList.add('btn-success');
+                                }
+
+                                const COMP_START_BUTTON = document.getElementById('competitionStartButton')
+                                if (COMPETITION_STARTED) {
+                                    COMP_START_BUTTON.textContent = 'Stop Competition';
+                                    COMP_START_BUTTON.classList.add('btn-danger');
+                                } else {
+                                    COMP_START_BUTTON.textContent = 'Start Competition';
+                                    COMP_START_BUTTON.classList.add('btn-success');
                                 }
                             })
                             .catch(error => console.error('Error fetching engine status:', error));

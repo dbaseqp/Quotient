@@ -3,6 +3,7 @@ package www
 import (
 	"maps"
 	"net/http"
+	"quotient/engine/db"
 	"quotient/www/api"
 	"slices"
 	"text/template"
@@ -102,6 +103,15 @@ func (router *Router) AnnouncementsPage(w http.ResponseWriter, r *http.Request) 
 }
 
 func (router *Router) ServicesPage(w http.ResponseWriter, r *http.Request) {
+	roles := r.Context().Value("roles").([]string)
+	if !slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && !db.GetCompetitionStarted() {
+		page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/countdown.html"))
+		if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Competition Not Started"})); err != nil {
+			panic(err)
+		}
+		return
+	}
+
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/services.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Services"})); err != nil {
 		panic(err)
@@ -109,6 +119,15 @@ func (router *Router) ServicesPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (router *Router) InjectsPage(w http.ResponseWriter, r *http.Request) {
+	roles := r.Context().Value("roles").([]string)
+	if !slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && !db.GetCompetitionStarted() {
+		page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/countdown.html"))
+		if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Competition Not Started"})); err != nil {
+			panic(err)
+		}
+		return
+	}
+
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/injects.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Injects"})); err != nil {
 		panic(err)
@@ -158,6 +177,19 @@ func (router *Router) AdministrateAppearancePage(w http.ResponseWriter, r *http.
 }
 
 func (router *Router) GraphPage(w http.ResponseWriter, r *http.Request) {
+	var roles []string
+	if r.Context().Value("roles") != nil {
+		roles = r.Context().Value("roles").([]string)
+	}
+
+	if !slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && !db.GetCompetitionStarted() {
+		page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/countdown.html"))
+		if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Competition Not Started"})); err != nil {
+			panic(err)
+		}
+		return
+	}
+
 	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/graphs.html"))
 	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Graphs"})); err != nil {
 		panic(err)
