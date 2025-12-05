@@ -164,6 +164,7 @@
                     });
                 });
 
+                document.addEventListener('DOMContentLoaded', () => {
                 fetch('/api/teams')
                     .then(response => response.json())
                     .then(data => {
@@ -224,6 +225,7 @@
                         console.error('Error fetching teams:', error);
                         showAlert('Failed to load teams. Please try refreshing the page.', 'danger');
                     });
+                });
 
                 const formSubmit = (event) => {
                     event.preventDefault();
