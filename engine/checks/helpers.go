@@ -3,6 +3,8 @@ package checks
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"io"
 	"os"
 
 	"github.com/pmezard/go-difflib/difflib"
@@ -42,11 +44,27 @@ func StringHash(fileContent string) (string, error) {
 }
 
 func GetFile(fileName string) (string, error) {
-	// TODO: fix insecure file path handling
-	// this isn't really an issue since if you can
-	// edit the config, you already have as shell,
-	// but whatever. and it's only reading/hashing
-	fileContent, err := os.ReadFile("./scoredfiles/" + fileName)
+	root, err := os.OpenRoot("./scoredfiles")
+	if err != nil {
+		return "", fmt.Errorf("failed to open scoredfiles directory: %w", err)
+	}
+	defer func() {
+		if err := root.Close(); err != nil {
+			// Non-fatal, just log if available
+		}
+	}()
+
+	file, err := root.Open(fileName)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			// Non-fatal, just log if available
+		}
+	}()
+
+	fileContent, err := io.ReadAll(file)
 	if err != nil {
 		return "", err
 	}

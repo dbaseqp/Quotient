@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"math"
 
 	"gorm.io/gorm"
 )
@@ -73,6 +74,11 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 			return nil, err
 		}
 
+		// Validate id fits in int and is valid for array indexing
+		if id == 0 || id > math.MaxInt || id > uint(len(result)) {
+			continue // Skip invalid round IDs
+		}
+
 		roundidx := int(id) - 1
 		if result[roundidx] == nil {
 			result[roundidx] = make(map[uint]int)
@@ -95,6 +101,11 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 
 		if err := rows.Scan(&id, &team, &penalty); err != nil {
 			return nil, err
+		}
+
+		// Validate id fits in int and is valid for array indexing
+		if id == 0 || id > math.MaxInt || id > uint(len(result)) {
+			continue // Skip invalid round IDs
 		}
 
 		roundidx := int(id) - 1

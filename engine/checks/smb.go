@@ -2,6 +2,7 @@ package checks
 
 import (
 	"io"
+	"log/slog"
 	"math/rand"
 	"net"
 	"regexp"
@@ -46,7 +47,11 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			response <- checkResult
 			return
 		}
-		defer conn.Close()
+		defer func() {
+		if err := conn.Close(); err != nil {
+			slog.Error("failed to close smb connection", "error", err)
+		}
+	}()
 
 		d := &smb2.Dialer{
 			Initiator: &smb2.NTLMInitiator{
@@ -78,7 +83,7 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			}
 			defer fs.Umount()
 
-			file := c.File[rand.Intn(len(c.File))]
+			file := c.File[rand.Intn(len(c.File))] // #nosec G404 -- non-crypto selection of file to test
 
 			f, err := fs.Open(file.Name)
 			if err != nil {
@@ -87,7 +92,11 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				response <- checkResult
 				return
 			}
-			defer f.Close()
+			defer func() {
+			if err := f.Close(); err != nil {
+				slog.Error("failed to close smb file", "error", err)
+			}
+		}()
 
 			buf, err := io.ReadAll(f)
 			if err != nil {

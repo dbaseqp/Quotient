@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path"
@@ -18,10 +19,7 @@ import (
 func GetInjects(w http.ResponseWriter, r *http.Request) {
 	data, err := db.GetInjects()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -40,10 +38,7 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 	for i, inject := range data {
 		data[i].Submissions, err = db.GetSubmissionsForInject(inject.ID)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			data := map[string]any{"error": err.Error()}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
 		if !slices.Contains(req_roles, "admin") {
@@ -57,18 +52,14 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }
 
 func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	// get the inject id from the request
 	injectID := r.PathValue("id")
 	if injectID == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Missing inject ID"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing inject ID"})
 		return
 	}
 
@@ -77,18 +68,21 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	if fileName == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Missing file name"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
 	// check if the inject exists
 	injects, err := db.GetInjects()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -103,8 +97,14 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	if inject.ID == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		data := map[string]any{"error": "Inject not found"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
@@ -113,18 +113,31 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	if !slices.Contains(req_roles, "admin") && time.Now().Before(inject.OpenTime) {
 		w.WriteHeader(http.StatusNotFound)
 		data := map[string]any{"error": "Inject not found"} // don't leak if inject is not open
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
 	// get the file path
-	filePath := path.Join("config/injects", injectID, fileName)
-	if !PathIsInDir("config/injects/"+injectID, filePath) {
+	baseDir := path.Join("config/injects", injectID)
+	filePath := path.Join(baseDir, fileName)
+	if !PathIsInDir(baseDir, filePath) {
 		w.WriteHeader(http.StatusForbidden)
 		data := map[string]any{"error": "Invalid file path"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
@@ -132,17 +145,29 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		w.WriteHeader(http.StatusNotFound)
 		data := map[string]any{"error": "File not found"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
-	file, err := os.Open(filePath)
+	file, err := SafeOpen(baseDir, fileName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		data := map[string]any{"error": "Failed to open file"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 	defer file.Close()
@@ -155,8 +180,14 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.Copy(w, file); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		data := map[string]any{"error": "Failed to send file"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 }
@@ -165,8 +196,14 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Failed to parse multipart form"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
@@ -179,8 +216,14 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 	if title == "" || description == "" || openTimeStr == "" || dueTimeStr == "" || closeTimeStr == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Missing required fields"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
@@ -188,8 +231,14 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Invalid open time format"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
@@ -197,8 +246,14 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Invalid due time format"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
@@ -206,8 +261,14 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Invalid close time format"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
@@ -230,16 +291,28 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 	if inject.OpenTime.After(inject.DueTime) {
 		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Open time must be before due time"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
 	if inject.DueTime.After(inject.CloseTime) {
 		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Due time must be before close time"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
@@ -248,26 +321,28 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			w.WriteHeader(http.StatusBadRequest)
 			data := map[string]any{"error": "Inject with the same title already exists"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusBadRequest, data)
 			return
 		}
 
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
 	// if successful save the files to the filesystem under config/injects/{inject.ID}
 	uploadDir := fmt.Sprintf("config/injects/%d", inject.ID)
 
-	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(uploadDir, 0750); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		data := map[string]any{"error": "Failed to create directory"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
@@ -276,8 +351,7 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			data := map[string]any{"error": "Failed to open file"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusBadRequest, data)
 			return
 		}
 		defer file.Close()
@@ -286,8 +360,7 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			data := map[string]any{"error": "Failed to create file on disk"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusBadRequest, data)
 			return
 		}
 		defer dst.Close()
@@ -295,42 +368,40 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 		if _, err := io.Copy(dst, file); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			data := map[string]any{"error": "Failed to save file on disk"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusBadRequest, data)
 			return
 		}
 	}
 
 	w.WriteHeader(http.StatusCreated)
 	data := map[string]any{"message": "Inject created successfully"}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }
 
 func UpdateInject(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Failed to parse multipart form"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
 	injectID := r.PathValue("id")
 	if injectID == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Missing inject ID"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing inject ID"})
 		return
 	}
 
 	injects, err := db.GetInjects()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -362,8 +433,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			data := map[string]any{"error": "Invalid open time format"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusBadRequest, data)
 			return
 		}
 		inject.OpenTime = openTime
@@ -373,8 +443,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			data := map[string]any{"error": "Invalid due time format"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusBadRequest, data)
 			return
 		}
 		inject.DueTime = dueTime
@@ -384,8 +453,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			data := map[string]any{"error": "Invalid close time format"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusBadRequest, data)
 			return
 		}
 		inject.CloseTime = closeTime
@@ -395,16 +463,28 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 	if inject.OpenTime.After(inject.DueTime) {
 		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Open time must be before due time"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
 	if inject.DueTime.After(inject.CloseTime) {
 		w.WriteHeader(http.StatusBadRequest)
 		data := map[string]any{"error": "Due time must be before close time"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
@@ -416,8 +496,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 		if !os.IsNotExist(err) {
 			w.WriteHeader(http.StatusInternalServerError)
 			data := map[string]any{"error": "Failed to read existing files"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusBadRequest, data)
 			return
 		}
 	}
@@ -432,10 +511,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 	for _, dirFile := range dirFiles {
 		if _, exists := existingFilesMap[dirFile.Name()]; !exists {
 			if err := os.Remove(path.Join(uploadDir, dirFile.Name())); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				data := map[string]any{"error": "Failed to remove old file"}
-				d, _ := json.Marshal(data)
-				w.Write(d)
+				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to remove old file"})
 				return
 			} else {
 				// Remove the file from the database
@@ -457,94 +533,45 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 		for _, fileHeader := range files {
 			file, err := fileHeader.Open()
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				data := map[string]any{"error": "Failed to open file"}
-				d, _ := json.Marshal(data)
-				w.Write(d)
+				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to open file"})
 				return
 			}
 			defer file.Close()
 
 			dst, err := os.Create(fmt.Sprintf("%s/%s", uploadDir, fileHeader.Filename))
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				data := map[string]any{"error": "Failed to create file on disk"}
-				d, _ := json.Marshal(data)
-				w.Write(d)
+				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create file on disk"})
 				return
 			}
 			defer dst.Close()
 
 			if _, err := io.Copy(dst, file); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				data := map[string]any{"error": "Failed to save file on disk"}
-				d, _ := json.Marshal(data)
-				w.Write(d)
-				return
-			}
-		}
-
-		for _, fileHeader := range files {
-			file, err := fileHeader.Open()
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				data := map[string]any{"error": "Failed to open file"}
-				d, _ := json.Marshal(data)
-				w.Write(d)
-				return
-			}
-			defer file.Close()
-
-			dst, err := os.Create(fmt.Sprintf("%s/%s", uploadDir, fileHeader.Filename))
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				data := map[string]any{"error": "Failed to create file on disk"}
-				d, _ := json.Marshal(data)
-				w.Write(d)
-				return
-			}
-			defer dst.Close()
-
-			if _, err := io.Copy(dst, file); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				data := map[string]any{"error": "Failed to save file on disk"}
-				d, _ := json.Marshal(data)
-				w.Write(d)
+				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to save file on disk"})
 				return
 			}
 		}
 	}
 
 	if _, err := db.UpdateInject(inject); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	data := map[string]any{"message": "Inject updated successfully"}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }
 
 func DeleteInject(w http.ResponseWriter, r *http.Request) {
 	injectID := r.PathValue("id")
 	if injectID == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Missing inject ID"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing inject ID"})
 		return
 	}
 
 	injects, err := db.GetInjects()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -559,16 +586,19 @@ func DeleteInject(w http.ResponseWriter, r *http.Request) {
 	if inject.ID == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		data := map[string]any{"error": "Inject not found"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
 	if err := db.DeleteInject(inject); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -576,13 +606,18 @@ func DeleteInject(w http.ResponseWriter, r *http.Request) {
 	if err := os.RemoveAll(uploadDir); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		data := map[string]any{"error": "Failed to remove inject files"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	data := map[string]any{"message": "Inject deleted successfully"}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }

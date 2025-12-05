@@ -13,25 +13,18 @@ import (
 func GetCredlists(w http.ResponseWriter, r *http.Request) {
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") && !conf.MiscSettings.EasyPCR {
-		w.WriteHeader(http.StatusForbidden)
-		data := map[string]any{"error": "PCR self service not allowed"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR self service not allowed"})
 		return
 	}
 
 	credlists, err := eng.GetCredlists()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Error getting credlists"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error getting credlists"})
 		slog.Error("Error getting credlists", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
-	d, _ := json.Marshal(credlists)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, credlists)
 }
 
 func GetPcrs(w http.ResponseWriter, r *http.Request) {
@@ -68,32 +61,23 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if form.TeamID != fmt.Sprint(me.ID) {
-				w.WriteHeader(http.StatusForbidden)
-				data := map[string]any{"error": "PCR not allowed"}
-				d, _ := json.Marshal(data)
-				w.Write(d)
+				WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
 				return
 			}
 		} else {
-			w.WriteHeader(http.StatusForbidden)
-			data := map[string]any{"error": "PCR not allowed"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
 			return
 		}
 	}
 
-	id, err := strconv.Atoi(form.TeamID)
+	id, err := strconv.ParseUint(form.TeamID, 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	updatedCount, err := eng.UpdateCredentials(uint(id), form.CredlistPath, form.Usernames, form.Passwords)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Error updating PCR"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error updating PCR"})
 		slog.Error("Error updating PCR", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
@@ -102,8 +86,7 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 		"message": "PCR updated successfully",
 		"count":   updatedCount,
 	}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }
 
 func ResetPcr(w http.ResponseWriter, r *http.Request) {
@@ -127,44 +110,31 @@ func ResetPcr(w http.ResponseWriter, r *http.Request) {
 		if conf.MiscSettings.EasyPCR {
 			me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				data := map[string]any{"error": "Error looking up team"}
-				d, _ := json.Marshal(data)
-				w.Write(d)
+				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error looking up team"})
 				return
 			}
 			if form.TeamID != fmt.Sprint(me.ID) {
-				w.WriteHeader(http.StatusForbidden)
-				data := map[string]any{"error": "PCR not allowed"}
-				d, _ := json.Marshal(data)
-				w.Write(d)
+				WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
 				return
 			}
 		} else {
-			w.WriteHeader(http.StatusForbidden)
-			data := map[string]any{"error": "PCR reset not allowed"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR reset not allowed"})
 			return
 		}
 	}
 
-	id, err := strconv.Atoi(form.TeamID)
+	id, err := strconv.ParseUint(form.TeamID, 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	if err := eng.ResetCredentials(uint(id), form.CredlistPath); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Error resetting PCR"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error resetting PCR"})
 		slog.Error("Error resetting PCR", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 	data := map[string]any{
 		"message": "PCR reset successfully",
 	}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }

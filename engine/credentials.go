@@ -11,6 +11,26 @@ import (
 	"sync"
 )
 
+// safeOpenInDir opens a file within the given base directory safely using os.Root.
+func safeOpenInDir(baseDir, relativePath string) (*os.File, error) {
+	root, err := os.OpenRoot(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open root directory: %w", err)
+	}
+	defer root.Close()
+	return root.Open(relativePath)
+}
+
+// safeCreateInDir creates a file within the given base directory safely using os.Root.
+func safeCreateInDir(baseDir, relativePath string) (*os.File, error) {
+	root, err := os.OpenRoot(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open root directory: %w", err)
+	}
+	defer root.Close()
+	return root.Create(relativePath)
+}
+
 func (se *ScoringEngine) LoadCredentials() error {
 	teams, err := db.GetTeams()
 	if err != nil {
@@ -35,25 +55,24 @@ func (se *ScoringEngine) LoadCredentials() error {
 			submissionPath := fmt.Sprintf("submissions/pcrs/%d/%s", team.ID, credlistPath)
 			if _, err := os.Stat(submissionPath); os.IsNotExist(err) {
 				destDir := filepath.Dir(submissionPath)
-				if err := os.MkdirAll(destDir, os.ModePerm); err != nil {
+				if err := os.MkdirAll(destDir, 0750); err != nil {
 					return fmt.Errorf("failed to create directory %s: %v", destDir, err)
 				}
 
-				sourcePath := fmt.Sprintf("config/credlists/%s", credlistPath)
-				sourceFile, err := os.Open(sourcePath)
+				sourceFile, err := safeOpenInDir("config/credlists", credlistPath)
 				if err != nil {
-					return fmt.Errorf("failed to open source file %s: %v", sourcePath, err)
+					return fmt.Errorf("failed to open source file %s: %v", credlistPath, err)
 				}
 				defer sourceFile.Close()
 
-				destFile, err := os.Create(submissionPath)
+				destFile, err := safeCreateInDir(fmt.Sprintf("submissions/pcrs/%d", team.ID), credlistPath)
 				if err != nil {
-					return fmt.Errorf("failed to create destination file %s: %v", submissionPath, err)
+					return fmt.Errorf("failed to create destination file %s: %v", credlistPath, err)
 				}
 				defer destFile.Close()
 
 				if _, err := io.Copy(destFile, sourceFile); err != nil {
-					return fmt.Errorf("failed to copy file from %s to %s: %v", sourcePath, submissionPath, err)
+					return fmt.Errorf("failed to copy credlist file %s: %v", credlistPath, err)
 				}
 			} else if err != nil {
 				return fmt.Errorf("failed to check file %s: %v", submissionPath, err)
@@ -86,9 +105,8 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 		return 0, fmt.Errorf("mismatched usernames and passwords")
 	}
 
-	credlistPath := fmt.Sprintf("submissions/pcrs/%d/%s", teamID, credlistName)
 	originalCreds := make(map[string]string)
-	credlist, err := os.Open(credlistPath)
+	credlist, err := safeOpenInDir(fmt.Sprintf("submissions/pcrs/%d", teamID), credlistName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read original credlist: %v", err)
 	}
@@ -117,14 +135,19 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 		}
 	}
 
-	credlist.Close()
+	if err := credlist.Close(); err != nil {
+		slog.Error("failed to close credlist file", "error", err)
+	}
 
-	// write back to the file that was read
-	credlistFile, err := os.Create(credlistPath)
+	credlistFile, err := safeCreateInDir(fmt.Sprintf("submissions/pcrs/%d", teamID), credlistName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open credlist file for writing: %v", err)
 	}
-	defer credlistFile.Close()
+	defer func() {
+		if err := credlistFile.Close(); err != nil {
+			slog.Error("failed to close credlist file", "error", err)
+		}
+	}()
 
 	writer := csv.NewWriter(credlistFile)
 	for username, password := range originalCreds {
@@ -156,17 +179,16 @@ func (se *ScoringEngine) GetCredlists() (any, error) {
 		a.Example = credlist.CredlistExplainText
 		a.Path = credlist.CredlistPath
 		a.Usernames = []string{}
-		credlistPath := filepath.Join("config/credlists", credlist.CredlistPath)
-		file, err := os.Open(credlistPath)
+		file, err := safeOpenInDir("config/credlists", credlist.CredlistPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open credlist file %s: %v", credlistPath, err)
+			return nil, fmt.Errorf("failed to open credlist file %s: %v", credlist.CredlistPath, err)
 		}
 		defer file.Close()
 
 		reader := csv.NewReader(file)
 		records, err := reader.ReadAll()
 		if err != nil {
-			return nil, fmt.Errorf("failed to read credlist file %s: %v", credlistPath, err)
+			return nil, fmt.Errorf("failed to read credlist file %s: %v", credlist.CredlistPath, err)
 		}
 
 		for _, record := range records {
@@ -196,17 +218,16 @@ func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string) erro
 
 	se.CredentialsMutex[teamID].Lock()
 	defer se.CredentialsMutex[teamID].Unlock()
-	submissionPath := fmt.Sprintf("submissions/pcrs/%d/%s", teamID, credlistName)
-	sourcePath := fmt.Sprintf("config/credlists/%s", credlistName)
-	sourceFile, err := os.Open(sourcePath)
+
+	sourceFile, err := safeOpenInDir("config/credlists", credlistName)
 	if err != nil {
-		return fmt.Errorf("failed to open source file %s: %v", sourcePath, err)
+		return fmt.Errorf("failed to open source file %s: %v", credlistName, err)
 	}
 	defer sourceFile.Close()
 
-	destFile, err := os.Create(submissionPath)
+	destFile, err := safeCreateInDir(fmt.Sprintf("submissions/pcrs/%d", teamID), credlistName)
 	if err != nil {
-		return fmt.Errorf("failed to create destination file %s: %v", submissionPath, err)
+		return fmt.Errorf("failed to create destination file %s: %v", credlistName, err)
 	}
 	defer destFile.Close()
 

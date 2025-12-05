@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path"
@@ -18,10 +19,7 @@ import (
 func GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 	data, err := db.GetAnnouncements()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -42,28 +40,21 @@ func GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 		data = openAnnouncements
 	}
 
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }
 
 func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 	// get the announcement id from the request
 	announcementID := r.PathValue("id")
 	if announcementID == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Missing announcement ID"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing announcement ID"})
 		return
 	}
 
 	// get the file name from the request
 	fileName := r.PathValue("file")
 	if fileName == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Missing file name"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing file name"})
 		return
 	}
 
@@ -71,17 +62,11 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 	announcements, err := db.GetAnnouncements()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-			data := map[string]any{"error": "Announcement not found"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Announcement not found"})
 			return
 		}
 
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -101,39 +86,28 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if time.Now().Before(announcement.OpenTime) {
-			w.WriteHeader(http.StatusNotFound)
-			data := map[string]any{"error": "Announcement not found"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Announcement not found"})
 			return
 		}
 	}
 
 	// get the file path
-	filePath := path.Join("submissions/announcements", announcementID, fileName)
-	if !PathIsInDir("submissions/announcements", filePath) {
-		w.WriteHeader(http.StatusForbidden)
-		data := map[string]any{"error": "Invalid file path"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+	baseDir := path.Join("submissions/announcements", announcementID)
+	filePath := path.Join(baseDir, fileName)
+	if !PathIsInDir(baseDir, filePath) {
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Invalid file path"})
 		return
 	}
 
 	// check if the file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		w.WriteHeader(http.StatusNotFound)
-		data := map[string]any{"error": "File not found"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "File not found"})
 		return
 	}
 
-	file, err := os.Open(filePath)
+	file, err := SafeOpen(baseDir, fileName)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Failed to open file"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to open file"})
 		return
 	}
 	defer file.Close()
@@ -146,18 +120,21 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.Copy(w, file); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		data := map[string]any{"error": "Failed to send file"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 }
 
 func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Failed to parse multipart form"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
 		return
 	}
 
@@ -166,19 +143,13 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 	openTimeStr := r.FormValue("open-time")
 
 	if title == "" || description == "" || openTimeStr == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Missing required fields"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing required fields"})
 		return
 	}
 
 	openTime, err := time.Parse(time.RFC3339, openTimeStr)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Invalid open time format"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid open time format"})
 		return
 	}
 
@@ -200,26 +171,35 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			w.WriteHeader(http.StatusBadRequest)
 			data := map[string]any{"error": "Announcement with the same title already exists"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			d, err := json.Marshal(data)
+			if err != nil {
+				slog.Error("failed to marshal error response", "error", err)
+				return
+			}
+			if _, err := w.Write(d); err != nil {
+				slog.Error("failed to write response", "error", err)
+			}
 			return
 		}
 
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
 	// if successful save the files to the filesystem under submissions/announcements/{announcement.ID}
 	uploadDir := fmt.Sprintf("submissions/announcements/%d", announcement.ID)
 
-	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(uploadDir, 0750); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		data := map[string]any{"error": "Failed to create directory"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
@@ -228,8 +208,14 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			data := map[string]any{"error": "Failed to open file"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			d, err := json.Marshal(data)
+			if err != nil {
+				slog.Error("failed to marshal error response", "error", err)
+				return
+			}
+			if _, err := w.Write(d); err != nil {
+				slog.Error("failed to write response", "error", err)
+			}
 			return
 		}
 		defer file.Close()
@@ -238,8 +224,14 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			data := map[string]any{"error": "Failed to create file on disk"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			d, err := json.Marshal(data)
+			if err != nil {
+				slog.Error("failed to marshal error response", "error", err)
+				return
+			}
+			if _, err := w.Write(d); err != nil {
+				slog.Error("failed to write response", "error", err)
+			}
 			return
 		}
 		defer dst.Close()
@@ -247,16 +239,21 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 		if _, err := io.Copy(dst, file); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			data := map[string]any{"error": "Failed to save file on disk"}
-			d, _ := json.Marshal(data)
-			w.Write(d)
+			d, err := json.Marshal(data)
+			if err != nil {
+				slog.Error("failed to marshal error response", "error", err)
+				return
+			}
+			if _, err := w.Write(d); err != nil {
+				slog.Error("failed to write response", "error", err)
+			}
 			return
 		}
 	}
 
 	w.WriteHeader(http.StatusCreated)
 	data := map[string]any{"message": "Announcement created successfully"}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }
 
 func UpdateAnnouncement(w http.ResponseWriter, r *http.Request) {
@@ -266,19 +263,13 @@ func UpdateAnnouncement(w http.ResponseWriter, r *http.Request) {
 func DeleteAnnouncement(w http.ResponseWriter, r *http.Request) {
 	announcementID := r.PathValue("id")
 	if announcementID == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Missing announcement ID"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing announcement ID"})
 		return
 	}
 
 	announcements, err := db.GetAnnouncements()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -293,16 +284,19 @@ func DeleteAnnouncement(w http.ResponseWriter, r *http.Request) {
 	if announcement.ID == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		data := map[string]any{"error": "Announcement not found"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
 	if err := db.DeleteAnnouncement(announcement); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -311,13 +305,18 @@ func DeleteAnnouncement(w http.ResponseWriter, r *http.Request) {
 	if err := os.RemoveAll(uploadDir); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		data := map[string]any{"error": "Failed to remove announcement files"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		d, err := json.Marshal(data)
+		if err != nil {
+			slog.Error("failed to marshal error response", "error", err)
+			return
+		}
+		if _, err := w.Write(d); err != nil {
+			slog.Error("failed to write response", "error", err)
+		}
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	data := map[string]any{"message": "Announcement deleted successfully"}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }

@@ -47,8 +47,7 @@ func GetTeamChecks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]any{"services": services, "states": states}
-	d, _ := json.Marshal(resp)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, resp)
 }
 
 // UpdateTeamChecks updates per-team service check states
@@ -75,6 +74,5 @@ func UpdateTeamChecks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	d := []byte(`{"status": "success"}`)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }
