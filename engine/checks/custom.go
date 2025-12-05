@@ -63,6 +63,7 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 			return
 		}
 		defer tmpfile.Close()
+		defer os.Remove(tmpfilePath)
 
 		cmd.Stdout = tmpfile
 		cmd.Stderr = tmpfile
