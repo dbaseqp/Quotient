@@ -257,7 +257,7 @@ func GetServiceScores() ([]ServiceScoreData, error) {
 		}
 	}
 
-	results = slices.SortFunc(results, func(a, b ServiceScoreData) int {
+	slices.SortFunc(results, func(a, b ServiceScoreData) int {
 		if a.TeamID != b.TeamID {
 			return int(a.TeamID) - int(b.TeamID)
 		}
