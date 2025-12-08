@@ -2,7 +2,9 @@ package db
 
 import (
 	"errors"
+	"strings"
 
+	"golang.org/x/exp/slices"
 	"gorm.io/gorm"
 )
 
@@ -255,6 +257,12 @@ func GetServiceScores() ([]ServiceScoreData, error) {
 		}
 	}
 
+	results = slices.SortFunc(results, func(a, b ServiceScoreData) int {
+		if a.TeamID != b.TeamID {
+			return int(a.TeamID) - int(b.TeamID)
+		}
+		return strings.Compare(a.ServiceName, b.ServiceName)
+	})
 	return results, nil
 }
 
