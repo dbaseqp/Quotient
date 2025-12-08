@@ -2,9 +2,9 @@ package db
 
 import (
 	"errors"
+	"slices"
 	"strings"
 
-	"golang.org/x/exp/slices"
 	"gorm.io/gorm"
 )
 
