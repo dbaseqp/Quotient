@@ -21,7 +21,7 @@ func PauseEngine(w http.ResponseWriter, r *http.Request) {
 
 	var form Form
 	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
 		return
 	}
 
@@ -31,7 +31,7 @@ func PauseEngine(w http.ResponseWriter, r *http.Request) {
 	} else if !eng.IsEnginePaused && form.Pause {
 		eng.PauseEngine()
 	} else {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid engine state transition"})
 		return
 	}
 
@@ -41,7 +41,7 @@ func PauseEngine(w http.ResponseWriter, r *http.Request) {
 func ResetScores(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("reset scores requested")
 	if err := eng.ResetScores(); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to reset scores"})
 		return
 	}
 
@@ -55,18 +55,17 @@ func SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
 
 	var form Form
 	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
 		return
 	}
 
 	slog.Info("competition started toggle requested", "started", form.Started)
 	if err := db.SetCompetitionStarted(form.Started); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update competition status"})
 		return
 	}
 
-	d := []byte(`{"status": "success"}`)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }
 
 func ExportScores(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +85,7 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 
 	teams, err := db.GetTeams()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve teams"})
 		return
 	}
 
@@ -101,7 +100,7 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 
 	serviceData, err := db.GetServiceScores()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve service scores"})
 		return
 	}
 
@@ -134,7 +133,7 @@ func GetActiveTasks(w http.ResponseWriter, r *http.Request) {
 	tasks, err := eng.GetActiveTasks()
 	if err != nil {
 		slog.Error("failed to get active tasks", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve active tasks"})
 		return
 	}
 
@@ -144,7 +143,7 @@ func GetActiveTasks(w http.ResponseWriter, r *http.Request) {
 func GetEngine(w http.ResponseWriter, r *http.Request) {
 	lastRound, err := db.GetLastRound()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve engine status"})
 		return
 	}
 
@@ -168,19 +167,19 @@ func UpdateTeams(w http.ResponseWriter, r *http.Request) {
 
 	var form Form
 	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
 		return
 	}
 
 	for _, team := range form.Teams {
 		// Validate identifier format to prevent command injection
 		if !isValidIdentifier(team.Identifier) {
-			WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid identifier format. Only alphanumeric, hyphens, and underscores allowed."})
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid identifier format. Only alphanumeric, hyphens, and underscores allowed."})
 			return
 		}
 
 		if err := db.UpdateTeam(uint(team.TeamID), team.Identifier, team.Active); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update team"})
 			return
 		}
 	}

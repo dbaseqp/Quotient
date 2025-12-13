@@ -39,9 +39,7 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 
 	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Error retrieving the file"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Error retrieving the file"})
 		return
 	}
 	defer file.Close()
@@ -55,9 +53,7 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 
 	injects, err := db.GetInjects()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Error retrieving the injects"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving the injects"})
 		return
 	}
 
@@ -70,48 +66,36 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if submission.SubmissionTime.After(inject.CloseTime) {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Inject is closed"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Inject is closed"})
 		return
 	}
 
 	submission, err = db.CreateSubmission(submission)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Error creating the submission"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error creating the submission"})
 		return
 	}
 
 	uploadDir := fmt.Sprintf("submissions/%d/%d/%d", injectID, team.ID, submission.Version)
 	err = os.MkdirAll(uploadDir, 0750)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Error creating directories"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error creating directories"})
 		return
 	}
 
 	out, err := SafeCreate(uploadDir, fileHeader.Filename)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Error creating the file"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error creating the file"})
 		return
 	}
 	defer out.Close()
 
 	if _, err = io.Copy(out, file); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Error writing the file"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error writing the file"})
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	data := map[string]any{"message": "Inject submitted successfully"}
-	WriteJSON(w, http.StatusCreated, data)
+	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Inject submitted successfully"})
 }
 
 func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
@@ -124,27 +108,21 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 
 	temp, err = strconv.ParseUint(r.PathValue("team"), 10, 32)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Invalid team id"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team id"})
 		return
 	}
 	teamID := uint(temp)
 
 	temp, err = strconv.ParseUint(r.PathValue("version"), 10, 32)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Invalid version"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid version"})
 		return
 	}
 	version := uint(temp)
 
 	// Validate version fits in int to prevent overflow
 	if version > math.MaxInt {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Version out of range"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Version out of range"})
 		return
 	}
 
@@ -157,17 +135,13 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") && !slices.Contains(req_roles, "inject") && team.ID != teamID {
-		w.WriteHeader(http.StatusForbidden)
-		data := map[string]any{"error": "Forbidden"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 		return
 	}
 
 	submissions, err := db.GetSubmissionsForInject(injectID)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Error retrieving the submission"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving the submission"})
 		return
 	}
 
@@ -180,18 +154,14 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if submission.Version == 0 { // use version because schema has no id
-		w.WriteHeader(http.StatusNotFound)
-		data := map[string]any{"error": "Submission not found"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Submission not found"})
 		return
 	}
 
 	baseDir := fmt.Sprintf("submissions/%d/%d/%d", injectID, teamID, version)
 	file, err := SafeOpen(baseDir, submission.SubmissionFileName)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Error opening the file"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "File not found"})
 		return
 	}
 	defer file.Close()
@@ -199,9 +169,7 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", "attachment; filename="+submission.SubmissionFileName)
 	w.Header().Set("Content-Type", "application/octet-stream")
 	if _, err := io.Copy(w, file); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Error sending the file"}
-		WriteJSON(w, http.StatusBadRequest, data)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error sending the file"})
 		return
 	}
 }

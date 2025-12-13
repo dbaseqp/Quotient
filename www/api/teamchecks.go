@@ -11,7 +11,7 @@ import (
 func GetTeamChecks(w http.ResponseWriter, r *http.Request) {
 	teams, err := db.GetTeams()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve teams"})
 		return
 	}
 
@@ -38,7 +38,7 @@ func GetTeamChecks(w http.ResponseWriter, r *http.Request) {
 			enabled, err := db.IsTeamServiceEnabled(team.ID, service)
 			if err != nil {
 				slog.Error("failed to get service state", "team", team.ID, "service", service, "error", err)
-				w.WriteHeader(http.StatusInternalServerError)
+				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve service state"})
 				return
 			}
 			serviceStates[service] = enabled
@@ -62,14 +62,14 @@ func UpdateTeamChecks(w http.ResponseWriter, r *http.Request) {
 	}
 	var f form
 	if err := json.NewDecoder(r.Body).Decode(&f); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
 		return
 	}
 
 	for _, u := range f.Updates {
 		if err := db.SetTeamServiceEnabled(u.TeamID, u.ServiceName, u.Enabled); err != nil {
 			slog.Error("failed to update service state", "team", u.TeamID, "service", u.ServiceName, "error", err)
-			w.WriteHeader(http.StatusInternalServerError)
+			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update service state"})
 			return
 		}
 	}

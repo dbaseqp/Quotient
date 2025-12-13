@@ -47,7 +47,7 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&form)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
 		slog.Error("Failed to decode PCR json", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
@@ -57,7 +57,7 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 		if conf.MiscSettings.EasyPCR {
 			me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
+				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error looking up team"})
 				return
 			}
 			if form.TeamID != fmt.Sprint(me.ID) {
@@ -72,7 +72,7 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.ParseUint(form.TeamID, 10, 64)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
 		return
 	}
 	updatedCount, err := eng.UpdateCredentials(uint(id), form.CredlistPath, form.Usernames, form.Passwords)
@@ -101,7 +101,7 @@ func ResetPcr(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&form)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
 		slog.Error("Failed to decode PCR json", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
@@ -125,7 +125,7 @@ func ResetPcr(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.ParseUint(form.TeamID, 10, 64)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
 		return
 	}
 	if err := eng.ResetCredentials(uint(id), form.CredlistPath); err != nil {

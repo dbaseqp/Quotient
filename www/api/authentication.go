@@ -92,7 +92,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&form)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
 		slog.Error(err.Error())
 		return
 	}
@@ -107,7 +107,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	cookie, err := CookieEncoder.Encode(COOKIENAME, auth)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Authentication error"})
 		slog.Error(err.Error())
 		return
 	}

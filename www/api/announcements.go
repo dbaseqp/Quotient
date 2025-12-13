@@ -25,7 +25,7 @@ func GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
 		if slices.Contains(req_roles, "red") && !conf.UISettings.ShowAnnouncementsForRedTeam {
-			w.WriteHeader(http.StatusForbidden)
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 			return
 		}
 
@@ -76,7 +76,7 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
 		if slices.Contains(req_roles, "red") && !conf.UISettings.ShowAnnouncementsForRedTeam {
-			w.WriteHeader(http.StatusForbidden)
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 			return
 		}
 		if time.Now().Before(announcement.OpenTime) {
