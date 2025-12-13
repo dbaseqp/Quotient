@@ -174,10 +174,11 @@ func (router *Router) Start() {
 	mux.HandleFunc("GET /admin/teams", ADMINAUTH(router.AdministrateTeamsPage))
 	mux.HandleFunc("GET /admin/appearance", ADMINAUTH(router.AdministrateAppearancePage))
 
-	// start server
+	// start server with security headers middleware wrapping all routes
+	securityMiddleware := middleware.SecurityHeaders(router.Config)
 	server := http.Server{
 		Addr:              fmt.Sprintf("%s:%d", router.Config.RequiredSettings.BindAddress, router.Config.MiscSettings.Port),
-		Handler:           mux,
+		Handler:           http.HandlerFunc(securityMiddleware(mux.ServeHTTP)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	slog.Info(fmt.Sprintf("Starting Web Server on %s://%s:%d", protocol, router.Config.RequiredSettings.BindAddress, router.Config.MiscSettings.Port))

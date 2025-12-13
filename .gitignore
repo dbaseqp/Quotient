@@ -29,3 +29,4 @@ dump.rdb
 coverage.out
 coverage.html
 **/testdata/rapid/
+**/COOKIEKEY
