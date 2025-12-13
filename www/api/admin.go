@@ -35,8 +35,7 @@ func PauseEngine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d := []byte(`{"status": "success"}`)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }
 
 func ResetScores(w http.ResponseWriter, r *http.Request) {
@@ -46,8 +45,7 @@ func ResetScores(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d := []byte(`{"status": "success"}`)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }
 
 func SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
@@ -125,8 +123,7 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 		data = append(data, *score)
 	}
 
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }
 
 func ExportConfig(w http.ResponseWriter, r *http.Request) {
@@ -141,8 +138,7 @@ func GetActiveTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d, _ := json.Marshal(tasks)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, tasks)
 }
 
 func GetEngine(w http.ResponseWriter, r *http.Request) {
@@ -152,20 +148,19 @@ func GetEngine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d, _ := json.Marshal(map[string]any{
+	WriteJSON(w, http.StatusOK, map[string]any{
 		"last_round":          lastRound,
 		"current_round_time":  eng.CurrentRoundStartTime,
 		"next_round_time":     eng.NextRoundStartTime,
 		"running":             !eng.IsEnginePaused,
 		"competition_started": db.GetCompetitionStarted(),
 	})
-	w.Write(d)
 }
 
 func UpdateTeams(w http.ResponseWriter, r *http.Request) {
 	type Form struct {
 		Teams []struct {
-			TeamID     int    `json:"id"`
+			TeamID     uint   `json:"id"`
 			Identifier string `json:"identifier"`
 			Active     bool   `json:"active"`
 		} `json:"teams"`
@@ -180,9 +175,7 @@ func UpdateTeams(w http.ResponseWriter, r *http.Request) {
 	for _, team := range form.Teams {
 		// Validate identifier format to prevent command injection
 		if !isValidIdentifier(team.Identifier) {
-			w.WriteHeader(http.StatusBadRequest)
-			d, _ := json.Marshal(map[string]string{"error": "Invalid identifier format. Only alphanumeric, hyphens, and underscores allowed."})
-			w.Write(d)
+			WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid identifier format. Only alphanumeric, hyphens, and underscores allowed."})
 			return
 		}
 
@@ -192,6 +185,5 @@ func UpdateTeams(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	d := []byte(`{"status": "success"}`)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }

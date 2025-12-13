@@ -18,7 +18,9 @@ func setupWatcher(path string) (*fsnotify.Watcher, error) {
 
 	configDir := filepath.Dir(path)
 	if err := watcher.Add(configDir); err != nil {
-		watcher.Close()
+		if closeErr := watcher.Close(); closeErr != nil {
+			slog.Error("failed to close watcher", "error", closeErr)
+		}
 		return nil, fmt.Errorf("failed to watch config directory: %v", err)
 	}
 
@@ -33,7 +35,11 @@ func (conf *ConfigSettings) WatchConfig(path string) error {
 	}
 
 	go func() {
-		defer watcher.Close()
+		defer func() {
+			if err := watcher.Close(); err != nil {
+				slog.Error("failed to close watcher", "error", err)
+			}
+		}()
 
 		var debounceTimer *time.Timer
 		for {
@@ -47,7 +53,9 @@ func (conf *ConfigSettings) WatchConfig(path string) error {
 						debounceTimer.Stop()
 					}
 					debounceTimer = time.AfterFunc(1*time.Second, func() {
-						conf.SetConfig(path)
+						if err := conf.SetConfig(path); err != nil {
+							slog.Error("failed to reload config", "error", err)
+						}
 					})
 				}
 			case err, ok := <-watcher.Errors:

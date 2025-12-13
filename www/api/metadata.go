@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"quotient/engine/checks"
 )
@@ -21,9 +20,7 @@ func GetMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metadata := buildMetadata()
-	d, _ := json.Marshal(metadata)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, buildMetadata())
 }
 
 func buildMetadata() MetadataResponse {

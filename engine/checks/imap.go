@@ -3,6 +3,7 @@ package checks
 import (
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
 
@@ -29,7 +30,7 @@ func (c Imap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 
 		// Connect to server with TLS or not
 		if c.Encrypted {
-			cl, err = client.DialWithDialerTLS(&dialer, fmt.Sprintf("%s:%d", c.Target, c.Port), &tls.Config{})
+			cl, err = client.DialWithDialerTLS(&dialer, fmt.Sprintf("%s:%d", c.Target, c.Port), &tls.Config{}) // #nosec G402 -- competition services may use self-signed certs
 		} else {
 			cl, err = client.DialWithDialer(&dialer, fmt.Sprintf("%s:%d", c.Target, c.Port))
 		}
@@ -39,7 +40,11 @@ func (c Imap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			response <- checkResult
 			return
 		}
-		defer cl.Close()
+		defer func() {
+			if err := cl.Close(); err != nil {
+				slog.Error("failed to close imap client", "error", err)
+			}
+		}()
 
 		if len(c.CredLists) > 0 {
 			username, password, err := c.getCreds(teamID)

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -57,8 +56,7 @@ func GetTeams(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	d, _ := json.Marshal(teams)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, teams)
 }
 
 // mapOIDCUserToTeam maps an OIDC user to a team based on their groups
@@ -168,8 +166,7 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	d, _ := json.Marshal(s)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, s)
 }
 
 func GetServiceAll(w http.ResponseWriter, r *http.Request) {
@@ -215,8 +212,7 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	d, _ := json.Marshal(service)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, service)
 }
 
 func CreateService(w http.ResponseWriter, r *http.Request) {

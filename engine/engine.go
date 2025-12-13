@@ -327,7 +327,7 @@ func (se *ScoringEngine) koth() error {
 func (se *ScoringEngine) rvb() error {
 	// reassign the next round start time with jitter
 	// double the jitter and subtract it to get a random number between -jitter and jitter
-	randomJitter := rand.Intn(2*se.Config.MiscSettings.Jitter) - se.Config.MiscSettings.Jitter
+	randomJitter := rand.Intn(2*se.Config.MiscSettings.Jitter) - se.Config.MiscSettings.Jitter // #nosec G404 -- non-crypto randomization for timing jitter
 	jitter := time.Duration(randomJitter) * time.Second
 	se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second).Add(jitter)
 
@@ -564,7 +564,9 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 					RoundID:     uint(se.CurrentRound),
 					Penalty:     se.Config.MiscSettings.SlaPenalty,
 				}
-				db.CreateSLA(sla)
+				if _, err := db.CreateSLA(sla); err != nil {
+					slog.Error("failed to create SLA", "team", result.TeamID, "service", result.ServiceName, "error", err)
+				}
 				se.SlaPerService[result.TeamID][result.ServiceName] = 0
 			}
 		}

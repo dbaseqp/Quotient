@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"log/slog"
 
 	"gorm.io/gorm"
 )
@@ -121,9 +122,16 @@ func GetTeamScore(teamID uint) (int, int, int, error) {
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Error("failed to close rows", "error", err)
+		}
+	}()
 	for rows.Next() {
-		rows.Scan(&servicePoints)
+		if err := rows.Scan(&servicePoints); err != nil {
+			slog.Error("failed to scan row", "error", err)
+			continue
+		}
 	}
 
 	// get sla violations
