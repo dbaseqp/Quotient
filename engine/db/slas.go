@@ -15,3 +15,12 @@ func CreateSLA(sla SLASchema) (SLASchema, error) {
 	}
 	return sla, nil
 }
+
+func GetSLAs() ([]SLASchema, error) {
+	var slas []SLASchema
+	result := db.Table("sla_schemas").Find(&slas)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return slas, nil
+}
