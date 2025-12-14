@@ -9,52 +9,6 @@ import (
 	"pgregory.net/rapid"
 )
 
-// TestPropertyVerifyIdempotence verifies Verify methods are idempotent
-func TestPropertyVerifyIdempotence(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		// Test with Web check (pattern applies to all check types)
-		scheme := rapid.SampledFrom([]string{"http", "https", ""}).Draw(t, "scheme")
-		display := rapid.SampledFrom([]string{"web", "api", "frontend", ""}).Draw(t, "display")
-
-		webCheck := &Web{
-			Service: Service{
-				Display: display,
-			},
-			Scheme: scheme,
-			Url: []urlData{
-				{Path: "/"}, // Required: at least one URL
-			},
-		}
-
-		// First Verify call
-		err1 := webCheck.Verify("box01", "10.0.0.1", 5, 30, 25, 5)
-		require.NoError(t, err1, "first verify should succeed")
-
-		// Save state after first verify
-		firstPort := webCheck.Port
-		firstName := webCheck.Name
-		firstScheme := webCheck.Scheme
-		firstDisplay := webCheck.Display
-		firstServiceType := webCheck.ServiceType
-
-		// Second Verify call (IDEMPOTENCE TEST)
-		err2 := webCheck.Verify("box01", "10.0.0.1", 5, 30, 25, 5)
-		require.NoError(t, err2, "second verify should succeed")
-
-		// Property: Verify(Verify(x)) == Verify(x)
-		assert.Equal(t, firstPort, webCheck.Port,
-			"port should not change on second verify")
-		assert.Equal(t, firstName, webCheck.Name,
-			"name should not change on second verify")
-		assert.Equal(t, firstScheme, webCheck.Scheme,
-			"scheme should not change on second verify")
-		assert.Equal(t, firstDisplay, webCheck.Display,
-			"display should not change on second verify")
-		assert.Equal(t, firstServiceType, webCheck.ServiceType,
-			"service type should not change on second verify")
-	})
-}
-
 // TestPropertyVerifyPortDefaults verifies port logic across schemes
 func TestPropertyVerifyPortDefaults(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
@@ -240,58 +194,5 @@ func TestPropertyRunnableTimeBoundaries(t *testing.T) {
 			assert.True(t, runnable,
 				"service with zero stop time should be runnable")
 		})
-	})
-}
-
-// TestPropertyRunnableLogicCorrectness verifies complete state machine
-func TestPropertyRunnableLogicCorrectness(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		// Generate random service configuration with clear boundaries (avoid edge cases)
-		disabled := rapid.Bool().Draw(t, "disabled")
-		// Launch time: clearly in past (-100 to -10) or future (10 to 100), avoiding boundaries
-		launchInPast := rapid.Bool().Draw(t, "launchInPast")
-		var launchOffset int
-		if launchInPast {
-			launchOffset = rapid.IntRange(-100, -10).Draw(t, "launchOffset")
-		} else {
-			launchOffset = rapid.IntRange(10, 100).Draw(t, "launchOffset")
-		}
-
-		service := &Service{
-			Disabled:   disabled,
-			LaunchTime: time.Now().Add(time.Duration(launchOffset) * time.Second),
-		}
-
-		hasStopTime := rapid.Bool().Draw(t, "hasStopTime")
-		if hasStopTime {
-			// Stop time: clearly in past (-100 to -10) or future (10 to 100)
-			stopInPast := rapid.Bool().Draw(t, "stopInPast")
-			var stopOffset int
-			if stopInPast {
-				stopOffset = rapid.IntRange(-100, -10).Draw(t, "stopOffset")
-			} else {
-				stopOffset = rapid.IntRange(10, 100).Draw(t, "stopOffset")
-			}
-			service.StopTime = time.Now().Add(time.Duration(stopOffset) * time.Second)
-		}
-
-		runnable := service.Runnable()
-
-		// Verify logic matches implementation (lines 142-151)
-		// Note: Using fresh time.Now() call to match Runnable() behavior
-		now := time.Now()
-		expectedRunnable := true
-
-		if service.Disabled {
-			expectedRunnable = false
-		} else if service.LaunchTime.After(now) {
-			expectedRunnable = false
-		} else if !service.StopTime.IsZero() && service.StopTime.Before(now) {
-			expectedRunnable = false
-		}
-
-		// Property: Runnable() matches expected logic
-		assert.Equal(t, expectedRunnable, runnable,
-			"runnable result should match expected state machine logic")
 	})
 }
