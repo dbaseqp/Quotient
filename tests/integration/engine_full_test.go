@@ -3,16 +3,40 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"quotient/engine"
 	"quotient/engine/checks"
 	"quotient/engine/db"
 	"quotient/tests/testutil"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// testTeamCounter provides unique team IDs across test runs
+var testTeamCounter atomic.Uint64
+
+func init() {
+	testTeamCounter.Store(uint64(time.Now().UnixNano() % 1_000_000))
+}
+
+// createTestTeam creates a team with a unique ID
+func createTestTeam(t *testing.T, name string, identifier string) db.TeamSchema {
+	t.Helper()
+	teamID := uint(testTeamCounter.Add(1))
+	team := db.TeamSchema{
+		ID:         teamID,
+		Name:       fmt.Sprintf("%s-%d", name, teamID),
+		Identifier: identifier,
+		Active:     true,
+	}
+	_, err := db.CreateTeam(team)
+	require.NoError(t, err)
+	return team
+}
 
 // TestFullEngineWorkflow tests the complete engine workflow with real databases
 func TestFullEngineWorkflow(t *testing.T) {
@@ -34,23 +58,16 @@ func TestFullEngineWorkflow(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("complete round workflow", func(t *testing.T) {
-		// Clear Redis
+		// Clear Redis and reset DB scores (clears rounds, checks, SLAs)
 		redisContainer.Client.FlushDB(ctx)
+		db.ResetScores()
 
 		roundID := uint(1)
-		teamID := uint(1)
-
-		// Create team first (required by foreign key)
-		team := db.TeamSchema{
-			ID:   teamID,
-			Name: "Test Team 01",
-		}
-		_, err := db.CreateTeam(team)
-		require.NoError(t, err, "should create team")
+		team := createTestTeam(t, "Test Team", "01")
 
 		// Step 1: Enqueue tasks (simulating engine creating tasks)
 		task := engine.Task{
-			TeamID:         teamID,
+			TeamID:         team.ID,
 			TeamIdentifier: "01",
 			ServiceType:    "Web",
 			ServiceName:    "web01-web",
@@ -79,7 +96,7 @@ func TestFullEngineWorkflow(t *testing.T) {
 
 		// Step 3: Create result (simulating runner completing check)
 		result := checks.Result{
-			TeamID:      teamID,
+			TeamID:      team.ID,
 			ServiceName: "web01-web",
 			ServiceType: "Web",
 			RoundID:     roundID,
@@ -140,7 +157,7 @@ func TestFullEngineWorkflow(t *testing.T) {
 
 		if len(savedRound.Checks) > 0 {
 			check := savedRound.Checks[0]
-			assert.Equal(t, teamID, check.TeamID)
+			assert.Equal(t, team.ID, check.TeamID)
 			assert.Equal(t, "web01-web", check.ServiceName)
 			assert.True(t, check.Result)
 			assert.Equal(t, 5, check.Points)
@@ -151,11 +168,11 @@ func TestFullEngineWorkflow(t *testing.T) {
 		redisContainer.Client.FlushDB(ctx)
 
 		roundID := uint(2)
-		teamID := uint(1)
+		team := createTestTeam(t, "Team Sanitize", "01")
 
 		// Create result with malicious content
 		result := checks.Result{
-			TeamID:      teamID,
+			TeamID:      team.ID,
 			ServiceName: "web\x00-malicious",  // Null byte
 			ServiceType: "Web",
 			RoundID:     roundID,
@@ -209,13 +226,13 @@ func TestFullEngineWorkflow(t *testing.T) {
 		redisContainer.Client.FlushDB(ctx)
 
 		roundID := uint(3)
-		teamID := uint(1)
+		team := createTestTeam(t, "Team SLA", "01")
 		serviceName := "critical-service"
 
 		// Simulate 3 consecutive failures (should trigger SLA)
 		for i := 0; i < 3; i++ {
 			result := checks.Result{
-				TeamID:      teamID,
+				TeamID:      team.ID,
 				ServiceName: serviceName,
 				ServiceType: "Web",
 				RoundID:     roundID + uint(i),

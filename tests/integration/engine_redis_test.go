@@ -380,9 +380,11 @@ func TestEngineRedisRoundWorkflow(t *testing.T) {
 	defer redisContainer.Close()
 
 	ctx := context.Background()
-	redisContainer.Client.FlushDB(ctx)
 
 	t.Run("complete round workflow", func(t *testing.T) {
+		// Clear Redis at start of each subtest
+		redisContainer.Client.FlushDB(ctx)
+
 		roundID := uint(1)
 		numTasks := 5
 

@@ -1,7 +1,7 @@
 .PHONY: test test-unit test-integration test-coverage clean test-deps-start test-deps-stop test-deps-wait
 
 test:
-	go test -race ./...
+	go test -race -p 1 ./...
 
 test-unit:
 	go test -race -short ./engine/... ./www/... ./runner/...
@@ -34,7 +34,7 @@ test-deps-stop:
 	@docker rm quotient-test-postgres quotient-test-redis 2>/dev/null || true
 
 test-coverage:
-	go test -race -coverprofile=coverage.out ./...
+	go test -race -p 1 -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
 clean: test-deps-stop
