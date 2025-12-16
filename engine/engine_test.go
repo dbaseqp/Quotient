@@ -400,7 +400,7 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 			case <-stopRunner:
 				return
 			default:
-				val, err := redis.Client.BLPop(ctx, 500*time.Millisecond, "tasks").Result()
+				val, err := redis.Client.BLPop(ctx, time.Second, "tasks").Result()
 				if err != nil {
 					continue
 				}
@@ -505,7 +505,7 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 			case <-stopRunner:
 				return
 			default:
-				val, err := redis.Client.BLPop(ctx, 500*time.Millisecond, "tasks").Result()
+				val, err := redis.Client.BLPop(ctx, time.Second, "tasks").Result()
 				if err != nil {
 					continue
 				}

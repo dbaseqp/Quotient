@@ -14,10 +14,11 @@ type RedisContainer struct {
 }
 
 // Close closes the Redis client
-func (r *RedisContainer) Close() {
+func (r *RedisContainer) Close() error {
 	if r.Client != nil {
-		r.Client.Close()
+		return r.Client.Close()
 	}
+	return nil
 }
 
 // StartRedis creates a Redis client for integration tests.

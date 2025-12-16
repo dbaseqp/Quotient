@@ -174,7 +174,7 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 	slog.Info("Loading configuration file", "path", path)
 
 	tempConf := ConfigSettings{}
-	fileContent, err := os.ReadFile(path)
+	fileContent, err := os.ReadFile(path) // #nosec G304 -- path is admin-controlled config file location
 	if err != nil {
 		return fmt.Errorf("configuration file (%s) not found: %w", path, err)
 	}

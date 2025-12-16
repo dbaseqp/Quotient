@@ -1,10 +1,10 @@
 package db
 
 import (
+	"cmp"
 	"errors"
 	"math"
 	"slices"
-	"strings"
 
 	"gorm.io/gorm"
 )
@@ -270,9 +270,9 @@ func GetServiceScores() ([]ServiceScoreData, error) {
 
 	slices.SortFunc(results, func(a, b ServiceScoreData) int {
 		if a.TeamID != b.TeamID {
-			return int(a.TeamID) - int(b.TeamID)
+			return cmp.Compare(a.TeamID, b.TeamID)
 		}
-		return strings.Compare(a.ServiceName, b.ServiceName)
+		return cmp.Compare(a.ServiceName, b.ServiceName)
 	})
 	return results, nil
 }
@@ -292,7 +292,7 @@ func LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) error {
 		if err := rows.Scan(&teamID, &serviceName, &result); err != nil {
 			return err
 		}
-Once merge conflicts are resolved, are there example runs of the tests i can view? Changes LGTM
+
 		if (*slaPerService)[teamID] == nil {
 			(*slaPerService)[teamID] = make(map[string]int)
 		}

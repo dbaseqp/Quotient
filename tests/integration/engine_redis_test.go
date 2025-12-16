@@ -224,10 +224,10 @@ func TestEngineRedisResultCollection(t *testing.T) {
 		redisContainer.Client.FlushDB(ctx)
 
 		// Try to collect result with short timeout (should timeout)
-		timeoutCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		timeoutCtx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
 
-		_, err := redisContainer.Client.BLPop(timeoutCtx, 500*time.Millisecond, "results").Result()
+		_, err := redisContainer.Client.BLPop(timeoutCtx, time.Second, "results").Result()
 		assert.Error(t, err) // Should timeout
 	})
 
