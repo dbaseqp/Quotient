@@ -26,14 +26,13 @@ func SecurityHeaders(conf *config.ConfigSettings) Middleware {
 			w.Header().Set("X-XSS-Protection", "1; mode=block")
 
 			// Content-Security-Policy: Restrict resource loading
-			// Start with a restrictive policy - adjust as needed for your app
 			csp := "default-src 'self'; " +
-				"script-src 'self'; " +
-				"style-src 'self' 'unsafe-inline'; " + // unsafe-inline often needed for CSS
+				"script-src 'self' 'unsafe-inline' https://code.jquery.com https://cdn.datatables.net https://cdn.jsdelivr.net; " +
+				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.datatables.net; " +
 				"img-src 'self' data:; " +
-				"font-src 'self'; " +
+				"font-src 'self' https://fonts.gstatic.com; " +
 				"connect-src 'self'; " +
-				"frame-ancestors 'none'" // Redundant with X-Frame-Options but good defense-in-depth
+				"frame-ancestors 'none'"
 			w.Header().Set("Content-Security-Policy", csp)
 
 			// Referrer-Policy: Control referer header leakage
