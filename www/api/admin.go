@@ -77,10 +77,13 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type TeamScore struct {
-		TeamID      uint           `json:"team_id"`
-		TeamName    string         `json:"team_name"`
-		Services    []ServiceScore `json:"services"`
-		TotalPoints int            `json:"total_points"`
+		TeamID             uint           `json:"team_id"`
+		TeamName           string         `json:"team_name"`
+		Services           []ServiceScore `json:"services"`
+		TotalPoints        int            `json:"total_points"`
+		GrossPoints        int            `json:"gross_points"`
+		TotalSLAPenalty    int            `json:"total_sla_penalty"`
+		TotalSLAViolations int            `json:"total_sla_violations"`
 	}
 
 	teams, err := db.GetTeams()
@@ -114,6 +117,9 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 			}
 			team.Services = append(team.Services, service)
 			team.TotalPoints += sd.Points - sd.TotalPenalty
+			team.GrossPoints += sd.Points
+			team.TotalSLAPenalty += sd.TotalPenalty
+			team.TotalSLAViolations += sd.Violations
 		}
 	}
 

@@ -1,7 +1,7 @@
 services:
   db:
     container_name: quotient_database
-    image: postgres
+    image: postgres:17
     restart: always
     env_file:
       - .env
