@@ -1,9 +1,10 @@
 package db
 
 import (
+	"cmp"
 	"errors"
+	"math"
 	"slices"
-	"strings"
 
 	"gorm.io/gorm"
 )
@@ -75,6 +76,11 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 			return nil, err
 		}
 
+		// Validate id fits in int and is valid for array indexing
+		if id == 0 || id > math.MaxInt || id > uint(len(result)) {
+			continue // Skip invalid round IDs
+		}
+
 		roundidx := int(id) - 1
 		if result[roundidx] == nil {
 			result[roundidx] = make(map[uint]int)
@@ -97,6 +103,11 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 
 		if err := rows.Scan(&id, &team, &penalty); err != nil {
 			return nil, err
+		}
+
+		// Validate id fits in int and is valid for array indexing
+		if id == 0 || id > math.MaxInt || id > uint(len(result)) {
+			continue // Skip invalid round IDs
 		}
 
 		roundidx := int(id) - 1
@@ -259,9 +270,9 @@ func GetServiceScores() ([]ServiceScoreData, error) {
 
 	slices.SortFunc(results, func(a, b ServiceScoreData) int {
 		if a.TeamID != b.TeamID {
-			return int(a.TeamID) - int(b.TeamID)
+			return cmp.Compare(a.TeamID, b.TeamID)
 		}
-		return strings.Compare(a.ServiceName, b.ServiceName)
+		return cmp.Compare(a.ServiceName, b.ServiceName)
 	})
 	return results, nil
 }

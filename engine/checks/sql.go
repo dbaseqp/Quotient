@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"regexp"
 	"strings"
@@ -38,7 +39,7 @@ func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		// If no queries defined, just use empty query
 		var q queryData
 		if len(c.Query) != 0 {
-			q = c.Query[rand.Intn(len(c.Query))]
+			q = c.Query[rand.Intn(len(c.Query))] // #nosec G404 -- non-crypto selection of query to test
 		}
 
 		// Open the DB handle
@@ -49,7 +50,11 @@ func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			response <- checkResult
 			return
 		}
-		defer db.Close()
+		defer func() {
+		if err := db.Close(); err != nil {
+			slog.Error("failed to close sql database", "error", err)
+		}
+	}()
 
 		// Check DB connection
 		err = db.PingContext(context.TODO())
@@ -77,7 +82,11 @@ func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			response <- checkResult
 			return
 		}
-		defer rows.Close()
+		defer func() {
+		if err := rows.Close(); err != nil {
+			slog.Error("failed to close sql rows", "error", err)
+		}
+	}()
 
 		// If no output to check, return success
 		if q.Output == "" {

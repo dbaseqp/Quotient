@@ -3,6 +3,7 @@ package checks
 import (
 	"errors"
 	"io"
+	"log/slog"
 	"math/rand"
 	"regexp"
 	"strconv"
@@ -56,7 +57,7 @@ func (c Ftp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		}
 
 		if len(c.File) > 0 {
-			file := c.File[rand.Intn(len(c.File))]
+			file := c.File[rand.Intn(len(c.File))] // #nosec G404 -- non-crypto selection of file to test
 			r, err := conn.Retr(file.Name)
 			if err != nil {
 				checkResult.Error = "failed to retrieve file " + file.Name
@@ -64,7 +65,11 @@ func (c Ftp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				response <- checkResult
 				return
 			}
-			defer r.Close()
+			defer func() {
+			if err := r.Close(); err != nil {
+				slog.Error("failed to close ftp reader", "error", err)
+			}
+		}()
 			buf, err := io.ReadAll(r)
 			if err != nil {
 				checkResult.Error = "failed to read ftp file"

@@ -13,21 +13,14 @@ import (
 func GetRed(w http.ResponseWriter, r *http.Request) {
 	teams, err := db.GetTeams()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": fmt.Sprintf("could not get teams: %v", err)}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": fmt.Sprintf("could not get teams: %v", err)})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
-	// load vulns from config/vulns.json
 	file, err := os.Open("config/vulns.json")
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": fmt.Sprintf("could not open vulns.json: %v", err)}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": fmt.Sprintf("could not open vulns.json: %v", err)})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
@@ -35,44 +28,32 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 
 	var vulns []db.VulnSchema
 	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&vulns)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": fmt.Sprintf("could not decode vulns.json: %v", err)}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+	if err = decoder.Decode(&vulns); err != nil {
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": fmt.Sprintf("could not decode vulns.json: %v", err)})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
 	boxes, err := db.GetBoxes()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": fmt.Sprintf("could not get boxes: %v", err)}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": fmt.Sprintf("could not get boxes: %v", err)})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
 	attacks, err := db.GetAttacks()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": fmt.Sprintf("could not get attacks: %v", err)}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": fmt.Sprintf("could not get attacks: %v", err)})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
-	data := map[string]any{
+	WriteJSON(w, http.StatusOK, map[string]any{
 		"vulns":   vulns,
 		"boxes":   boxes,
 		"teams":   teams,
 		"attacks": attacks,
-	}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	})
 }
 
 func CreateBox(w http.ResponseWriter, r *http.Request) {
@@ -85,27 +66,18 @@ func CreateBox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := db.CreateBox(box); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Failed to create box"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create box"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	data := map[string]any{"message": "Box created successfully"}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Box created successfully"})
 }
 
 func EditBox(w http.ResponseWriter, r *http.Request) {
 	var id uint
-	if temp, err := strconv.Atoi(r.FormValue("box-id")); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Failed to convert box id"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+	if temp, err := strconv.ParseUint(r.FormValue("box-id"), 10, 64); err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert box id"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	} else {
@@ -121,18 +93,12 @@ func EditBox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := db.UpdateBox(box); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Failed to update box"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update box"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	data := map[string]any{"message": "Box updated successfully"}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, map[string]any{"message": "Box updated successfully"})
 }
 
 func CreateVector(w http.ResponseWriter, r *http.Request) {
@@ -144,20 +110,17 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 	protocol := r.FormValue("protocol")
 
 	if protocol != "tcp" && protocol != "udp" {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Invalid protocol"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid protocol"})
 		return
 	}
 
 	var vuln uint
 	if v, err := strconv.Atoi(a); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Failed to convert vuln id"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert vuln id"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		return
+	} else if v < 0 {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Vuln ID must be non-negative"})
 		return
 	} else {
 		vuln = uint(v)
@@ -165,11 +128,11 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 
 	var box uint
 	if v, err := strconv.Atoi(b); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Failed to convert box id"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert box id"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		return
+	} else if v < 0 {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Box ID must be non-negative"})
 		return
 	} else {
 		box = uint(v)
@@ -177,18 +140,12 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 
 	port, err := strconv.Atoi(c)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Failed to convert port"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert port"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 	if port < 0 || port > 65535 {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Port out of range"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Port out of range"})
 		return
 	}
 
@@ -201,18 +158,12 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := db.CreateVector(vector); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Failed to create vector"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create vector"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	data := map[string]any{"message": "Vector created successfully"}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Vector created successfully"})
 }
 
 func EditVector(w http.ResponseWriter, r *http.Request) {
@@ -221,10 +172,7 @@ func EditVector(w http.ResponseWriter, r *http.Request) {
 
 func CreateAttack(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		data := map[string]any{"error": "Failed to parse multipart form"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
@@ -248,11 +196,11 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 
 	var vector uint
 	if v, err := strconv.Atoi(a); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Failed to convert vector id"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert vector id"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		return
+	} else if v < 0 {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Vector ID must be non-negative"})
 		return
 	} else {
 		vector = uint(v)
@@ -260,11 +208,11 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 
 	var team uint
 	if v, err := strconv.Atoi(b); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Failed to convert team id"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert team id"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		return
+	} else if v < 0 {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Team ID must be non-negative"})
 		return
 	} else {
 		team = uint(v)
@@ -272,10 +220,7 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 
 	access, err := strconv.Atoi(c)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Failed to convert access level"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert access level"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
@@ -294,18 +239,12 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := db.CreateAttack(attack); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": "Failed to create attack"}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create attack"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	data := map[string]any{"message": "Attack created successfully"}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Attack created successfully"})
 }
 
 func EditAttack(w http.ResponseWriter, r *http.Request) {

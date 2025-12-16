@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,8 +13,7 @@ import (
 func GetTeams(w http.ResponseWriter, r *http.Request) {
 	teams, err := db.GetTeams()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving teams"})
 		return
 	}
 	req_roles := r.Context().Value("roles").([]string)
@@ -35,7 +33,7 @@ func GetTeams(w http.ResponseWriter, r *http.Request) {
 		if !isOIDCUser && teamToShow == nil {
 			me, err := db.GetTeamByUsername(username)
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
+				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving team"})
 				return
 			}
 			if me.ID != 0 {
@@ -57,8 +55,7 @@ func GetTeams(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	d, _ := json.Marshal(teams)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, teams)
 }
 
 // mapOIDCUserToTeam maps an OIDC user to a team based on their groups
@@ -124,7 +121,7 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 
 	temp, err := strconv.ParseUint(r.PathValue("team_id"), 10, 32)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
 		return
 	}
 	teamID := uint(temp)
@@ -134,11 +131,11 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		myTeamID, err := getUserTeamID(r.Context().Value("username").(string))
 		if err != nil {
 			slog.Error("Failed to get user's team", "username", r.Context().Value("username").(string), "err", err)
-			w.WriteHeader(http.StatusForbidden)
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 			return
 		}
 		if teamID != myTeamID {
-			w.WriteHeader(http.StatusForbidden)
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 			return
 		}
 	}
@@ -146,7 +143,7 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 	summaries, err := db.GetTeamSummary(teamID)
 	if err != nil {
 		slog.Error("Failed to get team summary", "teamID", teamID, "err", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving team summary"})
 		return
 	}
 
@@ -168,8 +165,7 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	d, _ := json.Marshal(s)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, s)
 }
 
 func GetServiceAll(w http.ResponseWriter, r *http.Request) {
@@ -179,7 +175,7 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 
 	temp, err := strconv.ParseUint(r.PathValue("team_id"), 10, 32)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
 		return
 	}
 	teamID := uint(temp)
@@ -191,18 +187,18 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 		myTeamID, err := getUserTeamID(r.Context().Value("username").(string))
 		if err != nil {
 			slog.Error("Failed to get user's team", "username", r.Context().Value("username").(string), "err", err)
-			w.WriteHeader(http.StatusForbidden)
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 			return
 		}
 		if teamID != myTeamID {
-			w.WriteHeader(http.StatusForbidden)
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 			return
 		}
 	}
 
 	service, err := db.GetServiceAllChecksByTeam(teamID, serviceID)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving service data"})
 		return
 	}
 
@@ -215,8 +211,7 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	d, _ := json.Marshal(service)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, service)
 }
 
 func CreateService(w http.ResponseWriter, r *http.Request) {

@@ -38,6 +38,10 @@ func cookieSecure() bool {
 
 func init() {
 	if _, err := os.Stat("config/COOKIEKEY"); err != nil {
+		// Ensure config directory exists
+		if err := os.MkdirAll("config", 0750); err != nil { // #nosec G301 -- config dir needs group read for deployment
+			log.Fatalln(err)
+		}
 		w, err := os.Create("config/COOKIEKEY")
 		if err != nil {
 			log.Fatalln(err)
@@ -88,7 +92,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&form)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
 		slog.Error(err.Error())
 		return
 	}
@@ -96,16 +100,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	// check credentials
 	auth, err := auth(form.Username, form.Password)
 	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		d, _ := json.Marshal(map[string]any{"error": "Incorrect username/password"})
-		w.Write(d)
+		WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "Incorrect username/password"})
 		slog.Info("Failed logon", "username", form.Username)
 		return
 	}
 
 	cookie, err := CookieEncoder.Encode(COOKIENAME, auth)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Authentication error"})
 		slog.Error(err.Error())
 		return
 	}
@@ -116,6 +118,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   int((time.Hour * 24).Seconds()),
 		HttpOnly: true,
 		Secure:   cookieSecure(),
+		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 	})
 
@@ -129,6 +132,7 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   0,
 		HttpOnly: true,
 		Secure:   cookieSecure(),
+		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 	})
 	slog.Info("Successful logout", "username", r.Context().Value("username"))
@@ -174,6 +178,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 		MaxAge:   int((time.Hour * 24).Seconds()),
 		HttpOnly: true,
 		Secure:   cookieSecure(),
+		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 	})
 
