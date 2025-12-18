@@ -176,13 +176,6 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 					checkResult.Debug = "command output'" + r.Command + "' didn't match regex '" + r.Output
 					response <- checkResult
 					return
-				} else {
-					if strings.TrimSpace(stdoutBytes.String()) != r.Output {
-						checkResult.Error = "command output didn't match string"
-						checkResult.Debug = "command output of '" + r.Command + "' didn't match string '" + r.Output + "' " + strings.TrimSpace(stdoutBytes.String())
-						response <- checkResult
-						return
-					}
 				}
 			} else {
 				if stderrBytes.Len() != 0 {
