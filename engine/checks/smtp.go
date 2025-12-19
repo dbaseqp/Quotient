@@ -15,9 +15,10 @@ import (
 
 type Smtp struct {
 	Service
-	Encrypted bool
-	Domain    string
-	Fortunes  []string
+	Encrypted   bool
+	Domain      string
+	RequireAuth bool
+	Fortunes    []string
 }
 
 type unencryptedAuth struct {
@@ -131,12 +132,15 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 
 		// Login
 		if len(c.CredLists) > 0 {
-			err = sconn.Auth(auth)
-			if err != nil {
-				checkResult.Error = "login failed for " + username + ":" + password
-				checkResult.Debug = err.Error()
-				response <- checkResult
-				return
+			authSupported, _ := sconn.Extension("AUTH")
+			if c.RequireAuth || authSupported {
+				err = sconn.Auth(auth)
+				if err != nil {
+					checkResult.Error = "login failed for " + username + ":" + password
+					checkResult.Debug = err.Error()
+					response <- checkResult
+					return
+				}
 			}
 		}
 
