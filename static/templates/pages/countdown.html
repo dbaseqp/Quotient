@@ -1,0 +1,22 @@
+{{ define "content"}}
+{{ template "page" . }}
+{{ end }}
+
+{{ define "page" }}
+<div class="d-flex flex-grow-1 flex-column justify-content-center align-items-center w-100 h-100" style="height:0px;">
+    <div class="d-flex h-100 w-100 bg-primary-subtle justify-content-center align-items-center" id="countdown__container">
+        <div class="d-flex flex-column justify-content-center align-items-center text-center p-4">
+            <img class="mb-4" style="max-width: 300px; max-height: 200px;" src="{{ .config.MiscSettings.LogoImage }}">
+            <h2 class="mb-3">{{ .config.RequiredSettings.EventName }}</h2>
+            <h3 class="mb-4">Competition Not Started</h3>
+            <p class="text-muted">The competition has not been started by the administrators yet.</p>
+            <p class="text-muted">This page will automatically refresh every 10 seconds.</p>
+        </div>
+    </div>
+</div>
+<script>
+    setInterval(() => {
+        window.location.reload();
+    }, 10000);
+</script>
+{{ end }}

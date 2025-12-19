@@ -2,6 +2,7 @@ package checks
 
 import (
 	"bytes"
+	"log/slog"
 	"math/rand"
 	"regexp"
 	"strings"
@@ -35,11 +36,16 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 		}
 
 		params := *winrm.DefaultParameters
+		params.TransportDecorator = func() winrm.Transporter {
+			return &winrm.ClientNTLM{}
+		}
 
 		// Run bad attempts if specified
 		for range c.BadAttempts {
 			endpoint := winrm.NewEndpoint(c.Target, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
-			winrm.NewClientWithParameters(endpoint, username, uuid.New().String(), &params)
+			if _, err := winrm.NewClientWithParameters(endpoint, username, uuid.New().String(), &params); err != nil {
+				slog.Error("failed bad winrm attempt", "error", err)
+			}
 		}
 
 		// Log in to WinRM
@@ -52,10 +58,11 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 			return
 		}
 
-		// If any commands specified, run them
+		// If any commands specified, run them; otherwise run a simple connectivity test
+		var powershellCmd string
 		if len(c.Command) > 0 {
-			r := c.Command[rand.Intn(len(c.Command))]
-			powershellCmd := winrm.Powershell(r.Command)
+			r := c.Command[rand.Intn(len(c.Command))] // #nosec G404 -- non-crypto selection of command to test
+			powershellCmd = winrm.Powershell(r.Command)
 			bufOut := new(bytes.Buffer)
 			bufErr := new(bytes.Buffer)
 			_, err = client.Run(powershellCmd, bufOut, bufErr)
@@ -89,6 +96,17 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 						return
 					}
 				}
+			}
+		} else {
+			powershellCmd = winrm.Powershell("hostname")
+			bufOut := new(bytes.Buffer)
+			bufErr := new(bytes.Buffer)
+			_, err = client.Run(powershellCmd, bufOut, bufErr)
+			if err != nil {
+				checkResult.Error = "connection test failed with creds " + username + ":" + password
+				checkResult.Debug = err.Error()
+				response <- checkResult
+				return
 			}
 		}
 		checkResult.Status = true

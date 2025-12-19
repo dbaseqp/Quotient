@@ -26,8 +26,22 @@ var (
 
 const COOKIENAME = "quotient"
 
+// cookieSecure returns whether cookies should use the Secure flag (HTTPS only)
+func cookieSecure() bool {
+	// If OIDC is enabled and using HTTPS callback, enforce secure cookies
+	if conf.OIDCSettings.OIDCEnabled && strings.HasPrefix(conf.OIDCSettings.OIDCRedirectURL, "https://") {
+		return true
+	}
+	// Otherwise, use secure cookies only if SSL is configured
+	return conf.SslSettings != (config.SslConfig{})
+}
+
 func init() {
 	if _, err := os.Stat("config/COOKIEKEY"); err != nil {
+		// Ensure config directory exists
+		if err := os.MkdirAll("config", 0750); err != nil { // #nosec G301 -- config dir needs group read for deployment
+			log.Fatalln(err)
+		}
 		w, err := os.Create("config/COOKIEKEY")
 		if err != nil {
 			log.Fatalln(err)
@@ -78,7 +92,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&form)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
 		slog.Error(err.Error())
 		return
 	}
@@ -86,16 +100,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	// check credentials
 	auth, err := auth(form.Username, form.Password)
 	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		d, _ := json.Marshal(map[string]any{"error": "Incorrect username/password"})
-		w.Write(d)
+		WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "Incorrect username/password"})
 		slog.Info("Failed logon", "username", form.Username)
 		return
 	}
 
 	cookie, err := CookieEncoder.Encode(COOKIENAME, auth)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Authentication error"})
 		slog.Error(err.Error())
 		return
 	}
@@ -105,7 +117,8 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		Value:    cookie,
 		MaxAge:   int((time.Hour * 24).Seconds()),
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}),
+		Secure:   cookieSecure(),
+		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 	})
 
@@ -118,7 +131,8 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 		Value:    "",
 		MaxAge:   0,
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}),
+		Secure:   cookieSecure(),
+		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 	})
 	slog.Info("Successful logout", "username", r.Context().Value("username"))
@@ -133,23 +147,27 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 			return "", nil
 		}
 		slog.Error(err.Error())
-		w.WriteHeader(http.StatusBadRequest)
 		return "", nil
 	}
 
 	var value map[string]any
 	if err := CookieEncoder.Decode(COOKIENAME, token.Value, &value); err != nil {
 		slog.Error(err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
 		return "", nil
 	}
 
 	username := value["username"].(string)
-	roles, err := findRolesByUsername(username)
+
+	// Extract auth source (default to "local" for backward compatibility)
+	authSource := "local"
+	if source, ok := value["authSource"].(string); ok {
+		authSource = source
+	}
+
+	roles, err := findRolesByUsername(username, authSource)
 
 	if err != nil {
 		slog.Error(err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
 		return "", nil
 	}
 
@@ -159,7 +177,8 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 		Value:    token.Value,
 		MaxAge:   int((time.Hour * 24).Seconds()),
 		HttpOnly: true,
-		Secure:   conf.SslSettings != (config.SslConfig{}),
+		Secure:   cookieSecure(),
+		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 	})
 
@@ -169,17 +188,22 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 func auth(username string, password string) (map[string]any, error) {
 	for _, admin := range conf.Admin {
 		if username == admin.Name && password == admin.Pw {
-			return map[string]any{"username": username}, nil
+			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
 	for _, team := range conf.Team {
 		if username == team.Name && password == team.Pw {
-			return map[string]any{"username": username}, nil
+			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
 	for _, red := range conf.Red {
 		if username == red.Name && password == red.Pw {
-			return map[string]any{"username": username}, nil
+			return map[string]any{"username": username, "authSource": "local"}, nil
+		}
+	}
+	for _, inject := range conf.Inject {
+		if username == inject.Name && password == inject.Pw {
+			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
 
@@ -201,7 +225,7 @@ func auth(username string, password string) (map[string]any, error) {
 		searchRequest := ldap.NewSearchRequest(
 			conf.LdapSettings.LdapSearchBaseDn,
 			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", username),
+			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", ldap.EscapeFilter(username)),
 			[]string{"dn"},
 			nil,
 		)
@@ -226,7 +250,7 @@ func auth(username string, password string) (map[string]any, error) {
 		roleSearchRequest := ldap.NewSearchRequest(
 			conf.LdapSettings.LdapSearchBaseDn,
 			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", username),
+			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", ldap.EscapeFilter(username)),
 			[]string{"memberOf"},
 			nil,
 		)
@@ -236,49 +260,79 @@ func auth(username string, password string) (map[string]any, error) {
 			return nil, err
 		}
 
+		hasAuthorizedRole := false
 		for _, entry := range sr.Entries {
 			for _, memberOf := range entry.GetAttributeValues("memberOf") {
-				if memberOf == conf.LdapSettings.LdapAdminGroupDn {
-					return map[string]any{"username": username}, nil
+				if memberOf == conf.LdapSettings.LdapAdminGroupDn ||
+					memberOf == conf.LdapSettings.LdapRedGroupDn ||
+					memberOf == conf.LdapSettings.LdapTeamGroupDn {
+					hasAuthorizedRole = true
+					break
 				}
 
-				if memberOf == conf.LdapSettings.LdapRedGroupDn {
-					return map[string]any{"username": username}, nil
+				if memberOf == conf.LdapSettings.LdapInjectGroupDn {
+					return map[string]any{"username": username, "authSource": "ldap"}, nil
 				}
-
-				if memberOf == conf.LdapSettings.LdapTeamGroupDn {
-					return map[string]any{"username": username}, nil
-				}
+			}
+			if hasAuthorizedRole {
+				break
 			}
 		}
 
-		return map[string]any{"username": username}, nil
+		if !hasAuthorizedRole {
+			return nil, errors.New("LDAP user has no authorized roles")
+		}
+
+		return map[string]any{"username": username, "authSource": "ldap"}, nil
 	}
 
 	return nil, errors.New("no auth source matched credentials")
 }
 
-func findRolesByUsername(username string) ([]string, error) {
+func findRolesByUsername(username string, authSource string) ([]string, error) {
 	roles := make([]string, 0)
-	for _, admin := range conf.Admin {
-		if username == admin.Name {
-			roles = append(roles, "admin")
+
+	// Only check OIDC users if auth source is OIDC
+	if authSource == "oidc" {
+		if userInfo, exists := GetOIDCUserInfo(username); exists {
+			return userInfo.Roles, nil
 		}
-	}
-	for _, red := range conf.Red {
-		if username == red.Name {
-			roles = append(roles, "red")
-		}
-	}
-	for _, team := range conf.Team {
-		if username == team.Name {
-			roles = append(roles, "team")
-		}
+		// OIDC user not found in cache after server restart
+		// User will need to re-authenticate
+		return nil, errors.New("OIDC session expired - please login again")
 	}
 
-	// find roles from other sources
+	// Check local users only if auth source is local
+	if authSource == "local" {
+		for _, admin := range conf.Admin {
+			if username == admin.Name {
+				roles = append(roles, "admin")
+			}
+		}
+		for _, red := range conf.Red {
+			if username == red.Name {
+				roles = append(roles, "red")
+			}
+		}
+		for _, team := range conf.Team {
+			if username == team.Name {
+				roles = append(roles, "team")
+			}
+		}
+		for _, inject := range conf.Inject {
+			if username == inject.Name {
+				roles = append(roles, "inject")
+			}
+		}
 
-	if conf.LdapSettings != (config.LdapAuthConfig{}) {
+		if len(roles) > 0 {
+			return roles, nil
+		}
+		return nil, errors.New("local user has no roles")
+	}
+
+	// Check LDAP users only if auth source is LDAP
+	if authSource == "ldap" && conf.LdapSettings != (config.LdapAuthConfig{}) {
 		conn, err := ldap.DialURL(conf.LdapSettings.LdapConnectUrl)
 		if err != nil {
 			return nil, err
@@ -295,7 +349,7 @@ func findRolesByUsername(username string) ([]string, error) {
 		searchRequest := ldap.NewSearchRequest(
 			conf.LdapSettings.LdapSearchBaseDn,
 			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", username),
+			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", ldap.EscapeFilter(username)),
 			[]string{"memberOf"},
 			nil,
 		)
@@ -318,9 +372,19 @@ func findRolesByUsername(username string) ([]string, error) {
 				if memberOf == conf.LdapSettings.LdapTeamGroupDn {
 					roles = append(roles, "team")
 				}
+
+				if memberOf == conf.LdapSettings.LdapInjectGroupDn {
+					roles = append(roles, "inject")
+				}
 			}
 		}
+
+		if len(roles) > 0 {
+			return roles, nil
+		}
+		return nil, errors.New("LDAP user has no authorized roles")
 	}
 
-	return roles, nil
+	// Unknown auth source
+	return nil, fmt.Errorf("unknown auth source: %s", authSource)
 }

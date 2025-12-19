@@ -5,6 +5,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"quotient/engine"
 	"quotient/engine/config"
@@ -30,6 +31,11 @@ func (router *Router) Start() {
 	api.SetConfig(router.Config)
 	api.SetEngine(router.Engine)
 
+	// Initialize OIDC if enabled
+	if err := api.InitOIDC(); err != nil {
+		slog.Error("Failed to initialize OIDC", "error", err)
+	}
+
 	// api routes
 	/******************************************
 	|                                         |
@@ -42,6 +48,10 @@ func (router *Router) Start() {
 	UNAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Cors, middleware.Authentication("anonymous", "team", "admin", "red"))
 	// public API routes
 	mux.HandleFunc("POST /api/login", api.Login)
+
+	// OIDC routes (public)
+	mux.HandleFunc("GET /auth/oidc/login", api.OIDCLoginHandler)
+	mux.HandleFunc("GET /auth/oidc/callback", api.OIDCCallbackHandler)
 
 	mux.HandleFunc("GET /api/graphs/services", UNAUTH(api.GetServiceStatus))
 	mux.HandleFunc("GET /api/graphs/scores", UNAUTH(api.GetScoreStatus))
@@ -59,7 +69,7 @@ func (router *Router) Start() {
 	|                                         |
 	******************************************/
 
-	ALLAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin", "red"))
+	ALLAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin", "red", "inject"))
 	// general auth API routes
 	mux.HandleFunc("GET /api/logout", ALLAUTH(api.Logout))
 
@@ -77,9 +87,10 @@ func (router *Router) Start() {
 	|                                         |
 	******************************************/
 
-	TEAMAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin"))
+	TEAMAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin", "inject"))
 	// team auth API routes
 	mux.HandleFunc("GET /api/teams", TEAMAUTH(api.GetTeams))
+	mux.HandleFunc("GET /api/metadata", TEAMAUTH(api.GetMetadata))
 	mux.HandleFunc("GET /api/services/{team_id}", TEAMAUTH(api.GetTeamSummary))
 	mux.HandleFunc("GET /api/services/{team_id}/{service_name}", TEAMAUTH(api.GetServiceAll))
 	mux.HandleFunc("GET /api/injects", TEAMAUTH(api.GetInjects))
@@ -89,6 +100,7 @@ func (router *Router) Start() {
 
 	mux.HandleFunc("GET /services", TEAMAUTH(router.ServicesPage))
 	mux.HandleFunc("GET /api/pcrs", TEAMAUTH(api.GetPcrs))
+	mux.HandleFunc("POST /api/pcrs/reset", TEAMAUTH(api.ResetPcr))
 	mux.HandleFunc("GET /api/credlists", TEAMAUTH(api.GetCredlists))
 	mux.HandleFunc("POST /api/pcrs/submit", TEAMAUTH(api.CreatePcr))
 
@@ -128,24 +140,26 @@ func (router *Router) Start() {
 	|                                         |
 	******************************************/
 
-	ADMINAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("admin"))
+	INJECTAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("admin", "inject"))
 	// admin auth API routes
-	mux.HandleFunc("POST /api/announcements/create", ADMINAUTH(api.CreateAnnouncement))
-	mux.HandleFunc("POST /api/announcements/{id}", ADMINAUTH(api.UpdateAnnouncement))
-	mux.HandleFunc("DELETE /api/announcements/{id}", ADMINAUTH(api.DeleteAnnouncement))
+	mux.HandleFunc("POST /api/announcements/create", INJECTAUTH(api.CreateAnnouncement))
+	mux.HandleFunc("POST /api/announcements/{id}", INJECTAUTH(api.UpdateAnnouncement))
+	mux.HandleFunc("DELETE /api/announcements/{id}", INJECTAUTH(api.DeleteAnnouncement))
 
-	mux.HandleFunc("POST /api/injects/create", ADMINAUTH(api.CreateInject))
-	mux.HandleFunc("POST /api/injects/{id}", ADMINAUTH(api.UpdateInject))
-	mux.HandleFunc("DELETE /api/injects/{id}", ADMINAUTH(api.DeleteInject))
+	mux.HandleFunc("POST /api/injects/create", INJECTAUTH(api.CreateInject))
+	mux.HandleFunc("POST /api/injects/{id}", INJECTAUTH(api.UpdateInject))
+	mux.HandleFunc("DELETE /api/injects/{id}", INJECTAUTH(api.DeleteInject))
 
 	// router.HandleFunc("POST /api/engine/service/create", ADMINAUTH(api.CreateService))
 	// router.HandleFunc("POST /api/engine/service/update", ADMINAUTH(api.UpdateService))
 	// router.HandleFunc("DELETE /api/engine/service/delete", ADMINAUTH(api.DeleteService))
 
+	ADMINAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("admin"))
 	mux.HandleFunc("POST /api/engine/pause", ADMINAUTH(api.PauseEngine))
 	mux.HandleFunc("GET /api/engine/reset", ADMINAUTH(api.ResetScores))
 	mux.HandleFunc("GET /api/engine", ADMINAUTH(api.GetEngine))
 	mux.HandleFunc("GET /api/engine/tasks", ADMINAUTH(api.GetActiveTasks))
+	mux.HandleFunc("POST /api/competition/start", ADMINAUTH(api.SetCompetitionStarted))
 	mux.HandleFunc("POST /api/admin/teams", ADMINAUTH(api.UpdateTeams))
 	mux.HandleFunc("GET /api/admin/teamchecks", ADMINAUTH(api.GetTeamChecks))
 	mux.HandleFunc("POST /api/admin/teamchecks", ADMINAUTH(api.UpdateTeamChecks))
@@ -153,17 +167,19 @@ func (router *Router) Start() {
 	mux.HandleFunc("GET /api/engine/export/scores", ADMINAUTH(api.ExportScores))
 	mux.HandleFunc("GET /api/engine/export/config", ADMINAUTH(api.ExportConfig))
 
-	// admin auth WWW routes
+	// admin-only WWW routes (inject role excluded)
 	mux.HandleFunc("GET /admin", ADMINAUTH(router.AdminPage))
 	mux.HandleFunc("GET /admin/engine", ADMINAUTH(router.AdministrateEnginePage))
 	mux.HandleFunc("GET /admin/runners", ADMINAUTH(router.AdministrateRunnersPage))
 	mux.HandleFunc("GET /admin/teams", ADMINAUTH(router.AdministrateTeamsPage))
 	mux.HandleFunc("GET /admin/appearance", ADMINAUTH(router.AdministrateAppearancePage))
 
-	// start server
+	// start server with security headers middleware wrapping all routes
+	securityMiddleware := middleware.SecurityHeaders(router.Config)
 	server := http.Server{
-		Addr:    fmt.Sprintf("%s:%d", router.Config.RequiredSettings.BindAddress, router.Config.MiscSettings.Port),
-		Handler: mux,
+		Addr:              fmt.Sprintf("%s:%d", router.Config.RequiredSettings.BindAddress, router.Config.MiscSettings.Port),
+		Handler:           http.HandlerFunc(securityMiddleware(mux.ServeHTTP)),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	slog.Info(fmt.Sprintf("Starting Web Server on %s://%s:%d", protocol, router.Config.RequiredSettings.BindAddress, router.Config.MiscSettings.Port))
 

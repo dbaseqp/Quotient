@@ -1,10 +1,11 @@
 module quotient
 
-go 1.24.0
+go 1.25.1
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.0
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c
+	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/corpix/uarand v0.2.0
 	github.com/emersion/go-imap v1.2.1
 	github.com/fsnotify/fsnotify v1.8.0
@@ -21,10 +22,14 @@ require (
 	github.com/miekg/dns v1.1.62
 	github.com/mitchellh/go-vnc v0.0.0-20150629162542-723ed9867aed
 	github.com/pmezard/go-difflib v1.0.0
+	github.com/ramr/go-reaper v0.3.1
 	github.com/redis/go-redis/v9 v9.7.0
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.33.0
+	golang.org/x/oauth2 v0.24.0
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.11
+	pgregory.net/rapid v1.2.0
 )
 
 require (
@@ -34,12 +39,14 @@ require (
 	github.com/bodgit/ntlmssp v0.0.0-20240506230425-31973bb52d9b // indirect
 	github.com/bodgit/windows v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/emersion/go-message v0.15.0 // indirect
 	github.com/emersion/go-sasl v0.0.0-20200509203442-7bfe0ed36a21 // indirect
 	github.com/emersion/go-textwrapper v0.0.0-20200911093747-65d896831594 // indirect
 	github.com/geoffgarside/ber v1.1.0 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.5 // indirect
+	github.com/go-jose/go-jose/v4 v4.0.2 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
@@ -68,4 +75,5 @@ require (
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/tools v0.30.1-0.20250220174815-31e3bb2b8fd1 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

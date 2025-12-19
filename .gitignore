@@ -23,3 +23,10 @@ runner/runner
 
 /submissions/*
 !.gitkeep
+dump.rdb
+
+# Test artifacts
+coverage.out
+coverage.html
+**/testdata/rapid/
+**/COOKIEKEY

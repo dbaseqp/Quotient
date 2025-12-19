@@ -25,7 +25,7 @@ type DnsRecord struct {
 func (c Dns) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		// Pick a record
-		record := c.Record[rand.Intn(len(c.Record))]
+		record := c.Record[rand.Intn(len(c.Record))] // #nosec G404 -- non-crypto selection of DNS record to test
 		fqdn := dns.Fqdn(strings.ReplaceAll(dns.Fqdn(record.Domain), "_", teamIdentifier))
 
 		// Setup for dns query

@@ -5,7 +5,14 @@ import (
 	"log/slog"
 	"net/http"
 	"quotient/engine/db"
+	"regexp"
 )
+
+var validIdentifierRegex = regexp.MustCompile(`^[0-9]{1,3}$`)
+
+func isValidIdentifier(identifier string) bool {
+	return validIdentifierRegex.MatchString(identifier)
+}
 
 func PauseEngine(w http.ResponseWriter, r *http.Request) {
 	type Form struct {
@@ -14,7 +21,7 @@ func PauseEngine(w http.ResponseWriter, r *http.Request) {
 
 	var form Form
 	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
 		return
 	}
 
@@ -24,33 +31,44 @@ func PauseEngine(w http.ResponseWriter, r *http.Request) {
 	} else if !eng.IsEnginePaused && form.Pause {
 		eng.PauseEngine()
 	} else {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid engine state transition"})
 		return
 	}
 
-	d := []byte(`{"status": "success"}`)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }
 
 func ResetScores(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("reset scores requested")
 	if err := eng.ResetScores(); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to reset scores"})
 		return
 	}
 
-	d := []byte(`{"status": "success"}`)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
+}
+
+func SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
+	type Form struct {
+		Started bool `json:"started"`
+	}
+
+	var form Form
+	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
+		return
+	}
+
+	slog.Info("competition started toggle requested", "started", form.Started)
+	if err := db.SetCompetitionStarted(form.Started); err != nil {
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update competition status"})
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }
 
 func ExportScores(w http.ResponseWriter, r *http.Request) {
-	type TeamScore struct {
-		TeamID      uint           `json:"team_id"`
-		TeamName    string         `json:"team_name"`
-		Services    []ServiceScore `json:"services"`
-		TotalPoints int            `json:"total_points"`
-	}
-
 	type ServiceScore struct {
 		ServiceName   string `json:"service_name"`
 		Points        int    `json:"service_points"`
@@ -58,9 +76,19 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 		SlaPenalty    int    `json:"sla_penalty"`
 	}
 
+	type TeamScore struct {
+		TeamID             uint           `json:"team_id"`
+		TeamName           string         `json:"team_name"`
+		Services           []ServiceScore `json:"services"`
+		TotalPoints        int            `json:"total_points"`
+		GrossPoints        int            `json:"gross_points"`
+		TotalSLAPenalty    int            `json:"total_sla_penalty"`
+		TotalSLAViolations int            `json:"total_sla_violations"`
+	}
+
 	teams, err := db.GetTeams()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve teams"})
 		return
 	}
 
@@ -75,7 +103,7 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 
 	serviceData, err := db.GetServiceScores()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve service scores"})
 		return
 	}
 
@@ -89,6 +117,9 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 			}
 			team.Services = append(team.Services, service)
 			team.TotalPoints += sd.Points - sd.TotalPenalty
+			team.GrossPoints += sd.Points
+			team.TotalSLAPenalty += sd.TotalPenalty
+			team.TotalSLAViolations += sd.Violations
 		}
 	}
 
@@ -97,8 +128,7 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 		data = append(data, *score)
 	}
 
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }
 
 func ExportConfig(w http.ResponseWriter, r *http.Request) {
@@ -109,34 +139,33 @@ func GetActiveTasks(w http.ResponseWriter, r *http.Request) {
 	tasks, err := eng.GetActiveTasks()
 	if err != nil {
 		slog.Error("failed to get active tasks", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve active tasks"})
 		return
 	}
 
-	d, _ := json.Marshal(tasks)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, tasks)
 }
 
 func GetEngine(w http.ResponseWriter, r *http.Request) {
 	lastRound, err := db.GetLastRound()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve engine status"})
 		return
 	}
 
-	d, _ := json.Marshal(map[string]any{
-		"last_round":         lastRound,
-		"current_round_time": eng.CurrentRoundStartTime,
-		"next_round_time":    eng.NextRoundStartTime,
-		"running":            !eng.IsEnginePaused,
+	WriteJSON(w, http.StatusOK, map[string]any{
+		"last_round":          lastRound,
+		"current_round_time":  eng.CurrentRoundStartTime,
+		"next_round_time":     eng.NextRoundStartTime,
+		"running":             !eng.IsEnginePaused,
+		"competition_started": db.GetCompetitionStarted(),
 	})
-	w.Write(d)
 }
 
 func UpdateTeams(w http.ResponseWriter, r *http.Request) {
 	type Form struct {
 		Teams []struct {
-			TeamID     int    `json:"id"`
+			TeamID     uint   `json:"id"`
 			Identifier string `json:"identifier"`
 			Active     bool   `json:"active"`
 		} `json:"teams"`
@@ -144,17 +173,22 @@ func UpdateTeams(w http.ResponseWriter, r *http.Request) {
 
 	var form Form
 	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
 		return
 	}
 
 	for _, team := range form.Teams {
+		// Validate identifier format to prevent command injection
+		if !isValidIdentifier(team.Identifier) {
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid identifier format. Only alphanumeric, hyphens, and underscores allowed."})
+			return
+		}
+
 		if err := db.UpdateTeam(uint(team.TeamID), team.Identifier, team.Active); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update team"})
 			return
 		}
 	}
 
-	d := []byte(`{"status": "success"}`)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }

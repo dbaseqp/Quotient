@@ -2,7 +2,10 @@
 <div class="d-flex w-100 h-100">
     <div class="nav-pills d-flex flex-column h-100 overflow-y-scroll justify-content-start align-items-center bg-body-secondary"
         role="tablist" id="tab-container">
-        {{ if contains .roles "admin" }}
+        <button class="btn btn-warning rounded-0 w-100 d-none" onclick="refreshInjects()" id="refresh--btn">
+            Refresh
+        </button>
+        {{ if or (contains .roles "admin") (contains .roles "inject") }}
         <button class="btn btn-primary rounded-0 w-100" data-bs-toggle="modal" data-bs-target="#create__form">
             Create Inject
         </button>
@@ -91,7 +94,8 @@
                         return;
                     } else {
                         console.log(data);
-                        window.location.reload();
+                        bootstrap.Modal.getInstance(document.getElementById('create__form')).hide();
+                        refreshInjects();
                     }
                 });
             };
@@ -250,7 +254,8 @@
                         return;
                     } else {
                         console.log(data);
-                        window.location.reload();
+                        bootstrap.Modal.getInstance(document.getElementById('edit__form')).hide();
+                        refreshInjects();
                     }
                 });
             };
@@ -293,7 +298,8 @@
                         return;
                     } else {
                         console.log(data);
-                        window.location.reload();
+                        bootstrap.Modal.getInstance(document.getElementById('delete__form')).hide();
+                        refreshInjects();
                     }
                 });
             };
@@ -334,7 +340,7 @@
                     <span id="pane__from--placeholder" class="placeholder col-4"></span>
                     <span id="pane__subject--placeholder" class="placeholder col-6"></span>
                     <hr class="my-4">
-                    {{ if contains .roles "admin" }}
+                    {{ if or (contains .roles "admin") (contains .roles "inject") }}
                     <div class="d-flex">
                         <button class="btn btn-outline-secondary rounded-1 m-2" data-bs-toggle="modal"
                             data-bs-target="#edit__form">
@@ -382,7 +388,7 @@
                                             return;
                                         } else {
                                             console.log(data);
-                                            window.location.reload();
+                                            refreshInjects();
                                         }
                                     });
                                 };
@@ -424,6 +430,27 @@
     const PANE_CONTAINER = document.getElementById("pane-container")
     const PLACEHOLDER_TAB = document.getElementById("tab--placeholder")
     const PLACEHOLDER_PANE = document.getElementById("pane--placeholder")
+    const REFRESH_BTN = document.getElementById("refresh--btn")
+
+    let prevData;
+
+    // Function to refresh injects without full page reload
+    function refreshInjects() {
+        // Clear existing tabs and panes (except placeholder)
+        const existingTabs = TAB_CONTAINER.querySelectorAll('[id^="tab--"]:not(#tab--placeholder)');
+        const existingPanes = PANE_CONTAINER.querySelectorAll('[id^="pane--"]:not(#pane--placeholder)');
+        existingTabs.forEach(tab => tab.remove());
+        existingPanes.forEach(pane => pane.remove());
+
+        // Reset prevData to force re-render
+        prevData = undefined;
+
+        // Hide refresh button
+        REFRESH_BTN.classList.add("d-none");
+
+        // Fetch and update
+        fetchAndUpdateInjects();
+    }
 
     // Function to fetch injects data and update the UI
     function fetchAndUpdateInjects() {
@@ -435,6 +462,17 @@
             return response.json()
         })
         .then((data) => {
+            PLACEHOLDER_TAB.classList.add("d-none")
+            PLACEHOLDER_PANE.classList.add("d-none")
+            if (!data || data.length === 0) {
+                return
+            }
+            if (prevData === undefined) {
+                prevData = data
+            } else if (JSON.stringify(prevData) != JSON.stringify(data)) {
+                REFRESH_BTN.classList.remove("d-none")
+                return
+            }
             let tabs = [];
             let panes = [];
             for (const inject of data) {
@@ -443,8 +481,8 @@
                 inject.CloseTime = (new Date(inject.CloseTime))
                 let tab = PLACEHOLDER_TAB.cloneNode(true)
                 let pane = PLACEHOLDER_PANE.cloneNode(true)
-                tab.classList.remove("active", "placeholder-glow")
-                pane.classList.remove("active", "placeholder-glow")
+                tab.classList.remove("active", "placeholder-glow", "d-none")
+                pane.classList.remove("active", "placeholder-glow", "d-none")
 
 
                 let title = tab.querySelector("#tab__title--placeholder")
@@ -508,12 +546,16 @@
                 subject.textContent = inject.Title
                                 
                 let descTemp = document.createElement("div")
-                descTemp.innerHTML = `
-                <p>${inject.Description}</p>
+
+                let descPara = document.createElement("p")
+                descPara.textContent = inject.Description
+                descTemp.appendChild(descPara)
+
+                descTemp.innerHTML += `
                 <h5>Inject Details</h5>
                 <ul>
-                    <li id="pane__due--${inject.ID}"><p><strong>Due Time:</strong> ${inject.DueTime.toLocaleString()}</p></li>
-                    <li id="pane__close--${inject.ID}"><p><strong>Close Time:</strong> ${inject.CloseTime.toLocaleString()}</p></li>
+                    <li><p><strong>Due Time:</strong> <span id="pane__due--${inject.ID}">${inject.DueTime.toLocaleString()}</span></p></li>
+                    <li><p><strong>Close Time:</strong> <span id="pane__close--${inject.ID}">${inject.CloseTime.toLocaleString()}</span></p></li>
                     </ul>
                     `
                     description.appendChild(descTemp)
@@ -538,10 +580,18 @@
                     description.appendChild(files)
                 }
                 
-                tab.setHTMLUnsafe(tab.outerHTML.replaceAll("placeholder", inject.ID))
-                pane.setHTMLUnsafe(pane.outerHTML.replaceAll("placeholder", inject.ID))
-                tabs.push(tab.firstChild)
-                panes.push(pane.firstChild)
+                // Update IDs and attributes
+                tab.id = `tab--${inject.ID}`
+                tab.setAttribute('data-bs-target', `#pane--${inject.ID}`)
+                tab.setAttribute('aria-controls', `pane--${inject.ID}`)
+                pane.id = `pane--${inject.ID}`
+
+                // Replace placeholder in innerHTML
+                tab.innerHTML = tab.innerHTML.replaceAll("placeholder", inject.ID)
+                pane.innerHTML = pane.innerHTML.replaceAll("placeholder", inject.ID)
+
+                tabs.push(tab)
+                panes.push(pane)
             }
             PLACEHOLDER_TAB.classList.add("d-none")
             PLACEHOLDER_PANE.classList.add("d-none")
@@ -554,9 +604,14 @@
             const TOOLTIPS = new bootstrap.Tooltip(document.body, {
                 selector: '[data-bs-toggle="tooltip"]'
             });
-            const table = new DataTable('.submission-table', {
-                order: [[2, 'desc']], // Sort by the third column (Submission Time) in descending order
-            })
+            // Only initialize DataTables on elements that aren't already initialized
+            document.querySelectorAll('.submission-table').forEach(table => {
+                if (!table.classList.contains('dataTable')) {
+                    new DataTable(table, {
+                        order: [[2, 'desc']], // Sort by the third column (Submission Time) in descending order
+                    });
+                }
+            });
         })
         .catch((error) => {
             console.error(error)

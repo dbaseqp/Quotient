@@ -2,6 +2,7 @@ package checks
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -38,7 +39,11 @@ func (c Ldap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			response <- checkResult
 			return
 		}
-		defer lconn.Close()
+		defer func() {
+		if err := lconn.Close(); err != nil {
+			slog.Error("failed to close ldap connection", "error", err)
+		}
+	}()
 
 		// Set message timeout
 		lconn.SetTimeout(time.Duration(c.Timeout) * time.Second)

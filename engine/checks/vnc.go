@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 
 	"github.com/mitchellh/go-vnc"
@@ -39,7 +40,11 @@ func (c Vnc) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			response <- checkResult
 			return
 		}
-		defer conn.Close()
+		defer func() {
+		if err := conn.Close(); err != nil {
+			slog.Error("failed to close vnc connection", "error", err)
+		}
+	}()
 
 		vncClient, err := vnc.Client(conn, &config)
 		if err != nil {
@@ -48,7 +53,11 @@ func (c Vnc) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			response <- checkResult
 			return
 		}
-		defer vncClient.Close()
+		defer func() {
+		if err := vncClient.Close(); err != nil {
+			slog.Error("failed to close vnc client", "error", err)
+		}
+	}()
 
 		checkResult.Status = true
 		checkResult.Debug = "creds " + username + ":" + password

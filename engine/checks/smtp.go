@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"net"
 	"net/smtp"
@@ -14,9 +15,10 @@ import (
 
 type Smtp struct {
 	Service
-	Encrypted bool
-	Domain    string
-	Fortunes  []string
+	Encrypted   bool
+	Domain      string
+	RequireAuth bool
+	Fortunes    []string
 }
 
 type unencryptedAuth struct {
@@ -52,7 +54,7 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			Timeout: time.Duration(c.Timeout) * time.Second,
 		}
 
-		fortune := c.Fortunes[rand.Intn(len(c.Fortunes))]
+		fortune := c.Fortunes[rand.Intn(len(c.Fortunes))] // #nosec G404 -- non-crypto selection of fortune text
 		words := strings.Fields(fortune)
 		subject := ""
 		if len(words) <= 3 {
@@ -60,7 +62,7 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 		} else {
 			selected := make([]string, 3)
 			for i := range 3 {
-				selected[i] = words[rand.Intn(len(words))]
+				selected[i] = words[rand.Intn(len(words))] // #nosec G404 -- non-crypto selection of words for subject
 			}
 			subject = strings.Join(selected, " ")
 		}
@@ -95,7 +97,7 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 		// auth := smtp.PlainAuth("", d.Username, d.Password, d.Host)
 		// Create TLS config
 		tlsConfig := tls.Config{
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: true, // #nosec G402 -- competition services may use self-signed certs
 		}
 
 		// Declare these for the below if block
@@ -112,7 +114,11 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			response <- checkResult
 			return
 		}
-		defer conn.Close()
+		defer func() {
+		if err := conn.Close(); err != nil {
+			slog.Error("failed to close smtp connection", "error", err)
+		}
+	}()
 
 		// Create smtp client
 		sconn, err := smtp.NewClient(conn, c.Target)
@@ -126,12 +132,15 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 
 		// Login
 		if len(c.CredLists) > 0 {
-			err = sconn.Auth(auth)
-			if err != nil {
-				checkResult.Error = "login failed for " + username + ":" + password
-				checkResult.Debug = err.Error()
-				response <- checkResult
-				return
+			authSupported, _ := sconn.Extension("AUTH")
+			if c.RequireAuth || authSupported {
+				err = sconn.Auth(auth)
+				if err != nil {
+					checkResult.Error = "login failed for " + username + ":" + password
+					checkResult.Debug = err.Error()
+					response <- checkResult
+					return
+				}
 			}
 		}
 
@@ -161,7 +170,11 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			response <- checkResult
 			return
 		}
-		defer wc.Close()
+		defer func() {
+			if err := wc.Close(); err != nil {
+				slog.Error("failed to close smtp writer", "error", err)
+			}
+		}()
 
 		body := fmt.Sprintf("Subject: %s\n\n%s\n\n", subject, fortune)
 

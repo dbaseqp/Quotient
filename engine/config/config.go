@@ -28,6 +28,9 @@ type ConfigSettings struct {
 	// LDAP settings
 	LdapSettings LdapAuthConfig `toml:"LdapSettings,omitempty" json:"LdapSettings,omitempty"`
 
+	// OIDC settings
+	OIDCSettings OIDCAuthConfig `toml:"OIDCSettings,omitempty" json:"OIDCSettings,omitempty"`
+
 	// Optional settings
 	SslSettings SslConfig `toml:"SslSettings,omitempty" json:"SslSettings,omitempty"`
 
@@ -36,10 +39,11 @@ type ConfigSettings struct {
 	// Restrict information
 	UISettings UIConfig `toml:"UISettings,omitempty" json:"UISettings,omitempty"`
 
-	Admin []Admin
-	Red   []Red
-	Team  []Team
-	Box   []Box
+	Admin  []Admin
+	Red    []Red
+	Team   []Team
+	Inject []Inject
+	Box    []Box
 }
 
 type RequiredConfig struct {
@@ -60,13 +64,42 @@ type Credlist struct {
 }
 
 type LdapAuthConfig struct {
-	LdapConnectUrl   string
-	LdapBindDn       string
-	LdapBindPassword string
-	LdapSearchBaseDn string
-	LdapAdminGroupDn string
-	LdapRedGroupDn   string
-	LdapTeamGroupDn  string
+	LdapConnectUrl    string
+	LdapBindDn        string
+	LdapBindPassword  string
+	LdapSearchBaseDn  string
+	LdapAdminGroupDn  string
+	LdapRedGroupDn    string
+	LdapTeamGroupDn   string
+	LdapInjectGroupDn string
+}
+
+type OIDCAuthConfig struct {
+	// Provider Configuration
+	OIDCEnabled      bool
+	OIDCIssuerURL    string
+	OIDCClientID     string
+	OIDCClientSecret string
+	OIDCRedirectURL  string
+
+	// Security Settings
+	OIDCScopes []string
+
+	// Group Mapping
+	OIDCGroupClaim   string
+	OIDCAdminGroups  []string
+	OIDCRedGroups    []string
+	OIDCTeamGroups   []string
+	OIDCInjectGroups []string
+
+	// Token Expiration Settings (in seconds)
+	OIDCRefreshTokenExpiryTeam   int
+	OIDCRefreshTokenExpiryAdmin  int
+	OIDCRefreshTokenExpiryRed    int
+	OIDCRefreshTokenExpiryInject int
+
+	// UI Settings
+	OIDCDisableLocalLogin bool
 }
 
 type SslConfig struct {
@@ -110,6 +143,7 @@ type User struct {
 type Admin User
 type Red User
 type Team User
+type Inject User
 
 type Box struct {
 	Name string
@@ -142,9 +176,9 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 	slog.Info("Loading configuration file", "path", path)
 
 	tempConf := ConfigSettings{}
-	fileContent, err := os.ReadFile(path)
+	fileContent, err := os.ReadFile(path) // #nosec G304 -- path is admin-controlled config file location
 	if err != nil {
-		return fmt.Errorf("configuration file ("+path+") not found:", err)
+		return fmt.Errorf("configuration file (%s) not found: %w", path, err)
 	}
 
 	slog.Debug("Decoding TOML configuration")
@@ -204,6 +238,17 @@ func checkConfig(conf *ConfigSettings) error {
 		errResult = errors.Join(errResult, errors.New("no bind address specified"))
 	}
 
+	if conf.LdapSettings != (LdapAuthConfig{}) {
+		if conf.LdapSettings.LdapBindPassword == "" {
+			ldapBindPass := os.Getenv("LDAP_BIND_PASSWORD")
+			if ldapBindPass != "" {
+				conf.LdapSettings.LdapBindPassword = ldapBindPass
+			} else {
+				errResult = errors.Join(errResult, errors.New("no LDAP bind password specified"))
+			}
+		}
+	}
+
 	// check top level configs
 	for _, admin := range conf.Admin {
 		if admin.Name == "" || admin.Pw == "" {
@@ -218,6 +263,11 @@ func checkConfig(conf *ConfigSettings) error {
 	for _, team := range conf.Team {
 		if team.Name == "" || team.Pw == "" {
 			errResult = errors.Join(errResult, errors.New("team "+team.Name+" missing required property"))
+		}
+	}
+	for _, inject := range conf.Inject {
+		if inject.Name == "" || inject.Pw == "" {
+			errResult = errors.Join(errResult, errors.New("inject "+inject.Name+" missing required property"))
 		}
 	}
 
@@ -284,6 +334,42 @@ func checkConfig(conf *ConfigSettings) error {
 
 	if conf.MiscSettings.SlaPenalty == 0 {
 		conf.MiscSettings.SlaPenalty = conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
+	}
+
+	// OIDC settings defaults
+	if conf.OIDCSettings.OIDCEnabled {
+		if conf.OIDCSettings.OIDCIssuerURL == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no issuer URL specified"))
+		}
+		if conf.OIDCSettings.OIDCClientID == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no client ID specified"))
+		}
+		if conf.OIDCSettings.OIDCClientSecret == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no client secret specified"))
+		}
+		if conf.OIDCSettings.OIDCRedirectURL == "" {
+			errResult = errors.Join(errResult, errors.New("OIDC enabled but no redirect URL specified"))
+		}
+
+		// Set defaults
+		if len(conf.OIDCSettings.OIDCScopes) == 0 {
+			conf.OIDCSettings.OIDCScopes = []string{"openid", "profile", "email", "groups", "offline_access"}
+		}
+		if conf.OIDCSettings.OIDCGroupClaim == "" {
+			conf.OIDCSettings.OIDCGroupClaim = "groups"
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryTeam == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryTeam = 86400 // 1 day
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryAdmin == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryAdmin = 2592000 // 30 days
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryRed == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryRed = 172800 // 2 days
+		}
+		if conf.OIDCSettings.OIDCRefreshTokenExpiryInject == 0 {
+			conf.OIDCSettings.OIDCRefreshTokenExpiryInject = 86400 // 1 day
+		}
 	}
 
 	// =======================================

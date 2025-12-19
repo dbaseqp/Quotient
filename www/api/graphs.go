@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"quotient/engine/db"
 	"slices"
@@ -14,12 +13,13 @@ const (
 )
 
 func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
+	if !CheckCompetitionStarted(w, r) {
+		return
+	}
+
 	round, err := db.GetLastRound()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -35,10 +35,7 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 
 	teams, err := db.GetTeams()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -81,17 +78,17 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{"series": series, "roundID": round.ID}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }
 
 func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
+	if !CheckCompetitionStarted(w, r) {
+		return
+	}
+
 	scores, err := db.GetServiceCheckSumByRound()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -108,10 +105,7 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 
 	teams, err := db.GetTeams()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -157,17 +151,17 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 	})
 
 	data := map[string]any{"series": series}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }
 
 func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
+	if !CheckCompetitionStarted(w, r) {
+		return
+	}
+
 	teams, err := db.GetTeams()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		data := map[string]any{"error": err.Error()}
-		d, _ := json.Marshal(data)
-		w.Write(d)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })
@@ -227,6 +221,5 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{"series": series}
-	d, _ := json.Marshal(data)
-	w.Write(d)
+	WriteJSON(w, http.StatusOK, data)
 }

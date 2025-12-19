@@ -1,7 +1,10 @@
 package db
 
 import (
+	"cmp"
 	"errors"
+	"math"
+	"slices"
 
 	"gorm.io/gorm"
 )
@@ -73,6 +76,11 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 			return nil, err
 		}
 
+		// Validate id fits in int and is valid for array indexing
+		if id == 0 || id > math.MaxInt || id > uint(len(result)) {
+			continue // Skip invalid round IDs
+		}
+
 		roundidx := int(id) - 1
 		if result[roundidx] == nil {
 			result[roundidx] = make(map[uint]int)
@@ -95,6 +103,11 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 
 		if err := rows.Scan(&id, &team, &penalty); err != nil {
 			return nil, err
+		}
+
+		// Validate id fits in int and is valid for array indexing
+		if id == 0 || id > math.MaxInt || id > uint(len(result)) {
+			continue // Skip invalid round IDs
 		}
 
 		roundidx := int(id) - 1
@@ -178,22 +191,89 @@ type ServiceScoreData struct {
 func GetServiceScores() ([]ServiceScoreData, error) {
 	var results []ServiceScoreData
 
-	err := db.Model(&ServiceCheckSchema{}).
-		Select(`
-			service_check_schemas.team_id,
-			service_check_schemas.service_name,
-			SUM(CASE WHEN service_check_schemas.result = ? THEN service_check_schemas.points ELSE 0 END) as points,
-			COUNT(sla_schemas.round_id) as violations,
-			COALESCE(SUM(sla_schemas.penalty), 0) as total_penalty
-		`, true).
-		Joins("LEFT JOIN sla_schemas ON service_check_schemas.team_id = sla_schemas.team_id AND service_check_schemas.service_name = sla_schemas.service_name").
-		Group("service_check_schemas.team_id, service_check_schemas.service_name").
-		Find(&results).Error
+	// Create a map to store intermediate results keyed by team_id and service_name
+	scoreMap := make(map[uint]map[string]*ServiceScoreData)
 
+	// First get the total points per service per team
+	pointsRows, err := db.Raw(`
+		SELECT team_id, service_name, SUM(CASE WHEN result = true THEN points ELSE 0 END) as total_points
+		FROM service_check_schemas
+		GROUP BY team_id, service_name
+	`).Rows()
 	if err != nil {
 		return nil, err
 	}
+	defer pointsRows.Close()
 
+	for pointsRows.Next() {
+		var teamID uint
+		var serviceName string
+		var points int
+
+		if err := pointsRows.Scan(&teamID, &serviceName, &points); err != nil {
+			return nil, err
+		}
+
+		if scoreMap[teamID] == nil {
+			scoreMap[teamID] = make(map[string]*ServiceScoreData)
+		}
+
+		scoreMap[teamID][serviceName] = &ServiceScoreData{
+			TeamID:      teamID,
+			ServiceName: serviceName,
+			Points:      points,
+		}
+	}
+
+	// Then get the total penalties and violation counts per service per team from SLA
+	slaRows, err := db.Raw(`
+		SELECT team_id, service_name, COUNT(*) as violations, SUM(penalty) as total_penalty
+		FROM sla_schemas
+		GROUP BY team_id, service_name
+	`).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer slaRows.Close()
+
+	for slaRows.Next() {
+		var teamID uint
+		var serviceName string
+		var violations int
+		var totalPenalty int
+
+		if err := slaRows.Scan(&teamID, &serviceName, &violations, &totalPenalty); err != nil {
+			return nil, err
+		}
+
+		if scoreMap[teamID] == nil {
+			scoreMap[teamID] = make(map[string]*ServiceScoreData)
+		}
+
+		if scoreMap[teamID][serviceName] == nil {
+			scoreMap[teamID][serviceName] = &ServiceScoreData{
+				TeamID:      teamID,
+				ServiceName: serviceName,
+			}
+		}
+
+		scoreMap[teamID][serviceName].Violations = violations
+		scoreMap[teamID][serviceName].TotalPenalty = totalPenalty
+	}
+
+	// Convert map to slice
+	for _, services := range scoreMap {
+		for _, data := range services {
+			results = append(results, *data)
+		}
+	}
+
+	slices.SortFunc(results, func(a, b ServiceScoreData) int {
+		if a.TeamID != b.TeamID {
+			return cmp.Compare(a.TeamID, b.TeamID)
+		}
+		return cmp.Compare(a.ServiceName, b.ServiceName)
+	})
 	return results, nil
 }
 

@@ -11,6 +11,7 @@ import (
 	"quotient/engine"
 	"quotient/engine/checks"
 
+	reaper "github.com/ramr/go-reaper"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -18,6 +19,17 @@ import (
 var runnerID string
 
 func main() {
+	// Use WithReaper to run reaper as PID 1 and application code in a child process
+	// This prevents the reaper from interfering with processes we're actively managing
+	reaper.WithReaper(reaper.Config{}, runApp)
+}
+
+func runApp(err error) int {
+	if err != nil {
+		log.Printf("[Runner] Error from reaper: %v", err)
+		return 1
+	}
+
 	// Use environment variable RUNNER_ID if set, otherwise use hostname
 	runnerID = os.Getenv("RUNNER_ID")
 	if runnerID == "" {

@@ -10,7 +10,7 @@
                 <h3>Set Team Identifiers</h3>
                 <form onsubmit="return formSubmit(event)" id="teamForm">
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table class="table table-hover" id="team-table">
                             <thead class="sticky-top bg-white">
                                 <tr>
                                     <th>Team Name</th>
@@ -164,6 +164,7 @@
                     });
                 });
 
+                document.addEventListener('DOMContentLoaded', () => {
                 fetch('/api/teams')
                     .then(response => response.json())
                     .then(data => {
@@ -224,6 +225,7 @@
                         console.error('Error fetching teams:', error);
                         showAlert('Failed to load teams. Please try refreshing the page.', 'danger');
                     });
+                });
 
                 const formSubmit = (event) => {
                     event.preventDefault();
@@ -234,9 +236,9 @@
                         if (!input) return;
                         const teamID = parseInt(row.getAttribute('data-team'));
                         const identifier = input.value;
-                        const activeButton = row.querySelector('.input-group button:first-of-type');
-                        const active = activeButton ? activeButton.disabled : false;
-                        teamsData.push({ ID: teamID, Identifier: identifier, Active: active });
+                        const activeToggle = row.querySelector('.form-check-input');
+                        const active = activeToggle ? activeToggle.checked : false;
+                        teamsData.push({ id: teamID, identifier: identifier, active: active });
                     });
                     // Show loading state
                     const submitButton = document.querySelector('form button[type="submit"]');

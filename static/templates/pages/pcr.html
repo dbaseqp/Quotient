@@ -37,7 +37,12 @@
                         <textarea class="form-control me-2" id="pcr__credentials" rows="10"
                             placeholder="username,password"></textarea>
                     </div>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="strip-quotes" checked>
+                        <label class="form-check-label" for="strip-quotes">Strip Quotes</label>
+                    </div>
                     <button type="submit" class="btn btn-primary mt-2">Submit</button>
+                    <button type="button" class="btn btn-danger mt-2" onclick="resetPCR()">Reset</button>
                 </form>
                 <div id="credlist__example" class="my-2">
                 </div>
@@ -109,8 +114,27 @@
     const formSubmit = (event) => {
         event.preventDefault()
         const newcreds = document.getElementById("pcr__credentials").value.split("\n")
-        const usernames = newcreds.map(cred => cred.split(/,(.+)/)[0])
-        const passwords = newcreds.map(cred => cred.split(/,(.+)/)[1])
+            .filter(l => l.trim() !== "")
+        const stripQuotes = document.getElementById("strip-quotes").checked
+        const maybeUnquote = (str) => {
+            if (!stripQuotes) {
+                return str
+            }
+            if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+                return str.slice(1, -1)
+            }
+            return str
+        }
+
+        const usernames = []
+        const passwords = []
+        for (const cred of newcreds) {
+            const parts = cred.split(/,(.+)/)
+            const username = maybeUnquote(parts[0] ?? "")
+            const password = maybeUnquote(parts[1] ?? "")
+            usernames.push(username)
+            passwords.push(password)
+        }
         const team_id = document.getElementById("team-select").value
         const credlist_id = document.getElementById("credlist-select").value
         const data = {
@@ -181,6 +205,78 @@
                 closeButton.setAttribute("data-bs-dismiss", "alert");
                 closeButton.setAttribute("aria-label", "Close");
                 alertDiv.appendChild(closeButton);
+                // Insert the alert before the form
+                const form = document.getElementById("pcr__form");
+                form.parentNode.insertBefore(alertDiv, form);
+            });
+    }
+    const resetPCR = () => {
+        const team_id = document.getElementById("team-select").value
+        const credlist_id = document.getElementById("credlist-select").value
+        
+        if (!confirm("Resetting the PCR to the default credentials cannot be undone. Are you sure you want to proceed?")) {
+            return
+        }
+        
+        const data = {
+            team_id: team_id,
+            credlist_id: credlist_id
+        }
+        
+        fetch("/api/pcrs/reset", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(data)
+        })
+            .then((response) => {
+                if (!response.ok) {
+                    return Promise.reject(response);
+                }
+                return response.json();
+            })
+            .then((data) => {
+                // Create a success alert
+                const alertDiv = document.createElement("div");
+                alertDiv.className = "alert alert-success alert-dismissible fade show mt-3";
+                alertDiv.role = "alert";
+                alertDiv.textContent = data.message || "Credentials reset successfully.";
+                
+                // Add a close button
+                const closeButton = document.createElement("button");
+                closeButton.type = "button";
+                closeButton.className = "btn-close";
+                closeButton.setAttribute("data-bs-dismiss", "alert");
+                closeButton.setAttribute("aria-label", "Close");
+                alertDiv.appendChild(closeButton);
+                
+                // Insert the alert before the form
+                const form = document.getElementById("pcr__form");
+                form.parentNode.insertBefore(alertDiv, form);
+                
+                // Auto-dismiss after 5 seconds
+                setTimeout(() => {
+                    const bsAlert = new bootstrap.Alert(alertDiv);
+                    bsAlert.close();
+                }, 5000);
+            })
+            .catch(error => {
+                console.error("Error resetting PCR:", error);
+                // Create an error alert
+                const alertDiv = document.createElement("div");
+                alertDiv.className = "alert alert-danger alert-dismissible fade show mt-3";
+                alertDiv.role = "alert";
+                alertDiv.textContent = "Error resetting credentials. Please try again.";
+                
+                // Add a close button
+                const closeButton = document.createElement("button");
+                closeButton.type = "button";
+                closeButton.className = "btn-close";
+                closeButton.setAttribute("data-bs-dismiss", "alert");
+                closeButton.setAttribute("aria-label", "Close");
+                alertDiv.appendChild(closeButton);
+                
                 // Insert the alert before the form
                 const form = document.getElementById("pcr__form");
                 form.parentNode.insertBefore(alertDiv, form);

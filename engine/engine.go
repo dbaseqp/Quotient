@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"quotient/engine/checks"
 	"quotient/engine/config"
@@ -325,7 +327,7 @@ func (se *ScoringEngine) koth() error {
 func (se *ScoringEngine) rvb() error {
 	// reassign the next round start time with jitter
 	// double the jitter and subtract it to get a random number between -jitter and jitter
-	randomJitter := rand.Intn(2*se.Config.MiscSettings.Jitter) - se.Config.MiscSettings.Jitter
+	randomJitter := rand.Intn(2*se.Config.MiscSettings.Jitter) - se.Config.MiscSettings.Jitter // #nosec G404 -- non-crypto randomization for timing jitter
 	jitter := time.Duration(randomJitter) * time.Second
 	se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second).Add(jitter)
 
@@ -367,6 +369,13 @@ func (se *ScoringEngine) rvb() error {
 	// Log details about each box's runners
 	for _, box := range se.Config.Box {
 		slog.Debug("Box configuration", "name", box.Name, "runners", len(box.Runners))
+	}
+
+	// Clear any stale tasks from previous rounds before enqueuing new ones
+	staleTasks := se.RedisClient.LLen(ctx, "tasks").Val()
+	if staleTasks > 0 {
+		slog.Warn("Clearing stale tasks from queue", "count", staleTasks, "round", se.CurrentRound)
+		se.RedisClient.Del(ctx, "tasks")
 	}
 
 	// 1) Enqueue
@@ -421,6 +430,7 @@ func (se *ScoringEngine) rvb() error {
 	defer cancel()
 
 	i := 0
+COLLECTION:
 	for i < runners {
 		select {
 		case msg := <-eventsChannel:
@@ -434,11 +444,16 @@ func (se *ScoringEngine) rvb() error {
 		default:
 			val, err := se.RedisClient.BLPop(timeoutCtx, time.Until(se.NextRoundStartTime), "results").Result()
 			if err == redis.Nil {
-				slog.Warn("Timeout waiting for results", "remaining", runners-i)
-				// Clear the results, since we didn't collect everything in time
+				slog.Warn("Timeout waiting for results", "remaining", runners-i, "collected", i, "expected", runners)
 				results = []checks.Result{}
-				break
+				break COLLECTION
 			} else if err != nil {
+				// Check if the timeout context has expired
+				if timeoutCtx.Err() != nil {
+					slog.Warn("Round deadline exceeded while waiting for results", "remaining", runners-i, "collected", i, "expected", runners, "error", err)
+					results = []checks.Result{}
+					break COLLECTION
+				}
 				slog.Error("Failed to fetch results from Redis:", "error", err)
 				time.Sleep(2 * time.Second)
 				continue
@@ -471,6 +486,16 @@ func (se *ScoringEngine) rvb() error {
 	return nil
 }
 
+func sanitizeDBString(s string) string {
+	// remove nulls
+	s = strings.ReplaceAll(s, "\x00", "")
+	// if invalid UTF-8, replace with �
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "")
+	}
+	return s
+}
+
 func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 	if len(results) == 0 {
 		slog.Warn("No results collected for round", "round", se.CurrentRound)
@@ -483,11 +508,11 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 		dbResults = append(dbResults, db.ServiceCheckSchema{
 			TeamID:      result.TeamID,
 			RoundID:     uint(se.CurrentRound),
-			ServiceName: result.ServiceName,
+			ServiceName: sanitizeDBString(result.ServiceName),
 			Points:      result.Points,
 			Result:      result.Status,
-			Error:       result.Error,
-			Debug:       result.Debug,
+			Error:       sanitizeDBString(result.Error),
+			Debug:       sanitizeDBString(result.Debug),
 		})
 	}
 
@@ -539,7 +564,9 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 					RoundID:     uint(se.CurrentRound),
 					Penalty:     se.Config.MiscSettings.SlaPenalty,
 				}
-				db.CreateSLA(sla)
+				if _, err := db.CreateSLA(sla); err != nil {
+					slog.Error("failed to create SLA", "team", result.TeamID, "service", result.ServiceName, "error", err)
+				}
 				se.SlaPerService[result.TeamID][result.ServiceName] = 0
 			}
 		}

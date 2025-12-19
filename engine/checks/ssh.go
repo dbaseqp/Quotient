@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"os"
 	"regexp"
@@ -43,7 +44,7 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 
 		config := &ssh.ClientConfig{
 			User:            username,
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+			HostKeyCallback: ssh.InsecureIgnoreHostKey(), // #nosec G106 -- competition hosts have unknown keys
 			Timeout:         time.Duration(c.Timeout) * time.Second,
 		}
 		config.SetDefaults()
@@ -78,13 +79,15 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				Auth: []ssh.AuthMethod{
 					ssh.Password(uuid.New().String()),
 				},
-				HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+				HostKeyCallback: ssh.InsecureIgnoreHostKey(), // #nosec G106 -- competition hosts have unknown keys
 				Timeout:         time.Duration(c.Timeout) * time.Second,
 			}
 
 			badConn, err := ssh.Dial("tcp", c.Target+":"+strconv.Itoa(c.Port), badConf)
 			if err == nil {
-				badConn.Close()
+				if err := badConn.Close(); err != nil {
+					slog.Error("failed to close bad ssh connection", "error", err)
+				}
 			}
 		}
 
@@ -101,7 +104,11 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			response <- checkResult
 			return
 		}
-		defer conn.Close()
+		defer func() {
+		if err := conn.Close(); err != nil {
+			slog.Error("failed to close ssh connection", "error", err)
+		}
+	}()
 
 		// Create a session
 		session, err := conn.NewSession()
@@ -152,7 +159,7 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 
 		// If any commands specified, run a random one
 		if len(c.Command) > 0 {
-			r := c.Command[rand.Intn(len(c.Command))]
+			r := c.Command[rand.Intn(len(c.Command))] // #nosec G404 -- non-crypto selection of command to test
 			fmt.Fprintln(stdin, r.Command)
 			time.Sleep(time.Duration(int(time.Duration(c.Timeout)*time.Second) / 8)) // command wait time
 			if r.Contains {
@@ -169,13 +176,6 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 					checkResult.Debug = "command output'" + r.Command + "' didn't match regex '" + r.Output
 					response <- checkResult
 					return
-				} else {
-					if strings.TrimSpace(stdoutBytes.String()) != r.Output {
-						checkResult.Error = "command output didn't match string"
-						checkResult.Debug = "command output of '" + r.Command + "' didn't match string '" + r.Output + "' " + strings.TrimSpace(stdoutBytes.String())
-						response <- checkResult
-						return
-					}
 				}
 			} else {
 				if stderrBytes.Len() != 0 {
