@@ -50,6 +50,25 @@ func Connect(connectURL string) {
 }
 
 func AddTeams(conf *config.ConfigSettings) error {
+	// Auto-generate teams if TeamCount is specified
+	if conf.MiscSettings.TeamCount > 0 {
+		for i := 1; i <= conf.MiscSettings.TeamCount; i++ {
+			teamName := fmt.Sprintf("team%02d", i)
+			t := TeamSchema{Name: teamName}
+			result := db.Where(&t).First(&t)
+			if result.Error != nil {
+				if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+					if _, err := CreateTeam(t); err != nil {
+						return err
+					}
+				} else {
+					return result.Error
+				}
+			}
+		}
+	}
+
+	// Also add explicitly defined teams
 	for _, team := range conf.Team {
 		t := TeamSchema{Name: team.Name}
 		result := db.Where(&t).First(&t)
