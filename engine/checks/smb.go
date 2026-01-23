@@ -57,6 +57,7 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			Initiator: &smb2.NTLMInitiator{
 				User:     username,
 				Password: password,
+				Domain:   c.Domain,
 			},
 		}
 
