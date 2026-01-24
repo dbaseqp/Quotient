@@ -13,7 +13,7 @@ RUN go build -o runner
 FROM alpine:3.21
 WORKDIR /app
 COPY --from=builder /src/runner/runner runner
-RUN apk add --no-cache wireguard-tools iproute2 iputils curl git openssh fortune py3-uv python3 proxychains-ng jq file sshpass bind-tools grep chrony krb5
+RUN apk add --no-cache wireguard-tools iproute2 iputils curl git openssh py3-uv python3 proxychains-ng jq file sshpass bind-tools grep chrony krb5
 
 # custom python check scripts
 COPY custom-checks/requirements.txt /app

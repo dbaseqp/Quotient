@@ -3,7 +3,6 @@ package checks
 import (
 	"context"
 	"crypto/tls"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -12,20 +11,12 @@ import (
 	"time"
 )
 
-// generateRandomContent creates unpredictable email content to prevent
-// SMTP check bypass by accepting only known static messages.
+// generateRandomContent creates random email content for variety.
 func generateRandomContent() (subject string, body string) {
-	// Generate random bytes for subject and body
-	subjectBytes := make([]byte, 8)
-	bodyBytes := make([]byte, 32)
-
-	// #nosec G404 -- non-crypto random for email content noise
-	rand.Read(subjectBytes)
-	// #nosec G404 -- non-crypto random for email content noise
-	rand.Read(bodyBytes)
-
-	subject = hex.EncodeToString(subjectBytes)
-	body = hex.EncodeToString(bodyBytes)
+	// #nosec G404 -- non-crypto random for email content
+	subject = fmt.Sprintf("%016x", rand.Uint64())
+	// #nosec G404 -- non-crypto random for email content
+	body = fmt.Sprintf("%016x%016x%016x%016x", rand.Uint64(), rand.Uint64(), rand.Uint64(), rand.Uint64())
 	return
 }
 
@@ -54,7 +45,6 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			Timeout: time.Duration(c.Timeout) * time.Second,
 		}
 
-		// Generate random content to prevent bypass via static message acceptance
 		subject, body := generateRandomContent()
 
 		// ***********************************************
