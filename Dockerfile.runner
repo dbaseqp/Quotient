@@ -21,4 +21,4 @@ RUN ln -sf python3 /usr/bin/python
 RUN uv pip install --system --break-system-packages setuptools
 RUN uv pip install --system --break-system-packages -r /app/requirements.txt
 
-ENTRYPOINT ["/app/runner"]
+ENTRYPOINT ["/sbin/tini", "--", "/app/runner"]
