@@ -10,8 +10,8 @@ import (
 )
 
 type ServiceCheckSchema struct {
-	TeamID      uint
-	RoundID     uint
+	TeamID      uint `gorm:"index:idx_team_round"`
+	RoundID     uint `gorm:"index:idx_team_round"`
 	Round       RoundSchema
 	ServiceName string
 	Points      int
