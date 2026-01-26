@@ -48,8 +48,14 @@ func Connect(connectURL string) {
 		log.Fatalln("Failed to auto migrate:", err)
 	}
 
-	// Create materialized view for cumulative scores (WITH NO DATA to avoid computation at startup)
-	err = db.Exec(`
+	// Create materialized views
+	createCumulativeScoresView()
+}
+
+// createCumulativeScoresView creates the materialized view for cumulative scores.
+// Uses WITH NO DATA to avoid expensive computation at startup; first refresh populates it.
+func createCumulativeScoresView() {
+	err := db.Exec(`
 		CREATE MATERIALIZED VIEW IF NOT EXISTS cumulative_scores AS
 		SELECT DISTINCT 
 			round_id, 
@@ -61,16 +67,16 @@ func Connect(connectURL string) {
 		WITH NO DATA
 	`).Error
 	if err != nil {
-		log.Fatalln("Failed to create materialized view:", err)
+		log.Fatalln("Failed to create cumulative_scores materialized view:", err)
 	}
 
-	// Create unique index to enable CONCURRENT refresh
+	// Unique index required to enable REFRESH CONCURRENTLY
 	err = db.Exec(`
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_cumulative_scores_round_team 
 		ON cumulative_scores (round_id, team_id)
 	`).Error
 	if err != nil {
-		log.Fatalln("Failed to create unique index on materialized view:", err)
+		log.Fatalln("Failed to create index on cumulative_scores:", err)
 	}
 }
 
