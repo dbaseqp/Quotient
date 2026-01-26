@@ -573,4 +573,11 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 	}
 
 	slog.Debug("Successfully processed results for round", "round", se.CurrentRound, "total", len(dbResults))
+
+	// Refresh materialized view asynchronously
+	go func() {
+		if err := db.RefreshScoresMaterializedView(); err != nil {
+			slog.Error("failed to refresh materialized view", "round", se.CurrentRound, "error", err)
+		}
+	}()
 }

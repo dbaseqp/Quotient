@@ -50,3 +50,7 @@ func GetLastRound() (RoundSchema, error) {
 	}
 	return round, nil
 }
+
+func RefreshScoresMaterializedView() error {
+	return db.Exec("REFRESH MATERIALIZED VIEW CONCURRENTLY cumulative_scores").Error
+}

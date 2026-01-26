@@ -55,11 +55,10 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 	// creates array with size of num rounds
 	result := make([]map[uint]int, last.ID)
 
+	// Query from materialized view instead of running window function each time
 	rows, err := db.Raw(`
-		SELECT DISTINCT round_id, team_id, 
-			   SUM(CASE WHEN result = '1' THEN points ELSE 0 END) 
-			   OVER(PARTITION BY team_id ORDER BY round_id) 
-		FROM service_check_schemas 
+		SELECT round_id, team_id, cumulative_points
+		FROM cumulative_scores
 		ORDER BY team_id, round_id
 	`).Rows()
 	if err != nil {
