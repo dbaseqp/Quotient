@@ -48,7 +48,7 @@ func Connect(connectURL string) {
 		log.Fatalln("Failed to auto migrate:", err)
 	}
 
-	// Create materialized view for cumulative scores
+	// Create materialized view for cumulative scores (WITH NO DATA to avoid computation at startup)
 	err = db.Exec(`
 		CREATE MATERIALIZED VIEW IF NOT EXISTS cumulative_scores AS
 		SELECT DISTINCT 
@@ -58,6 +58,7 @@ func Connect(connectURL string) {
 				OVER(PARTITION BY team_id ORDER BY round_id) as cumulative_points
 		FROM service_check_schemas 
 		ORDER BY team_id, round_id
+		WITH NO DATA
 	`).Error
 	if err != nil {
 		log.Fatalln("Failed to create materialized view:", err)
