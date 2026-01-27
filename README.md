@@ -229,7 +229,7 @@ For a detailed walkthrough of writing custom checks, see [docs/custom-checks.md]
 
 ### Full Example Configuration
 
-Below is a complete example configuration directly taken from a non-WRCCDC invitational. This was the exact configuration used, minus ommitted passwords:
+Below is a complete example configuration directly taken from a non-WRCCDC invitational. This was the exact configuration used, minus omitted passwords:
 
 ```toml
 [RequiredSettings]
