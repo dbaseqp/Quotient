@@ -227,6 +227,174 @@ Custom checks can be added to the `./custom-checks/` directory. It is very commo
 
 For a detailed walkthrough of writing custom checks, see [docs/custom-checks.md](docs/custom-checks.md).
 
+### Full Example Configuration
+
+Below is a complete example configuration directly taken from a non-WRCCDC invitational. This was the exact configuration used, minus ommitted passwords:
+
+```toml
+[RequiredSettings]
+  EventName = "2026 SEMO Invitational"
+  EventType = "rvb"
+  DBConnectURL = "postgres://engineuser:[postgress_password]@quotient_database:5432/engine"
+  BindAddress = "0.0.0.0"
+[MiscSettings]
+  EasyPCR = true
+  ShowDebugToBlueTeam = false
+  LogoImage = "/static/assets/quotient.svg"
+  StartPaused = true
+  
+  Delay = 60
+  Jitter = 10
+  
+  Points = 5
+  Timeout = 30
+  SlaThreshold = 5
+  SlaPenalty = 25
+[CredlistSettings]
+  [[CredlistSettings.Credlist]]
+    CredlistName = "AD"
+    CredlistPath = "AD.credlist"
+    CredlistExplainText = "username,password"
+# ===========================================
+# ADMIN ACCOUNTS
+# ===========================================
+[[Admin]]
+  Name = "admin"
+  Pw = "Changeme_example"
+# ===========================================
+# TEAM ACCOUNTS
+# ===========================================
+[[Team]]
+  Name = "redteam"
+  Pw = "Changeme_example"
+[[Team]]
+  Name = "guest"
+  PW = "Changeme_example"
+[[Team]]
+  Name = "team1"
+  Pw = "Changeme_example"
+[[Team]]
+  Name = "team2"
+  Pw = "Changeme_example"
+[[Team]]
+  Name = "team3"
+  Pw = "Changeme_example"
+[[Team]]
+  Name = "team4"
+  Pw = "Changeme_example"
+[[Team]]
+  Name = "team5"
+  Pw = "Changeme_example"
+  
+[[Team]]
+  Name = "team6"
+  Pw = "Changeme_example"
+  
+[[Team]]
+  Name = "team7"
+  Pw = "Changeme_example"
+# ===========================================
+# BOX DEFINITIONS
+# ===========================================
+# ---- Ubuntu-Ecomm (TTP Service) ----
+[[Box]]
+  Name = "Ubuntu-Ecomm"
+  IP = "172.16._.38"
+  [[Box.Web]]
+    Display = "http"
+    Scheme = "http"
+    Port = 80
+    Points = 5
+    [[Box.Web.Url]]
+      Path = "/"
+      Status = 200
+  
+  [[Box.Ssh]]
+  Display = "ssh"
+  CredLists = ["AD"]
+  Points = 5
+  
+# ---- Fedora-Webmail (SMTP, POP3) ----
+[[Box]]
+  Name = "Fedora-Webmail"
+  IP = "172.16._.17"
+  [[Box.Smtp]]
+    Display = "smtp"
+    Port = 25
+    CredLists = ["AD"]
+    Domain = "@comp.local"
+    RequireAuth = true
+    Points = 5
+  [[Box.Pop3]]
+    Display = "pop3"
+    Port = 110
+    CredLists = ["AD"]
+    Domain = "@comp.local"
+    Points = 5
+# ---- Devuan-Web (HTTP) ----
+[[Box]]
+  Name = "Devuan-Web"
+  IP = "172.16._.21"
+  [[Box.Web]]
+    Display = "http"
+    Scheme = "http"
+    Port = 80
+    Points = 5
+    [[Box.Web.Url]]
+      Path = "/"
+      Status = 200
+# ---- Win-AD (DNS, SSH) ----
+[[Box]]
+  Name = "Win-AD"
+  IP = "172.16._.1"
+  [[Box.Dns]]
+    Display = "dns"
+    Port = 53
+    Points = 5
+    [[Box.Dns.Record]]
+      Kind = "A"
+      Domain = "splunk.comp.local"
+      Answer = ["172.16.1.20"]
+    
+    [[Box.Ssh]]
+    Display = "ssh"
+    CredLists = ["AD"]
+    Points = 5
+# ---- Win-FTP (FTP) ----
+[[Box]]
+  Name = "Win-FTP"
+  IP = "172.16._.50"
+  [[Box.Ftp]]
+    Display = "ftp"
+    Port = 21
+    CredLists = ["AD"]
+    Points = 5
+# ---- Win-Web (HTTP) ----
+[[Box]]
+  Name = "Win-Web"
+  IP = "172.16._.150"
+  [[Box.Web]]
+    Display = "http"
+    Scheme = "http"
+    Port = 80
+    Points = 5
+    [[Box.Web.Url]]
+      Path = "/Default.aspx"
+      Status = 200
+# ---- Oracle-Splunk (HTTP) ----
+[[Box]]
+  Name = "Oracle-Splunk"
+  IP = "172.16._.20"
+  [[Box.Web]]
+    Display = "http"
+    Scheme = "http"
+    Port = 8000
+    Points = 5
+    [[Box.Web.Url]]
+      Path = "/en-US/account/login?return_to_=%2Fen-US%2F"
+      Status = 200
+```
+
 ## Contributing
 
 Please fork the repository and submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
@@ -238,4 +406,3 @@ This project is licensed under the GNU General Public License v3.0 - see the LIC
 ## Contact
 
 For support or questions, please open a GitHub issue.
-
