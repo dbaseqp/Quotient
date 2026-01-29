@@ -77,6 +77,12 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 		series = append(series, s)
 	}
 
+	if shouldScrub(r) {
+		for i := range series {
+			series[i].Name = "Team"
+		}
+	}
+
 	data := map[string]any{"series": series, "roundID": round.ID}
 	WriteJSON(w, http.StatusOK, data)
 }
@@ -126,15 +132,8 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if r.Context().Value("roles") != nil {
-		req_roles := r.Context().Value("roles").([]string)
-		if !slices.Contains(req_roles, "admin") {
-			for i, _ := range series {
-				series[i].Name = "Team"
-			}
-		}
-	} else {
-		for i, _ := range series {
+	if shouldScrub(r) {
+		for i := range series {
 			series[i].Name = "Team"
 		}
 	}
@@ -207,19 +206,26 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 		series = append(series, s)
 	}
 
-	if r.Context().Value("roles") != nil {
-		req_roles := r.Context().Value("roles").([]string)
-		if !slices.Contains(req_roles, "admin") {
-			for i, _ := range series {
-				series[i].Name = "Team"
-			}
-		}
-	} else {
-		for i, _ := range series {
+	if shouldScrub(r) {
+		for i := range series {
 			series[i].Name = "Team"
 		}
 	}
 
 	data := map[string]any{"series": series}
 	WriteJSON(w, http.StatusOK, data)
+}
+
+func shouldScrub(r *http.Request) bool {
+	if r.Context().Value("roles") != nil {
+		req_roles := r.Context().Value("roles").([]string)
+		if slices.Contains(req_roles, "admin") {
+			return false
+		}
+	}
+
+	if conf.UISettings.AllowNonAnonymizedGraphsForBlueTeam {
+		return false
+	}
+	return true
 }
