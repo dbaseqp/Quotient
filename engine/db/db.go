@@ -53,8 +53,9 @@ func Connect(connectURL string) {
 }
 
 // createCumulativeScoresView creates the materialized view for cumulative scores.
-// Uses WITH NO DATA to avoid expensive computation at startup; first refresh populates it.
 func createCumulativeScoresView() {
+	// Create the materialized view if it doesn't exist
+	// If it does exist, CREATE won't refresh it, so we do that separately
 	err := db.Exec(`
 		CREATE MATERIALIZED VIEW IF NOT EXISTS cumulative_scores AS
 		SELECT DISTINCT 
@@ -64,7 +65,6 @@ func createCumulativeScoresView() {
 				OVER(PARTITION BY team_id ORDER BY round_id) as cumulative_points
 		FROM service_check_schemas 
 		ORDER BY team_id, round_id
-		WITH NO DATA
 	`).Error
 	if err != nil {
 		log.Fatalln("Failed to create cumulative_scores materialized view:", err)
@@ -77,6 +77,12 @@ func createCumulativeScoresView() {
 	`).Error
 	if err != nil {
 		log.Fatalln("Failed to create index on cumulative_scores:", err)
+	}
+
+	// Ensure view is populated/fresh on startup in case there was existing data
+	err = db.Exec("REFRESH MATERIALIZED VIEW cumulative_scores").Error
+	if err != nil {
+		log.Fatalln("Failed to refresh cumulative_scores materialized view:", err)
 	}
 }
 

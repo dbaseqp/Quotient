@@ -52,19 +52,6 @@ func GetLastRound() (RoundSchema, error) {
 }
 
 func RefreshScoresMaterializedView() error {
-	// Check if the view has data - CONCURRENTLY only works on populated views
-	var hasData bool
-	err := db.Raw("SELECT EXISTS(SELECT 1 FROM cumulative_scores LIMIT 1)").Scan(&hasData).Error
-	if err != nil {
-		// View is likely unpopulated (WITH NO DATA), use blocking refresh
-		return db.Exec("REFRESH MATERIALIZED VIEW cumulative_scores").Error
-	}
-
-	if !hasData {
-		// First refresh - must use blocking refresh
-		return db.Exec("REFRESH MATERIALIZED VIEW cumulative_scores").Error
-	}
-
-	// Subsequent refreshes - use concurrent refresh to avoid blocking reads
+	// Use concurrent refresh to avoid blocking reads
 	return db.Exec("REFRESH MATERIALIZED VIEW CONCURRENTLY cumulative_scores").Error
 }
