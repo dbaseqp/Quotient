@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -30,6 +31,9 @@ type ScoringEngine struct {
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
+
+	// Concurrency control for materialized view refresh
+	Refreshing atomic.Bool
 
 	// Config update handling
 	configPath string
@@ -573,4 +577,17 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 	}
 
 	slog.Debug("Successfully processed results for round", "round", se.CurrentRound, "total", len(dbResults))
+
+	// Refresh materialized view asynchronously, but avoid concurrent refreshes
+	currentRound := se.CurrentRound
+	if se.Refreshing.CompareAndSwap(false, true) {
+		go func(round uint) {
+			defer se.Refreshing.Store(false)
+			if err := db.RefreshScoresMaterializedView(); err != nil {
+				slog.Error("failed to refresh materialized view", "round", round, "error", err)
+			}
+		}(currentRound)
+	} else {
+		slog.Debug("refresh already in progress, skipping refresh spawn", "round", currentRound)
+	}
 }

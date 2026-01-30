@@ -47,6 +47,43 @@ func Connect(connectURL string) {
 	if err != nil {
 		log.Fatalln("Failed to auto migrate:", err)
 	}
+
+	// Create materialized views
+	createCumulativeScoresView()
+}
+
+// createCumulativeScoresView creates the materialized view for cumulative scores.
+func createCumulativeScoresView() {
+	// Create the materialized view if it doesn't exist
+	// If it does exist, CREATE won't refresh it, so we do that separately
+	err := db.Exec(`
+		CREATE MATERIALIZED VIEW IF NOT EXISTS cumulative_scores AS
+		SELECT DISTINCT 
+			round_id, 
+			team_id, 
+			SUM(CASE WHEN result = '1' THEN points ELSE 0 END) 
+				OVER(PARTITION BY team_id ORDER BY round_id) as cumulative_points
+		FROM service_check_schemas 
+		ORDER BY team_id, round_id
+	`).Error
+	if err != nil {
+		log.Fatalln("Failed to create cumulative_scores materialized view:", err)
+	}
+
+	// Unique index required to enable REFRESH CONCURRENTLY
+	err = db.Exec(`
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_cumulative_scores_round_team 
+		ON cumulative_scores (round_id, team_id)
+	`).Error
+	if err != nil {
+		log.Fatalln("Failed to create index on cumulative_scores:", err)
+	}
+
+	// Ensure view is populated/fresh on startup in case there was existing data
+	err = db.Exec("REFRESH MATERIALIZED VIEW cumulative_scores").Error
+	if err != nil {
+		log.Fatalln("Failed to refresh cumulative_scores materialized view:", err)
+	}
 }
 
 func AddTeams(conf *config.ConfigSettings) error {
@@ -112,6 +149,11 @@ func AddTeams(conf *config.ConfigSettings) error {
 func ResetScores() error {
 	// truncate servicecheckschemas, slaschemas, and roundschemas with cascade
 	if err := db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas CASCADE").Error; err != nil {
+		return err
+	}
+
+	// Refresh the materialized view to clear it
+	if err := db.Exec("REFRESH MATERIALIZED VIEW cumulative_scores").Error; err != nil {
 		return err
 	}
 
