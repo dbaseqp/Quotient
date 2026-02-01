@@ -41,6 +41,16 @@ func GetInjects() ([]InjectSchema, error) {
 	return injects, nil
 }
 
+// GetInjectByID retrieves a single inject by ID
+func GetInjectByID(id uint) (InjectSchema, error) {
+	var inject InjectSchema
+	result := db.Table("inject_schemas").First(&inject, id)
+	if result.Error != nil {
+		return InjectSchema{}, result.Error
+	}
+	return inject, nil
+}
+
 // UpdateInject
 func UpdateInject(inject InjectSchema) (InjectSchema, error) {
 	result := db.Table("inject_schemas").Save(&inject)
