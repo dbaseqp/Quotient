@@ -2,7 +2,7 @@
 
 Quotient is a cybersecurity competition scoring platform designed for CCDC-style events. It automatically scores defensive service checks while providing infrastructure for teams to submit inject solutions and make password change requests (PCRs).
 
-Used by [WRCCDC](https://wrccdc.org) (Western Regional CCDC) and [PRCCDC](https://prccdc.com) (Pacific Rim CCDC).
+Used by [WRCCDC](https://wrccdc.org) (Western Regional CCDC) and [PRCCDC](http://prccdc.com) (Pacific Rim CCDC).
 
 ## Prerequisites
 
