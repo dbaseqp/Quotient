@@ -1,11 +1,14 @@
 package api
 
 import (
+	"archive/zip"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"quotient/engine/db"
 	"slices"
 	"strconv"
@@ -171,5 +174,67 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.Copy(w, file); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error sending the file"})
 		return
+	}
+}
+
+func DownloadAllSubmissions(w http.ResponseWriter, r *http.Request) {
+	temp, err := strconv.ParseUint(r.PathValue("id"), 10, 32)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid inject id"})
+		return
+	}
+	injectID := uint(temp)
+
+	if _, err := db.GetInjectByID(injectID); err != nil {
+		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Inject not found"})
+		return
+	}
+
+	submissions, err := db.GetSubmissionsForInject(injectID)
+	if err != nil {
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving submissions"})
+		return
+	}
+
+	if len(submissions) == 0 {
+		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "No submissions found"})
+		return
+	}
+
+	filename := fmt.Sprintf("inject%d_submissions.zip", injectID)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Type", "application/zip")
+
+	zipWriter := zip.NewWriter(w)
+	defer zipWriter.Close()
+
+	// SubmissionFileName is validated by os.Root at upload time; Team.Name is admin-controlled.
+	for _, submission := range submissions {
+		baseDir := fmt.Sprintf("submissions/%d/%d/%d", injectID, submission.TeamID, submission.Version)
+		file, err := SafeOpen(baseDir, submission.SubmissionFileName)
+		if err != nil {
+			continue
+		}
+
+		zipPath := filepath.Join(
+			fmt.Sprintf("%s_v%d", submission.Team.Name, submission.Version),
+			submission.SubmissionFileName,
+		)
+
+		zipEntry, err := zipWriter.Create(zipPath)
+		if err != nil {
+			slog.Error("failed to create zip entry", "path", zipPath, "error", err)
+			if err := file.Close(); err != nil {
+				slog.Error("failed to close file", "path", zipPath, "error", err)
+			}
+			continue
+		}
+
+		if _, err := io.Copy(zipEntry, file); err != nil {
+			slog.Error("failed to copy file to zip", "path", zipPath, "error", err)
+		}
+		if err := file.Close(); err != nil {
+			slog.Error("failed to close file", "path", zipPath, "error", err)
+		}
 	}
 }

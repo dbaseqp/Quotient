@@ -149,6 +149,7 @@ func (router *Router) Start() {
 	mux.HandleFunc("POST /api/injects/create", INJECTAUTH(api.CreateInject))
 	mux.HandleFunc("POST /api/injects/{id}", INJECTAUTH(api.UpdateInject))
 	mux.HandleFunc("DELETE /api/injects/{id}", INJECTAUTH(api.DeleteInject))
+	mux.HandleFunc("GET /api/injects/{id}/submissions/download", INJECTAUTH(api.DownloadAllSubmissions))
 
 	// router.HandleFunc("POST /api/engine/service/create", ADMINAUTH(api.CreateService))
 	// router.HandleFunc("POST /api/engine/service/update", ADMINAUTH(api.UpdateService))
