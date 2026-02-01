@@ -1,5 +1,9 @@
 # Quotient
 
+Quotient is a cybersecurity competition scoring platform designed for CCDC-style events. It automatically scores defensive service checks while providing infrastructure for teams to submit inject solutions and make password change requests (PCRs).
+
+Used by [WRCCDC](https://wrccdc.org) (Western Regional CCDC) and [PRCCDC](https://prccdc.com) (Pacific Rim CCDC).
+
 ## Prerequisites
 
 Ensure you have the following installed on your system:
@@ -11,31 +15,56 @@ Ensure you have the following installed on your system:
 ```bash
 git clone --recurse-submodules https://github.com/dbaseqp/Quotient
 cd Quotient
+# Edit .env with your database and Redis passwords
+cp config/event.conf.example config/event.conf
+# Edit config/event.conf with your competition settings
 docker-compose up --build --detach
 ```
 
 ## Architecture
 
-The system is designed as a group of docker components using docker compose in docker-compose.yml. These components are:
-1. Server - this is the scoring engine, the web frontend and API, configuration parser, and coordinator of scoring checks.
-2. Database - PostgreSQL database that keeps state for each of the checks and round information.
-3. Redis - This passes data between the runners and the scoring engine as a queue.
-4. Runner - This alpine container has go code that runs the service check after retrieving the task from redis. It needs to be customize if custom checks require additionally installed software like python modules (automatically installed from requirements.txt) or alpine packages. This is managed by Dockerfile.runner and can be rebuilt with `docker-compose build runner`.
-5. Divisor - Docker container with elevated privileges that randomly selects an IP address from a configured subnet, and assigns from a configurable pool size to the docker runner containers. This needs to be able to query docker to determine the docker hosts and to be able to manage host network iptables. This is a separate git repo and a submodule of this repo under ./divisor.
+The system is designed as a group of Docker components using Docker Compose:
+
+| Component | Description |
+|-----------|-------------|
+| **Server** | Scoring engine, web frontend/API, configuration parser, and check coordinator |
+| **Database** | PostgreSQL database for persisting checks, rounds, scores, and submissions |
+| **Redis** | Message queue passing tasks between the server and runners |
+| **Runner** | Alpine containers (5 replicas by default) that execute service checks. Customize via `Dockerfile.runner` for additional packages |
+| **Divisor** | Optional IP rotation container - assigns unique source IPs from a subnet pool to runners, preventing target systems from blocking based on IP. See [Divisor](https://github.com/dbaseqp/Divisor) |
+
+## Environment Variables
+
+Create a `.env` file with the following required variables:
+
+```bash
+POSTGRES_USER=engineuser
+POSTGRES_PASSWORD=<your-db-password>
+POSTGRES_DB=engine
+POSTGRES_HOST=quotient_database
+REDIS_PASSWORD=<your-redis-password>
+REDIS_HOST=quotient_redis
+```
+
+Optional variables:
+- `LDAP_BIND_PASSWORD` - LDAP bind password (alternative to config file)
 
 ## Troubleshooting
 
-If you encounter any issues during setup or operation, consider the following:
-- Check the logs for any error messages using `docker-compose logs`.
-- Verify that all environment variables are correctly set in the `.env` file.
-- Make sure that config values are set in `event.conf` before running the engine.
-- Set `vm.overcommit_memory=1` on the host to avoid Redis warnings. Run `sudo sysctl vm.overcommit_memory=1` or add `vm.overcommit_memory = 1` to `/etc/sysctl.conf` and reboot.
+- Check logs: `docker-compose logs` or `docker-compose logs <service>`
+- Verify `.env` file has all required variables set
+- Ensure `config/event.conf` exists and is valid TOML
+- For Redis memory warnings: `sudo sysctl vm.overcommit_memory=1` (or add `vm.overcommit_memory = 1` to `/etc/sysctl.conf`)
+- Rebuild runners after modifying `Dockerfile.runner`: `docker-compose build runner && docker-compose up -d runner`
 
-## Web setup
+## Web Setup
 
-Through the Admin UI you will have to specify the "Identifier" for each team. This is the unique part of the target address. Also, you will need to mark the team as "Active" so that the team can start scoring.
+After starting the engine:
 
-If you want to rotate IPs, configure [Divisor](https://github.com/dbaseqp/Divisor).
+1. Log in as admin
+2. Navigate to the Admin UI
+3. Set the **Identifier** for each team (the unique part of target addresses, e.g., `01` for team 1)
+4. Mark teams as **Active** to begin scoring
 
 ## Configuration
 
@@ -117,76 +146,130 @@ ip = "10.100.1_.2"
 ```toml
 [RequiredSettings]
 EventName = "Name of my Competition"
-EventType = "rvb"
+EventType = "rvb"  # Use "rvb" for Red vs Blue (CCDC-style)
 DBConnectURL = "postgres://engineuser:password@quotient_database:5432/engine"
 BindAddress = "0.0.0.0"
 ```
 
-The "DBConnectURL" will use values you populate in the `.env` file. The `BindAddress` is the IP address the scoring engine will bind to. If you are deploying in the Docker container, this can be set to `0.0.0.0`.
+- `EventType`: Use `rvb` for Red vs Blue competitions (CCDC-style). The `koth` option exists but is not fully implemented.
+- `DBConnectURL`: Can be omitted if using environment variables (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_DB`).
+- `BindAddress`: Use `0.0.0.0` when deploying in Docker.
 
-#### Ldap Settings
+#### LDAP Settings
 
 ```toml
 [LdapSettings]
 LdapConnectUrl = "ldap://ldap.yournet.org:389"
 LdapBindDn = "CN=Scoring Engine Service Account,OU=service accounts,DC=yournet,DC=org"
-LdapBindPassword = "password"
+LdapBindPassword = "password"  # Can also use LDAP_BIND_PASSWORD env var
 LdapSearchBaseDn = "OU=Users,DC=yournet,DC=org"
 LdapAdminGroupDn = "CN=YourAdmins,OU=Groups,DC=yournet,DC=org"
 LdapTeamGroupDn = "CN=YourBlueTeam,OU=Groups,DC=yournet,DC=org"
 LdapRedGroupDn = "CN=YourRedTeam,OU=Groups,DC=yournet,DC=org"
+LdapInjectGroupDn = "CN=YourInjectManagers,OU=Groups,DC=yournet,DC=org"
 ```
 
-If using LDAPS for the Docker deployment, make sure you add the cert to the `./config/certs` so that it gets added to the certificate store.
+If using LDAPS for the Docker deployment, add the certificate to `./config/certs` so it gets added to the container's certificate store.
+
+#### OIDC Settings
+
+```toml
+[OIDCSettings]
+OIDCEnabled = true
+OIDCIssuerURL = "https://your-idp.example.com"
+OIDCClientID = "quotient"
+OIDCClientSecret = "your-client-secret"
+OIDCRedirectURL = "https://quotient.example.com/auth/oidc/callback"
+
+# Optional settings with defaults shown
+OIDCScopes = ["openid", "profile", "email", "groups", "offline_access"]
+OIDCGroupClaim = "groups"
+
+# Group mappings
+OIDCAdminGroups = ["quotient-admins"]
+OIDCRedGroups = ["quotient-red"]
+OIDCTeamGroups = ["quotient-teams"]
+OIDCInjectGroups = ["quotient-inject-managers"]
+
+# Token expiry in seconds (defaults shown)
+OIDCRefreshTokenExpiryTeam = 86400     # 1 day
+OIDCRefreshTokenExpiryAdmin = 2592000  # 30 days
+OIDCRefreshTokenExpiryRed = 172800     # 2 days
+OIDCRefreshTokenExpiryInject = 86400   # 1 day
+
+# UI option
+OIDCDisableLocalLogin = false
+```
 
 #### SSL Settings
 
 ```toml
 [SslSettings]
-HttpsCert = "/path/to/https/cert"
-HttpsKey = "/path/to/https/key"
+HttpsCert = "/app/config/certs/server.crt"
+HttpsKey = "/app/config/certs/server.key"
 ```
+
+When SSL is configured, the default port changes to 443.
 
 #### Misc Settings
 
 ```toml
 [MiscSettings]
-EasyPCR = true
-Port = 80
+EasyPCR = true              # Simplified PCR interface
+ShowDebugToBlueTeam = false # Show check debug info to teams
+Port = 80                   # Server port (443 default with SSL)
 LogoImage = "/static/assets/quotient.svg"
-StartPaused = true
+LogFile = ""                # Optional log file path
+StartPaused = true          # Start with scoring paused
 
-Delay = 60
-Jitter = 10
+# Round timing
+Delay = 60                  # Seconds between rounds (default: 60)
+Jitter = 10                 # Random jitter in seconds (default: 5, must be < Delay)
 
-Points = 5
-Timeout = 30
-SlaThreshold = 5
-SlaPenalty = 50
+# Scoring defaults (can be overridden per-check)
+Points = 5                  # Points per successful check (default: 1)
+Timeout = 30                # Check timeout in seconds (default: Delay/2)
+SlaThreshold = 5            # Consecutive failures before SLA penalty (default: 5)
+SlaPenalty = 50             # Points deducted for SLA violation (default: SlaThreshold * Points)
 ```
 
 #### UI Settings
 
 ```toml
 [UISettings]
-DisableInfoPage = true
-DisableGraphsForBlueTeam = true
-ShowAnnouncementsForRedTeam = true
+EnablePublicGraphs = false                    # Allow unauthenticated graph viewing
+DisableGraphsForBlueTeam = true               # Hide graphs from teams
+AllowNonAnonymizedGraphsForBlueTeam = false   # Show team names on graphs
+ShowAnnouncementsForRedTeam = true            # Red team sees announcements
 ```
 
 #### Local Auth
 
-```toml
-[[team]]
-name = "Team01"
-pw = "password"
+Define local users for each role:
 
+```toml
+# Admin users - full engine control
 [[admin]]
 name = "admin"
 pw = "password"
 
+# Team users - blue team competitors
+[[team]]
+name = "Team01"
+pw = "password"
+
+[[team]]
+name = "Team02"
+pw = "password"
+
+# Red team users - vulnerability tracking
 [[red]]
 name = "red01"
+pw = "password"
+
+# Inject managers - create injects and announcements
+[[inject]]
+name = "inject01"
 pw = "password"
 ```
 
@@ -223,9 +306,296 @@ ip = "10.100.1_.2"
         status = 403
 ```
 
-Custom checks can be added to the `./custom-checks/` directory. It is very common to make the custom check simply run some other script that you have written that has the necessary logic to check the service. The script should return a 0 if the service is up and anything else if it is down. The script should be executable. The script will be mounted in the `/app/checks/` directory of the runner. If the script invokes external dependencies or needs to have a specific run time, this should be added to the Dockerfile.runner and the runner rebuilt and redeployed.
+Custom checks can be added to the `./custom-checks/` directory. The script should exit with code 0 if the service is up and non-zero if down. Scripts are mounted at `/app/checks/` in the runner container.
 
 For a detailed walkthrough of writing custom checks, see [docs/custom-checks.md](docs/custom-checks.md).
+
+### Service Check Reference
+
+All checks support these common properties:
+
+| Property | Description | Default |
+|----------|-------------|---------|
+| `display` | Check name suffix (e.g., "web" creates "boxname-web") | Check type |
+| `target` | Override the box IP/hostname for this check | Box IP |
+| `port` | Service port | Type-specific |
+| `points` | Points awarded for success | Global default |
+| `timeout` | Check timeout in seconds | Global default |
+| `slathreshold` | Failures before SLA penalty | Global default |
+| `slapenalty` | Points deducted on SLA violation | Global default |
+| `credlists` | Array of credlist names for authentication | None |
+| `disabled` | Disable this check | false |
+| `launchtime` | Start checking at this time | Immediate |
+| `stoptime` | Stop checking at this time | Never |
+
+#### Ping Check
+
+Simple ICMP ping check.
+
+```toml
+[[box.ping]]
+display = "ping"
+# No additional options required
+```
+
+**Default port:** N/A
+
+#### TCP Check
+
+Verify TCP port connectivity.
+
+```toml
+[[box.tcp]]
+display = "ssh-port"
+port = 22
+```
+
+**Default port:** None (required)
+
+#### DNS Check
+
+Query DNS records and verify answers.
+
+```toml
+[[box.dns]]
+display = "dns"
+port = 53
+
+    [[box.dns.record]]
+    kind = "A"
+    domain = "www.team_.example.com"
+    answer = ["10.100.1_.10"]
+
+    [[box.dns.record]]
+    kind = "MX"
+    domain = "team_.example.com"
+    answer = ["mail.team_.example.com"]
+```
+
+**Default port:** 53
+**Supported record types:** A, MX
+
+#### Web Check
+
+HTTP/HTTPS request with optional status code and content matching.
+
+```toml
+[[box.web]]
+display = "web"
+port = 8080
+scheme = "https"  # "http" or "https"
+
+    [[box.web.url]]
+    path = "/index.html"
+    status = 200     # Expected status code (optional)
+    regex = "Welcome"  # Content regex (optional)
+
+    [[box.web.url]]
+    path = "/admin"
+    status = 403
+```
+
+**Default port:** 80 (http) or 443 (https)
+**Default scheme:** http
+
+#### SSH Check
+
+SSH login with optional command execution.
+
+```toml
+[[box.ssh]]
+display = "ssh"
+port = 22
+credlists = ["linux_users.credlist"]
+privkey = "id_rsa"        # Private key file in config/scoredfiles/ (optional)
+badattempts = 3           # Failed login attempts before real attempt (optional)
+
+    [[box.ssh.command]]
+    command = "whoami"
+    output = "root"        # Exact match (optional)
+    useregex = false
+    contains = false       # Check if output contains the string
+```
+
+**Default port:** 22
+
+#### WinRM Check
+
+Windows Remote Management check with optional PowerShell commands.
+
+```toml
+[[box.winrm]]
+display = "winrm"
+port = 5985
+credlists = ["windows_users.credlist"]
+encrypted = false         # Use HTTPS
+badattempts = 2
+
+    [[box.winrm.command]]
+    command = "hostname"
+    output = "DC01"
+    useregex = false
+```
+
+**Default port:** 80 (unencrypted) or 443 (encrypted)
+
+#### RDP Check
+
+Remote Desktop Protocol connectivity check.
+
+```toml
+[[box.rdp]]
+display = "rdp"
+port = 3389
+```
+
+**Default port:** 3389
+
+#### VNC Check
+
+VNC connectivity check.
+
+```toml
+[[box.vnc]]
+display = "vnc"
+port = 5900
+```
+
+**Default port:** 5900
+
+#### SMB Check
+
+SMB share access with optional file verification.
+
+```toml
+[[box.smb]]
+display = "smb"
+port = 445
+credlists = ["domain_users.credlist"]
+domain = "MYDOMAIN"
+share = "\\\\server\\share"
+
+    [[box.smb.file]]
+    name = "important.txt"
+    regex = "secret data"    # Content regex (optional)
+    hash = "abc123..."       # SHA256 hash (optional, mutually exclusive with regex)
+```
+
+**Default port:** 445
+**Note:** If no credlists specified, uses guest authentication.
+
+#### FTP Check
+
+FTP login with optional file retrieval.
+
+```toml
+[[box.ftp]]
+display = "ftp"
+port = 21
+credlists = ["ftp_users.credlist"]
+
+    [[box.ftp.file]]
+    name = "/pub/readme.txt"
+    regex = "Welcome"        # Content regex (optional)
+    hash = "abc123..."       # SHA256 hash (optional)
+```
+
+**Default port:** 21
+**Note:** If no credlists specified, uses anonymous login.
+
+#### SMTP Check
+
+Send test email via SMTP.
+
+```toml
+[[box.smtp]]
+display = "smtp"
+port = 25
+credlists = ["mail_users.credlist"]
+domain = "@example.com"    # Appended to usernames
+encrypted = false          # Use TLS
+requireauth = false        # Force authentication even if not advertised
+```
+
+**Default port:** 25
+
+#### IMAP Check
+
+IMAP mailbox access check.
+
+```toml
+[[box.imap]]
+display = "imap"
+port = 143
+credlists = ["mail_users.credlist"]
+encrypted = false          # Use TLS
+```
+
+**Default port:** 143
+
+#### POP3 Check
+
+POP3 mailbox access check.
+
+```toml
+[[box.pop3]]
+display = "pop3"
+port = 110
+credlists = ["mail_users.credlist"]
+encrypted = false          # Use TLS
+```
+
+**Default port:** 110
+
+#### LDAP Check
+
+LDAP authentication check.
+
+```toml
+[[box.ldap]]
+display = "ldap"
+port = 636
+credlists = ["domain_users.credlist"]
+domain = "example.com"     # Domain for user@domain format
+encrypted = true           # Use LDAPS
+```
+
+**Default port:** 636
+
+#### SQL Check
+
+MySQL database connectivity and query verification.
+
+```toml
+[[box.sql]]
+display = "mysql"
+port = 3306
+credlists = ["db_users.credlist"]
+kind = "mysql"             # Database type
+
+    [[box.sql.query]]
+    database = "production"
+    command = "SELECT version()"
+    output = "8.0"         # Expected output (optional)
+    useregex = false
+```
+
+**Default port:** 3306
+**Default kind:** mysql
+
+#### Custom Check
+
+Execute custom scripts or binaries.
+
+```toml
+[[box.custom]]
+display = "mycheck"
+command = "/app/checks/mycheck.sh ROUND TARGET TEAMIDENTIFIER USERNAME PASSWORD"
+credlists = ["users.credlist"]
+regex = "SUCCESS"          # Output regex for success (optional)
+```
+
+**Placeholders:** ROUND, TARGET, TEAMIDENTIFIER, USERNAME, PASSWORD
 
 ## Contributing
 
