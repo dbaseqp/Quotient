@@ -43,7 +43,9 @@ func Connect(connectURL string) {
 		&TeamSchema{}, &RoundSchema{}, &ServiceCheckSchema{}, &SLASchema{}, &ManualAdjustmentSchema{},
 		&InjectSchema{}, &SubmissionSchema{}, &TeamServiceCheckSchema{},
 		// box schema must come first for automigrate to work
-		&VulnSchema{}, &BoxSchema{}, &VectorSchema{}, &AttackSchema{}, &CompetitionStateSchema{})
+		&VulnSchema{}, &BoxSchema{}, &VectorSchema{}, &AttackSchema{}, &CompetitionStateSchema{},
+		// credential schemas for PCR management
+		&OriginalCredentialSchema{}, &CredentialSchema{}, &PCRHistorySchema{})
 	if err != nil {
 		log.Fatalln("Failed to auto migrate:", err)
 	}

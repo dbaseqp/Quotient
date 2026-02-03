@@ -3,10 +3,8 @@ package engine
 import (
 	"encoding/csv"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"quotient/engine/db"
 	"sync"
 )
@@ -21,61 +19,104 @@ func safeOpenInDir(baseDir, relativePath string) (*os.File, error) {
 	return root.Open(relativePath)
 }
 
-// safeCreateInDir creates a file within the given base directory safely using os.Root.
-func safeCreateInDir(baseDir, relativePath string) (*os.File, error) {
-	root, err := os.OpenRoot(baseDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open root directory: %w", err)
-	}
-	defer root.Close()
-	return root.Create(relativePath)
-}
-
-func (se *ScoringEngine) LoadCredentials() error {
+func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 	teams, err := db.GetTeams()
 	if err != nil {
 		return fmt.Errorf("failed to get teams: %v", err)
 	}
 
+	// Initialize mutex map
 	for _, team := range teams {
 		se.CredentialsMutex[team.ID] = &sync.Mutex{}
+	}
 
-		// Iterate directly over the credlists defined in the config
+	// Check if credentials are already seeded in DB
+	seeded, err := db.IsCredentialsSeeded()
+	if err != nil {
+		return fmt.Errorf("failed to check if credentials are seeded: %v", err)
+	}
+
+	if !seeded {
+		slog.Info("Seeding credentials from config files to database")
+		// Seed original credentials from files
 		for _, configCredlist := range se.Config.CredlistSettings.Credlist {
 			credlistPath := configCredlist.CredlistPath
 
-			// Ensure the source file exists
-			sourcePath := fmt.Sprintf("config/credlists/%s", credlistPath)
-			if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
-				return fmt.Errorf("credlist file %s defined in config does not exist: %v", sourcePath, err)
-			} else if err != nil {
-				return fmt.Errorf("failed to check credlist file %s: %v", sourcePath, err)
+			file, err := safeOpenInDir("config/credlists", credlistPath)
+			if err != nil {
+				return fmt.Errorf("failed to open credlist file %s: %v", credlistPath, err)
 			}
 
-			submissionPath := fmt.Sprintf("submissions/pcrs/%d/%s", team.ID, credlistPath)
-			if _, err := os.Stat(submissionPath); os.IsNotExist(err) {
-				destDir := filepath.Dir(submissionPath)
-				if err := os.MkdirAll(destDir, 0750); err != nil {
-					return fmt.Errorf("failed to create directory %s: %v", destDir, err)
-				}
+			reader := csv.NewReader(file)
+			records, err := reader.ReadAll()
+			if closeErr := file.Close(); closeErr != nil {
+				slog.Error("failed to close credlist file", "path", credlistPath, "error", closeErr)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to read credlist file %s: %v", credlistPath, err)
+			}
 
-				sourceFile, err := safeOpenInDir("config/credlists", credlistPath)
+			if err := db.SeedOriginalCredentials(credlistPath, records); err != nil {
+				return fmt.Errorf("failed to seed original credentials for %s: %v", credlistPath, err)
+			}
+		}
+
+		// Seed team credentials from originals
+		for _, team := range teams {
+			if err := db.SeedTeamCredentials(team.ID); err != nil {
+				return fmt.Errorf("failed to seed credentials for team %d: %v", team.ID, err)
+			}
+		}
+		slog.Info("Credentials seeded successfully")
+	} else {
+		slog.Info("Credentials already seeded in database")
+		// Check for new teams that need seeding
+		for _, team := range teams {
+			creds, err := db.GetAllTeamCredentials(team.ID)
+			if err != nil {
+				return fmt.Errorf("failed to get credentials for team %d: %v", team.ID, err)
+			}
+			if len(creds) == 0 {
+				slog.Info("Seeding credentials for new team", "team_id", team.ID)
+				if err := db.SeedTeamCredentials(team.ID); err != nil {
+					return fmt.Errorf("failed to seed credentials for team %d: %v", team.ID, err)
+				}
+			}
+		}
+
+		// Check for new credlists that need seeding
+		for _, configCredlist := range se.Config.CredlistSettings.Credlist {
+			credlistPath := configCredlist.CredlistPath
+			origCreds, err := db.GetOriginalCredentials(credlistPath)
+			if err != nil {
+				return fmt.Errorf("failed to check original credentials for %s: %v", credlistPath, err)
+			}
+			if len(origCreds) == 0 {
+				slog.Info("Seeding new credlist", "credlist", credlistPath)
+				file, err := safeOpenInDir("config/credlists", credlistPath)
 				if err != nil {
-					return fmt.Errorf("failed to open source file %s: %v", credlistPath, err)
+					return fmt.Errorf("failed to open credlist file %s: %v", credlistPath, err)
 				}
-				defer sourceFile.Close()
 
-				destFile, err := safeCreateInDir(fmt.Sprintf("submissions/pcrs/%d", team.ID), credlistPath)
+				reader := csv.NewReader(file)
+				records, err := reader.ReadAll()
+				if closeErr := file.Close(); closeErr != nil {
+					slog.Error("failed to close credlist file", "path", credlistPath, "error", closeErr)
+				}
 				if err != nil {
-					return fmt.Errorf("failed to create destination file %s: %v", credlistPath, err)
+					return fmt.Errorf("failed to read credlist file %s: %v", credlistPath, err)
 				}
-				defer destFile.Close()
 
-				if _, err := io.Copy(destFile, sourceFile); err != nil {
-					return fmt.Errorf("failed to copy credlist file %s: %v", credlistPath, err)
+				if err := db.SeedOriginalCredentials(credlistPath, records); err != nil {
+					return fmt.Errorf("failed to seed original credentials for %s: %v", credlistPath, err)
 				}
-			} else if err != nil {
-				return fmt.Errorf("failed to check file %s: %v", submissionPath, err)
+
+				// Seed to all teams
+				for _, team := range teams {
+					if err := db.SeedTeamCredentials(team.ID); err != nil {
+						return fmt.Errorf("failed to seed credentials for team %d: %v", team.ID, err)
+					}
+				}
 			}
 		}
 	}
@@ -83,8 +124,8 @@ func (se *ScoringEngine) LoadCredentials() error {
 	return nil
 }
 
-func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string) (int, error) {
-	// check if the credlist name is in the config
+func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string) (int, []string, error) {
+	// Validate credlist name
 	validCredlist := false
 	for _, c := range se.Config.CredlistSettings.Credlist {
 		if c.CredlistPath == credlistName {
@@ -93,7 +134,7 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 		}
 	}
 	if !validCredlist {
-		return 0, fmt.Errorf("invalid credlist name")
+		return 0, nil, fmt.Errorf("invalid credlist name")
 	}
 
 	se.CredentialsMutex[teamID].Lock()
@@ -102,68 +143,26 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 	slog.Debug("updating credentials", "teamID", teamID, "credlistName", credlistName)
 
 	if len(usernames) != len(passwords) {
-		return 0, fmt.Errorf("mismatched usernames and passwords")
-	}
-
-	originalCreds := make(map[string]string)
-	credlist, err := safeOpenInDir(fmt.Sprintf("submissions/pcrs/%d", teamID), credlistName)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read original credlist: %v", err)
-	}
-
-	reader := csv.NewReader(credlist)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return 0, fmt.Errorf("failed to read original credlist: %v", err)
-	}
-
-	for _, record := range records {
-		if len(record) != 2 {
-			slog.Debug("invalid credlist format", "record", record)
-			return 0, fmt.Errorf("invalid credlist format")
-		}
-		originalCreds[record[0]] = record[1]
+		return 0, nil, fmt.Errorf("mismatched usernames and passwords")
 	}
 
 	updatedCount := 0
+	var skippedUsernames []string
+	changedBy := fmt.Sprintf("team%d", teamID)
+
 	for i, username := range usernames {
-		if _, exists := originalCreds[username]; !exists {
-			slog.Debug("username not found in original credlist, skipping update", "username", username)
-		} else {
-			originalCreds[username] = passwords[i]
-			updatedCount++
+		err := db.UpdateCredential(teamID, credlistName, username, passwords[i], changedBy)
+		if err != nil {
+			if err.Error() == "credential not found" {
+				skippedUsernames = append(skippedUsernames, username)
+				continue
+			}
+			return updatedCount, skippedUsernames, err
 		}
+		updatedCount++
 	}
 
-	if err := credlist.Close(); err != nil {
-		slog.Error("failed to close credlist file", "error", err)
-	}
-
-	credlistFile, err := safeCreateInDir(fmt.Sprintf("submissions/pcrs/%d", teamID), credlistName)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open credlist file for writing: %v", err)
-	}
-	defer func() {
-		if err := credlistFile.Close(); err != nil {
-			slog.Error("failed to close credlist file", "error", err)
-		}
-	}()
-
-	writer := csv.NewWriter(credlistFile)
-	for username, password := range originalCreds {
-		// csv write encoded
-		if err := writer.Write([]string{username, password}); err != nil {
-			return 0, fmt.Errorf("failed to write to credlist file: %v", err)
-		}
-		slog.Debug("successfully wrote to credlist", "username", username, "password", password)
-	}
-	writer.Flush()
-
-	if err := writer.Error(); err != nil {
-		return 0, fmt.Errorf("failed to flush pcr writer: %v", err)
-	}
-
-	return updatedCount, nil
+	return updatedCount, skippedUsernames, nil
 }
 
 func (se *ScoringEngine) GetCredlists() (any, error) {
@@ -179,33 +178,24 @@ func (se *ScoringEngine) GetCredlists() (any, error) {
 		a.Example = credlist.CredlistExplainText
 		a.Path = credlist.CredlistPath
 		a.Usernames = []string{}
-		file, err := safeOpenInDir("config/credlists", credlist.CredlistPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open credlist file %s: %v", credlist.CredlistPath, err)
-		}
-		defer file.Close()
 
-		reader := csv.NewReader(file)
-		records, err := reader.ReadAll()
+		// Get usernames from original credentials in DB
+		origCreds, err := db.GetOriginalCredentials(credlist.CredlistPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read credlist file %s: %v", credlist.CredlistPath, err)
+			return nil, fmt.Errorf("failed to get original credentials for %s: %v", credlist.CredlistPath, err)
 		}
 
-		for _, record := range records {
-			if len(record) != 2 {
-				return nil, fmt.Errorf("invalid credlist format")
-			}
-			a.Usernames = append(a.Usernames, record[0])
+		for _, cred := range origCreds {
+			a.Usernames = append(a.Usernames, cred.Username)
 		}
 		credlists = append(credlists, a)
 	}
 	return credlists, nil
 }
 
-func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string) error {
-	// check if the credlist name is in the config
+func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string, changedBy string) error {
+	// Validate credlist name
 	validCredlist := false
-
 	for _, c := range se.Config.CredlistSettings.Credlist {
 		if c.CredlistPath == credlistName {
 			validCredlist = true
@@ -219,22 +209,15 @@ func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string) erro
 	se.CredentialsMutex[teamID].Lock()
 	defer se.CredentialsMutex[teamID].Unlock()
 
-	sourceFile, err := safeOpenInDir("config/credlists", credlistName)
-	if err != nil {
-		return fmt.Errorf("failed to open source file %s: %v", credlistName, err)
-	}
-	defer sourceFile.Close()
+	return db.ResetTeamCredlist(teamID, credlistName, changedBy)
+}
 
-	destFile, err := safeCreateInDir(fmt.Sprintf("submissions/pcrs/%d", teamID), credlistName)
-	if err != nil {
-		return fmt.Errorf("failed to create destination file %s: %v", credlistName, err)
-	}
-	defer destFile.Close()
+// GetTeamCredentials returns credentials for admin viewing
+func (se *ScoringEngine) GetTeamCredentials(teamID uint, credlistName string) ([]db.CredentialSchema, error) {
+	return db.GetTeamCredentials(teamID, credlistName)
+}
 
-	_, err = io.Copy(destFile, sourceFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy file: %v", err)
-	}
-
-	return nil
+// GetPCRHistory returns PCR history for admin viewing
+func (se *ScoringEngine) GetPCRHistory(teamID uint, credlistName string, username string) ([]db.PCRHistorySchema, error) {
+	return db.GetPCRHistory(teamID, credlistName, username)
 }
