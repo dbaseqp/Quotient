@@ -99,7 +99,6 @@ func (router *Router) Start() {
 	mux.HandleFunc("GET /injects/{id}/{file}", TEAMAUTH(api.DownloadInjectFile))
 
 	mux.HandleFunc("GET /services", TEAMAUTH(router.ServicesPage))
-	mux.HandleFunc("GET /api/pcrs", TEAMAUTH(api.GetPcrs))
 	mux.HandleFunc("POST /api/pcrs/reset", TEAMAUTH(api.ResetPcr))
 	mux.HandleFunc("GET /api/credlists", TEAMAUTH(api.GetCredlists))
 	mux.HandleFunc("POST /api/pcrs/submit", TEAMAUTH(api.CreatePcr))
@@ -167,6 +166,10 @@ func (router *Router) Start() {
 
 	mux.HandleFunc("GET /api/engine/export/scores", ADMINAUTH(api.ExportScores))
 	mux.HandleFunc("GET /api/engine/export/config", ADMINAUTH(api.ExportConfig))
+
+	// admin-only PCR routes
+	mux.HandleFunc("GET /api/pcrs", ADMINAUTH(api.GetPcrs))
+	mux.HandleFunc("GET /api/pcrs/history", ADMINAUTH(api.GetPcrHistory))
 
 	// admin-only WWW routes (inject role excluded)
 	mux.HandleFunc("GET /admin", ADMINAUTH(router.AdminPage))

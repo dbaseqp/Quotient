@@ -179,6 +179,18 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 
 	resultsChan := make(chan checks.Result, 1)
 
+	// Set credentials from task payload for the checks to use (per-instance, thread-safe)
+	if len(task.Credentials) > 0 {
+		creds := make([]checks.TaskCredential, len(task.Credentials))
+		for i, c := range task.Credentials {
+			creds[i] = checks.TaskCredential{
+				Username: c.Username,
+				Password: c.Password,
+			}
+		}
+		runner.SetTaskCredentials(creds)
+	}
+
 	// this currently discards all failed attempts
 	for i := range task.Attempts {
 		log.Printf("[Runner] Running check: RoundID=%d TeamID=%d ServiceType=%s ServiceName=%s Attempt=%d",

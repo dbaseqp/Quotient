@@ -90,7 +90,7 @@ func (se *ScoringEngine) Start() {
 	}
 
 	// load credentials
-	err := se.LoadCredentials()
+	err := se.EnsureCredentialsSeeded()
 	if err != nil {
 		slog.Error("failed to load credential files into teams", "error", err)
 	}
@@ -415,6 +415,28 @@ func (se *ScoringEngine) rvb() error {
 				Deadline:       se.NextRoundStartTime,
 				Attempts:       r.GetAttempts(),
 				CheckData:      data, // the entire specialized struct
+			}
+
+			// Populate credentials if check needs them
+			if credlists := r.GetCredlists(); len(credlists) > 0 {
+				for _, credlistName := range credlists {
+					creds, err := db.GetTeamCredentials(team.ID, credlistName)
+					if err != nil {
+						slog.Error("failed to get credentials for task", "team", team.ID, "credlist", credlistName, "error", err)
+						continue
+					}
+					for _, c := range creds {
+						task.Credentials = append(task.Credentials, Credential{
+							Username: c.Username,
+							Password: c.Password,
+						})
+					}
+				}
+				// Skip task if check requires credentials but none were loaded
+				if len(task.Credentials) == 0 {
+					slog.Error("skipping check: requires credentials but none seeded", "service", r.GetName(), "team", team.ID)
+					continue
+				}
 			}
 
 			payload, err := json.Marshal(task)
