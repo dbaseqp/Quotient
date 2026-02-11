@@ -168,6 +168,15 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 
 	if err != nil {
 		slog.Error(err.Error())
+		http.SetCookie(w, &http.Cookie{
+			Name:     COOKIENAME,
+			Value:    "",
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   cookieSecure(),
+			SameSite: http.SameSiteLaxMode,
+			Path:     "/",
+		})
 		return "", nil
 	}
 
