@@ -165,6 +165,7 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })
 
+	eng.RLockUptime()
 	uptime := eng.GetUptimePerService()
 
 	// TODO: make db unique function or get from config
@@ -205,6 +206,7 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 		s.Data = points
 		series = append(series, s)
 	}
+	eng.RUnlockUptime()
 
 	if shouldScrub(r) {
 		for i := range series {

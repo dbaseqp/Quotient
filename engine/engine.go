@@ -24,6 +24,7 @@ type ScoringEngine struct {
 	Config                *config.ConfigSettings
 	CredentialsMutex      map[uint]*sync.Mutex
 	UptimePerService      map[uint]map[string]db.Uptime
+	uptimeMu              sync.RWMutex
 	SlaPerService         map[uint]map[string]int
 	EnginePauseWg         *sync.WaitGroup
 	IsEnginePaused        bool
@@ -81,9 +82,11 @@ func (se *ScoringEngine) Start() {
 		se.CurrentRound = uint(t.ID) + 1
 	}
 
+	se.uptimeMu.Lock()
 	if err := db.LoadUptimes(&se.UptimePerService); err != nil {
 		slog.Error("failed to load uptimes", "error", err)
 	}
+	se.uptimeMu.Unlock()
 
 	if err := db.LoadSLAs(&se.SlaPerService, se.Config.MiscSettings.SlaThreshold); err != nil {
 		slog.Error("failed to load SLAs", "error", err)
@@ -201,6 +204,14 @@ func (se *ScoringEngine) GetUptimePerService() map[uint]map[string]db.Uptime {
 	return se.UptimePerService
 }
 
+func (se *ScoringEngine) RLockUptime() {
+	se.uptimeMu.RLock()
+}
+
+func (se *ScoringEngine) RUnlockUptime() {
+	se.uptimeMu.RUnlock()
+}
+
 // GetActiveTasks returns all active and recently completed tasks
 func (se *ScoringEngine) GetActiveTasks() (map[string]any, error) {
 	ctx := context.Background()
@@ -312,7 +323,9 @@ func (se *ScoringEngine) ResetScores() error {
 	se.RedisClient.Publish(context.Background(), "events", "reset")
 
 	se.CurrentRound = 1
+	se.uptimeMu.Lock()
 	se.UptimePerService = make(map[uint]map[string]db.Uptime)
+	se.uptimeMu.Unlock()
 	se.SlaPerService = make(map[uint]map[string]int)
 	slog.Info("Scores reset and Redis queues cleared successfully")
 
@@ -536,6 +549,7 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 		return
 	}
 
+	se.uptimeMu.Lock()
 	for _, result := range results {
 		// Update uptime and SLA maps
 		if _, ok := se.UptimePerService[result.TeamID]; !ok {
@@ -575,6 +589,7 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 			}
 		}
 	}
+	se.uptimeMu.Unlock()
 
 	slog.Debug("Successfully processed results for round", "round", se.CurrentRound, "total", len(dbResults))
 
