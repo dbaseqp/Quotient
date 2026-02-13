@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -26,7 +26,7 @@ func main() {
 
 func runApp(err error) int {
 	if err != nil {
-		log.Printf("[Runner] Error from reaper: %v", err)
+		slog.Error("error from reaper", "error", err)
 		return 1
 	}
 
@@ -51,7 +51,7 @@ func runApp(err error) int {
 	})
 	ctx := context.Background()
 
-	log.Printf("[Runner] Started with ID %s, listening for tasks on Redis at: %s", runnerID, redisAddr)
+	slog.Info("runner started", "runner_id", runnerID, "redis_addr", redisAddr)
 
 	go func() {
 		events := rdb.Subscribe(context.Background(), "events")
@@ -59,9 +59,9 @@ func runApp(err error) int {
 		eventsChannel := events.Channel()
 
 		for msg := range eventsChannel {
-			log.Printf("[Runner] Received message: %v", msg)
+			slog.Info("received message", "payload", msg.Payload)
 			if msg.Payload == "reset" {
-				log.Printf("[Runner] Reset event received, quitting...")
+				slog.Info("reset event received, quitting")
 				os.Exit(0)
 			} else {
 				continue
@@ -72,13 +72,13 @@ func runApp(err error) int {
 	for {
 		task, err := getNextTask(ctx, rdb)
 		if err != nil {
-			log.Printf("[Runner] Error getting task: %v", err)
+			slog.Error("error getting task", "error", err)
 			continue
 		}
 
 		runner, err := createRunner(task)
 		if err != nil {
-			log.Printf("[Runner] Error creating runner: %v", err)
+			slog.Error("error creating runner", "error", err)
 			continue
 		}
 
@@ -103,8 +103,8 @@ func getNextTask(ctx context.Context, rdb *redis.Client) (*engine.Task, error) {
 		return nil, fmt.Errorf("invalid task format: %w", err)
 	}
 
-	log.Printf("[Runner] Received task: RoundID=%d TeamID=%d TeamIdentifier=%s ServiceType=%s",
-		task.RoundID, task.TeamID, task.TeamIdentifier, task.ServiceType)
+	slog.Info("received task", "round_id", task.RoundID, "team_id", task.TeamID,
+		"team_identifier", task.TeamIdentifier, "service_type", task.ServiceType)
 
 	return &task, nil
 }
@@ -153,7 +153,7 @@ func createRunner(task *engine.Task) (checks.Runner, error) {
 		return nil, fmt.Errorf("failed to unmarshal check data: %w", err)
 	}
 
-	log.Printf("[Runner] CheckData: %+v", runner)
+	slog.Debug("check data", "runner", fmt.Sprintf("%+v", runner))
 	return runner, nil
 }
 
@@ -181,8 +181,8 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 
 	// this currently discards all failed attempts
 	for i := range task.Attempts {
-		log.Printf("[Runner] Running check: RoundID=%d TeamID=%d ServiceType=%s ServiceName=%s Attempt=%d",
-			task.RoundID, task.TeamID, task.ServiceType, task.ServiceName, i+1)
+		slog.Info("running check", "round_id", task.RoundID, "team_id", task.TeamID,
+			"service_type", task.ServiceType, "service_name", task.ServiceName, "attempt", i+1)
 
 		// Create context with deadline
 		checkCtx, cancel := context.WithDeadline(ctx, task.Deadline)
@@ -199,8 +199,8 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 			result.ServiceType = task.ServiceType
 			result.RoundID = task.RoundID
 
-			log.Printf("[Runner] Check result received: RoundID=%d TeamID=%d ServiceType=%s Status=%v Debug=%s Error=%s",
-				result.RoundID, result.TeamID, result.ServiceType, result.Status, result.Debug, result.Error)
+			slog.Info("check result received", "round_id", result.RoundID, "team_id", result.TeamID,
+				"service_type", result.ServiceType, "status", result.Status, "debug", result.Debug, "error", result.Error)
 
 		case <-checkCtx.Done():
 			result.Status = false
@@ -211,8 +211,8 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 			result.ServiceType = task.ServiceType
 			result.RoundID = task.RoundID
 
-			log.Printf("[Runner] Check timed out: RoundID=%d TeamID=%d ServiceType=%s",
-				task.RoundID, task.TeamID, task.ServiceType)
+			slog.Warn("check timed out", "round_id", task.RoundID, "team_id", task.TeamID,
+				"service_type", task.ServiceType)
 		}
 
 		// Break if successful or deadline passed
@@ -224,17 +224,17 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 	// Marshal and store result
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
-		log.Printf("[Runner] Failed to marshal result: %v", err)
+		slog.Error("failed to marshal result", "error", err)
 		return
 	}
 
 	if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
-		log.Printf("[Runner] Failed to push result to Redis: %v", err)
+		slog.Error("failed to push result to Redis", "error", err)
 		return
 	}
 
-	log.Printf("[Runner] Successfully pushed result: RoundID=%d TeamID=%d ServiceType=%s Status=%v",
-		result.RoundID, result.TeamID, result.ServiceType, result.Status)
+	slog.Info("successfully pushed result", "round_id", result.RoundID, "team_id", result.TeamID,
+		"service_type", result.ServiceType, "status", result.Status)
 
 	// Update the task key with the final result status
 	result.EndTime = time.Now().Format(time.RFC3339)

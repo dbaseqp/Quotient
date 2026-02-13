@@ -2,13 +2,17 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"quotient/engine"
 	"quotient/engine/config"
 	"quotient/engine/db"
+	"strings"
 )
 
 var (
@@ -54,6 +58,24 @@ func SafeCreate(baseDir, relativePath string) (*os.File, error) {
 	}
 	defer root.Close()
 	return root.Create(relativePath)
+}
+
+// SafeMkdirAll creates nested directories within baseDir safely,
+// preventing directory traversal attacks using os.Root.
+func SafeMkdirAll(baseDir, relativePath string, perm os.FileMode) error {
+	root, err := os.OpenRoot(baseDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	parts := strings.Split(filepath.ToSlash(filepath.Clean(relativePath)), "/")
+	for i := range parts {
+		dir := strings.Join(parts[:i+1], "/")
+		if err := root.Mkdir(dir, perm); err != nil && !errors.Is(err, fs.ErrExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 // CheckCompetitionStarted returns false and writes error response if competition hasn't started
