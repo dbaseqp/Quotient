@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"os"
 	"path/filepath"
 	"quotient/engine/db"
 	"slices"
@@ -79,13 +78,14 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uploadDir := fmt.Sprintf("submissions/%d/%d/%d", injectID, team.ID, submission.Version)
-	err = os.MkdirAll(uploadDir, 0750)
+	subDir := fmt.Sprintf("%d/%d/%d", injectID, team.ID, submission.Version)
+	err = SafeMkdirAll("submissions", subDir, 0750)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error creating directories"})
 		return
 	}
 
+	uploadDir := filepath.Join("submissions", subDir)
 	out, err := SafeCreate(uploadDir, fileHeader.Filename)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error creating the file"})
