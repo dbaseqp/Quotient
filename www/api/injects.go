@@ -193,7 +193,7 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 
-		dst, err := os.Create(fmt.Sprintf("%s/%s", uploadDir, fileHeader.Filename))
+		dst, err := SafeCreate(uploadDir, fileHeader.Filename)
 		if err != nil {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create file on disk"})
 			return
@@ -324,7 +324,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 			}
 			defer file.Close()
 
-			dst, err := os.Create(fmt.Sprintf("%s/%s", uploadDir, fileHeader.Filename))
+			dst, err := SafeCreate(uploadDir, fileHeader.Filename)
 			if err != nil {
 				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create file on disk"})
 				return
