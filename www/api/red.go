@@ -6,8 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"quotient/engine/db"
 	"strconv"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 func GetRed(w http.ResponseWriter, r *http.Request) {

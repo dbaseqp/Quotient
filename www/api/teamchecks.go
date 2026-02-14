@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"quotient/engine/db"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 // GetTeamChecks returns per-team service check states for admins

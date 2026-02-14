@@ -3,10 +3,11 @@ package www
 import (
 	"maps"
 	"net/http"
-	"quotient/engine/db"
-	"quotient/www/api"
 	"slices"
 	"text/template"
+
+	"github.com/dbaseqp/Quotient/engine/db"
+	"github.com/dbaseqp/Quotient/www/api"
 )
 
 var (

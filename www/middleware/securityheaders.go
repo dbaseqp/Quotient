@@ -2,7 +2,8 @@ package middleware
 
 import (
 	"net/http"
-	"quotient/engine/config"
+
+	"github.com/dbaseqp/Quotient/engine/config"
 )
 
 // SecurityHeaders adds essential security headers to all responses

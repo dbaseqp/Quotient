@@ -13,9 +13,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"quotient/engine/checks"
-	"quotient/engine/config"
-	"quotient/engine/db"
+	"github.com/dbaseqp/Quotient/engine/checks"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
 
 	"github.com/redis/go-redis/v9"
 )

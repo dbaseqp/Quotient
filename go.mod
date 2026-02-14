@@ -1,4 +1,4 @@
-module quotient
+module github.com/dbaseqp/Quotient
 
 go 1.25.1
 

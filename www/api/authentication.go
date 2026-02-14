@@ -10,9 +10,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"quotient/engine/config"
 	"strings"
 	"time"
+
+	"github.com/dbaseqp/Quotient/engine/config"
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/gorilla/securecookie"
