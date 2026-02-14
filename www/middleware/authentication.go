@@ -3,9 +3,10 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"quotient/www/api"
 	"slices"
 	"strings"
+
+	"github.com/dbaseqp/Quotient/www/api"
 )
 
 // load in authentication sources

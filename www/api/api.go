@@ -6,9 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"quotient/engine"
-	"quotient/engine/config"
-	"quotient/engine/db"
+
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 var (

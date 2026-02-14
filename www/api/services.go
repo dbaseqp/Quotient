@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"quotient/engine/db"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 func GetTeams(w http.ResponseWriter, r *http.Request) {
