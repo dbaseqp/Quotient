@@ -2,7 +2,8 @@ package api
 
 import (
 	"net/http"
-	"quotient/engine/checks"
+
+	"github.com/dbaseqp/Quotient/engine/checks"
 )
 
 type BoxMetadata struct {

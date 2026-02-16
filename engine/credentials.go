@@ -7,8 +7,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"quotient/engine/db"
 	"sync"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 // safeOpenInDir opens a file within the given base directory safely using os.Root.

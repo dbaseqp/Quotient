@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	"quotient/engine"
-	"quotient/engine/config"
-	"quotient/www/api"
-	"quotient/www/middleware"
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/www/api"
+	"github.com/dbaseqp/Quotient/www/middleware"
 )
 
 type Router struct {
