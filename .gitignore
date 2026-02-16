@@ -16,6 +16,7 @@ runner/runner
 /config/*
 !/config/**/
 /config/*/**
+!/config/credlists/*.example
 /custom-checks/*
 !/custom-checks/.gitkeep
 !/custom-checks/example.sh
