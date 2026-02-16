@@ -53,6 +53,7 @@ func (router *Router) pageData(r *http.Request, unique map[string]any) map[strin
 
 	if data["roles"] != nil {
 		roles := data["roles"].([]string)
+		data["IsAdmin"] = slices.Contains(roles, "admin")
 		if slices.Contains(roles, "admin") || slices.Contains(roles, "inject") {
 			data["home"] = "/announcements"
 		} else if slices.Contains(roles, "red") {
