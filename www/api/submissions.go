@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"quotient/engine/db"
+	"quotient/www/auth"
 	"slices"
 	"strconv"
 	"time"
@@ -137,7 +138,7 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") && !slices.Contains(req_roles, "inject") && team.ID != teamID {
+	if !slices.Contains(req_roles, auth.RoleAdmin) && !slices.Contains(req_roles, auth.RoleInject) && team.ID != teamID {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 		return
 	}

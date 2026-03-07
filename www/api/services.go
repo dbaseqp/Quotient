@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"quotient/engine/db"
+	"quotient/www/auth"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,7 +18,7 @@ func GetTeams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
+	if !slices.Contains(req_roles, auth.RoleAdmin) {
 		username := r.Context().Value("username").(string)
 
 		// Check if this is an OIDC user
@@ -127,7 +128,7 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 	teamID := uint(temp)
 
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
+	if !slices.Contains(req_roles, auth.RoleAdmin) {
 		myTeamID, err := getUserTeamID(r.Context().Value("username").(string))
 		if err != nil {
 			slog.Error("Failed to get user's team", "username", r.Context().Value("username").(string), "err", err)
@@ -186,7 +187,7 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 	serviceID := r.PathValue("service_name")
 
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
+	if !slices.Contains(req_roles, auth.RoleAdmin) {
 		myTeamID, err := getUserTeamID(r.Context().Value("username").(string))
 		if err != nil {
 			slog.Error("Failed to get user's team", "username", r.Context().Value("username").(string), "err", err)
@@ -207,7 +208,7 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 
 	// Remove debug and error fields for non-admins
 	// Red team never sees credentials, blue team only if ShowDebugToBlueTeam is enabled
-	if !slices.Contains(req_roles, "admin") && (slices.Contains(req_roles, "red") || !conf.MiscSettings.ShowDebugToBlueTeam) {
+	if !slices.Contains(req_roles, auth.RoleAdmin) && (slices.Contains(req_roles, auth.RoleRed) || !conf.MiscSettings.ShowDebugToBlueTeam) {
 		for i := range service {
 			service[i].Debug = ""
 			service[i].Error = ""
@@ -215,16 +216,4 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSON(w, http.StatusOK, service)
-}
-
-func CreateService(w http.ResponseWriter, r *http.Request) {
-
-}
-
-func UpdateService(w http.ResponseWriter, r *http.Request) {
-
-}
-
-func DeleteService(w http.ResponseWriter, r *http.Request) {
-
 }

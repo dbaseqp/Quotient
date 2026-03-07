@@ -54,13 +54,13 @@ func runApp(err error) int {
 	slog.Info("runner started", "runner_id", runnerID, "redis_addr", redisAddr)
 
 	go func() {
-		events := rdb.Subscribe(context.Background(), "events")
+		events := rdb.Subscribe(context.Background(), engine.RedisChannelEvents)
 		defer events.Close()
 		eventsChannel := events.Channel()
 
 		for msg := range eventsChannel {
 			slog.Info("received message", "payload", msg.Payload)
-			if msg.Payload == "reset" {
+			if msg.Payload == engine.RedisEventReset {
 				slog.Info("reset event received, quitting")
 				os.Exit(0)
 			} else {
@@ -88,7 +88,7 @@ func runApp(err error) int {
 
 func getNextTask(ctx context.Context, rdb *redis.Client) (*engine.Task, error) {
 	// Block until we get a task from the "tasks" list
-	val, err := rdb.BLPop(ctx, 0, "tasks").Result()
+	val, err := rdb.BLPop(ctx, 0, engine.RedisQueueTasks).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to pop task: %w", err)
 	}
@@ -240,7 +240,7 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 		return
 	}
 
-	if err := rdb.RPush(ctx, "results", resultJSON).Err(); err != nil {
+	if err := rdb.RPush(ctx, engine.RedisQueueResults, resultJSON).Err(); err != nil {
 		slog.Error("failed to push result to Redis", "error", err)
 		return
 	}

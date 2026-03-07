@@ -166,10 +166,6 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Vector created successfully"})
 }
 
-func EditVector(w http.ResponseWriter, r *http.Request) {
-
-}
-
 func CreateAttack(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
@@ -245,7 +241,4 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Attack created successfully"})
-}
-
-func EditAttack(w http.ResponseWriter, r *http.Request) {
 }

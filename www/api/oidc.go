@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"quotient/www/auth"
 	"slices"
 	"strings"
 	"sync"
@@ -338,7 +339,7 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect to appropriate dashboard
 	redirectURL := "/announcements"
-	if slices.Contains(roles, "red") {
+	if slices.Contains(roles, auth.RoleRed) {
 		redirectURL = "/graphs"
 	}
 
@@ -386,7 +387,7 @@ func mapGroupsToRoles(groups []string) []string {
 	// Check admin groups
 	for _, adminGroup := range conf.OIDCSettings.OIDCAdminGroups {
 		if matchesGroup(groups, adminGroup) {
-			roles = append(roles, "admin")
+			roles = append(roles, auth.RoleAdmin)
 			break
 		}
 	}
@@ -394,7 +395,7 @@ func mapGroupsToRoles(groups []string) []string {
 	// Check inject groups
 	for _, injectGroup := range conf.OIDCSettings.OIDCInjectGroups {
 		if matchesGroup(groups, injectGroup) {
-			roles = append(roles, "inject")
+			roles = append(roles, auth.RoleInject)
 			break
 		}
 	}
@@ -402,7 +403,7 @@ func mapGroupsToRoles(groups []string) []string {
 	// Check red groups
 	for _, redGroup := range conf.OIDCSettings.OIDCRedGroups {
 		if matchesGroup(groups, redGroup) {
-			roles = append(roles, "red")
+			roles = append(roles, auth.RoleRed)
 			break
 		}
 	}
@@ -410,7 +411,7 @@ func mapGroupsToRoles(groups []string) []string {
 	// Check team groups
 	for _, teamGroup := range conf.OIDCSettings.OIDCTeamGroups {
 		if matchesGroup(groups, teamGroup) {
-			roles = append(roles, "team")
+			roles = append(roles, auth.RoleTeam)
 			break
 		}
 	}
@@ -437,21 +438,21 @@ func matchesGroup(userGroups []string, configGroup string) bool {
 func getRefreshTokenExpiry(roles []string) int {
 	defaultExpiry := 86400 // 24 hours in seconds
 
-	if slices.Contains(roles, "admin") {
+	if slices.Contains(roles, auth.RoleAdmin) {
 		expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryAdmin
 		if expiry == 0 {
 			return defaultExpiry
 		}
 		return expiry
 	}
-	if slices.Contains(roles, "red") {
+	if slices.Contains(roles, auth.RoleRed) {
 		expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryRed
 		if expiry == 0 {
 			return defaultExpiry
 		}
 		return expiry
 	}
-	if slices.Contains(roles, "inject") {
+	if slices.Contains(roles, auth.RoleInject) {
 		expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryInject
 		if expiry == 0 {
 			return defaultExpiry

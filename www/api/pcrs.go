@@ -6,13 +6,14 @@ import (
 	"log/slog"
 	"net/http"
 	"quotient/engine/db"
+	"quotient/www/auth"
 	"slices"
 	"strconv"
 )
 
 func GetCredlists(w http.ResponseWriter, r *http.Request) {
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") && !conf.MiscSettings.EasyPCR {
+	if !slices.Contains(req_roles, auth.RoleAdmin) && !conf.MiscSettings.EasyPCR {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR self service not allowed"})
 		return
 	}
@@ -102,7 +103,7 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
+	if !slices.Contains(req_roles, auth.RoleAdmin) {
 		if conf.MiscSettings.EasyPCR {
 			me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
 			if err != nil {
@@ -158,7 +159,7 @@ func ResetPcr(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
+	if !slices.Contains(req_roles, auth.RoleAdmin) {
 		if conf.MiscSettings.EasyPCR {
 			me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
 			if err != nil {
