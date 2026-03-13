@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"quotient/engine/db"
+	"quotient/www/auth"
 	"slices"
 	"time"
 
@@ -24,8 +25,8 @@ func GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 
 	// if not admin filter out announcements that are not open yet
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
-		if slices.Contains(req_roles, "red") && !conf.UISettings.ShowAnnouncementsForRedTeam {
+	if !slices.Contains(req_roles, auth.RoleAdmin) {
+		if slices.Contains(req_roles, auth.RoleRed) && !conf.UISettings.ShowAnnouncementsForRedTeam {
 			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 			return
 		}
@@ -75,8 +76,8 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 
 	// if not admin check if the announcement is open
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
-		if slices.Contains(req_roles, "red") && !conf.UISettings.ShowAnnouncementsForRedTeam {
+	if !slices.Contains(req_roles, auth.RoleAdmin) {
+		if slices.Contains(req_roles, auth.RoleRed) && !conf.UISettings.ShowAnnouncementsForRedTeam {
 			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 			return
 		}

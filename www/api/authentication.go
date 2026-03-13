@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"quotient/engine/config"
+	"quotient/www/auth"
 	"strings"
 	"time"
 
@@ -98,14 +99,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check credentials
-	auth, err := auth(form.Username, form.Password)
+	authResult, err := authenticateUser(form.Username, form.Password)
 	if err != nil {
 		WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "Incorrect username/password"})
 		slog.Info("Failed logon", "username", form.Username)
 		return
 	}
 
-	cookie, err := CookieEncoder.Encode(COOKIENAME, auth)
+	cookie, err := CookieEncoder.Encode(COOKIENAME, authResult)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Authentication error"})
 		slog.Error(err.Error())
@@ -194,7 +195,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 	return username, roles
 }
 
-func auth(username string, password string) (map[string]any, error) {
+func authenticateUser(username string, password string) (map[string]any, error) {
 	for _, admin := range conf.Admin {
 		if username == admin.Name && password == admin.Pw {
 			return map[string]any{"username": username, "authSource": "local"}, nil
@@ -315,22 +316,22 @@ func findRolesByUsername(username string, authSource string) ([]string, error) {
 	if authSource == "local" {
 		for _, admin := range conf.Admin {
 			if username == admin.Name {
-				roles = append(roles, "admin")
+				roles = append(roles, auth.RoleAdmin)
 			}
 		}
 		for _, red := range conf.Red {
 			if username == red.Name {
-				roles = append(roles, "red")
+				roles = append(roles, auth.RoleRed)
 			}
 		}
 		for _, team := range conf.Team {
 			if username == team.Name {
-				roles = append(roles, "team")
+				roles = append(roles, auth.RoleTeam)
 			}
 		}
 		for _, inject := range conf.Inject {
 			if username == inject.Name {
-				roles = append(roles, "inject")
+				roles = append(roles, auth.RoleInject)
 			}
 		}
 
@@ -371,19 +372,19 @@ func findRolesByUsername(username string, authSource string) ([]string, error) {
 		for _, entry := range sr.Entries {
 			for _, memberOf := range entry.GetAttributeValues("memberOf") {
 				if memberOf == conf.LdapSettings.LdapAdminGroupDn {
-					roles = append(roles, "admin")
+					roles = append(roles, auth.RoleAdmin)
 				}
 
 				if memberOf == conf.LdapSettings.LdapRedGroupDn {
-					roles = append(roles, "red")
+					roles = append(roles, auth.RoleRed)
 				}
 
 				if memberOf == conf.LdapSettings.LdapTeamGroupDn {
-					roles = append(roles, "team")
+					roles = append(roles, auth.RoleTeam)
 				}
 
 				if memberOf == conf.LdapSettings.LdapInjectGroupDn {
-					roles = append(roles, "inject")
+					roles = append(roles, auth.RoleInject)
 				}
 			}
 		}

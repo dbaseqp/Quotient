@@ -118,7 +118,7 @@ func (se *ScoringEngine) Start() {
 		Password: os.Getenv("REDIS_PASSWORD"),
 	})
 
-	events := rdb.Subscribe(context.Background(), "events")
+	events := rdb.Subscribe(context.Background(), RedisChannelEvents)
 	defer events.Close()
 	eventsChannel := events.Channel()
 
@@ -130,7 +130,7 @@ func (se *ScoringEngine) Start() {
 			select {
 			case msg := <-eventsChannel:
 				slog.Info("Received message", "message", msg.Payload)
-				if msg.Payload == "reset" {
+				if msg.Payload == RedisEventReset {
 					slog.Info("Engine loop reset event received while waiting, quitting...")
 					return
 				} else {
@@ -159,7 +159,7 @@ func (se *ScoringEngine) Start() {
 				slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
 				se.CurrentRound++
 
-				se.RedisClient.Publish(context.Background(), "events", "round_finish")
+				se.RedisClient.Publish(context.Background(), RedisChannelEvents, RedisEventRoundFinish)
 				slog.Info(fmt.Sprintf("Round %d will start in %s, sleeping...", se.CurrentRound, time.Until(se.NextRoundStartTime).String()))
 				time.Sleep(time.Until(se.NextRoundStartTime))
 			}
@@ -185,13 +185,13 @@ func waitForReset() {
 		Password: os.Getenv("REDIS_PASSWORD"),
 	})
 
-	events := rdb.Subscribe(context.Background(), "events")
+	events := rdb.Subscribe(context.Background(), RedisChannelEvents)
 	defer events.Close()
 	eventsChannel := events.Channel()
 
 	for msg := range eventsChannel {
 		slog.Info("Received message", "message", msg.Payload)
-		if msg.Payload == "reset" {
+		if msg.Payload == RedisEventReset {
 			slog.Info("Reset event received, quitting...")
 			return
 		} else {
@@ -311,7 +311,7 @@ func (se *ScoringEngine) ResetScores() error {
 
 	// Flush Redis queues
 	ctx := context.Background()
-	keysToDelete := []string{"tasks", "results"}
+	keysToDelete := []string{RedisQueueTasks, RedisQueueResults}
 	for _, key := range keysToDelete {
 		if err := se.RedisClient.Del(ctx, key).Err(); err != nil {
 			slog.Error("Failed to clear Redis queue", "queue", key, "error", err)
@@ -320,7 +320,7 @@ func (se *ScoringEngine) ResetScores() error {
 	}
 
 	// Reset engine state
-	se.RedisClient.Publish(context.Background(), "events", "reset")
+	se.RedisClient.Publish(context.Background(), RedisChannelEvents, RedisEventReset)
 
 	se.CurrentRound = 1
 	se.uptimeMu.Lock()
@@ -361,7 +361,7 @@ func (se *ScoringEngine) rvb() error {
 		Password: os.Getenv("REDIS_PASSWORD"),
 	})
 
-	events := rdb.Subscribe(context.Background(), "events")
+	events := rdb.Subscribe(context.Background(), RedisChannelEvents)
 	defer events.Close()
 	eventsChannel := events.Channel()
 	//
@@ -389,10 +389,10 @@ func (se *ScoringEngine) rvb() error {
 	}
 
 	// Clear any stale tasks from previous rounds before enqueuing new ones
-	staleTasks := se.RedisClient.LLen(ctx, "tasks").Val()
+	staleTasks := se.RedisClient.LLen(ctx, RedisQueueTasks).Val()
 	if staleTasks > 0 {
 		slog.Warn("Clearing stale tasks from queue", "count", staleTasks, "round", se.CurrentRound)
-		se.RedisClient.Del(ctx, "tasks")
+		se.RedisClient.Del(ctx, RedisQueueTasks)
 	}
 
 	// 1) Enqueue
@@ -457,7 +457,7 @@ func (se *ScoringEngine) rvb() error {
 				slog.Error("failed to marshal service task", "error", err)
 				continue
 			}
-			se.RedisClient.RPush(ctx, "tasks", payload)
+			se.RedisClient.RPush(ctx, RedisQueueTasks, payload)
 			runners++
 		}
 	}
@@ -474,14 +474,14 @@ COLLECTION:
 		select {
 		case msg := <-eventsChannel:
 			slog.Info("Received message", "message", msg.Payload)
-			if msg.Payload == "reset" {
+			if msg.Payload == RedisEventReset {
 				slog.Info("Reset event received, quitting...")
 				return fmt.Errorf("reset event received")
 			} else {
 				continue
 			}
 		default:
-			val, err := se.RedisClient.BLPop(timeoutCtx, time.Until(se.NextRoundStartTime), "results").Result()
+			val, err := se.RedisClient.BLPop(timeoutCtx, time.Until(se.NextRoundStartTime), RedisQueueResults).Result()
 			if err == redis.Nil {
 				slog.Warn("Timeout waiting for results", "remaining", runners-i, "collected", i, "expected", runners)
 				results = []checks.Result{}

@@ -131,10 +131,6 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, data)
 }
 
-func ExportConfig(w http.ResponseWriter, r *http.Request) {
-
-}
-
 func GetActiveTasks(w http.ResponseWriter, r *http.Request) {
 	tasks, err := eng.GetActiveTasks()
 	if err != nil {

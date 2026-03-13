@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"quotient/www/api"
+	"quotient/www/auth"
 	"slices"
 	"strings"
 )
@@ -21,7 +22,7 @@ func Authentication(roles ...string) Middleware {
 			username, user_roles := api.Authenticate(w, r)
 
 			if username == "" {
-				if slices.Contains(roles, "anonymous") {
+				if slices.Contains(roles, auth.RoleAnonymous) {
 					next(w, r)
 					return
 				}

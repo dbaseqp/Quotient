@@ -10,6 +10,7 @@ import (
 	"quotient/engine"
 	"quotient/engine/config"
 	"quotient/www/api"
+	"quotient/www/auth"
 	"quotient/www/middleware"
 )
 
@@ -45,7 +46,7 @@ func (router *Router) Start() {
 
 	mux.Handle("/static/assets/", http.StripPrefix("/static/assets/", http.FileServer(http.Dir("./static/assets"))))
 
-	UNAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Cors, middleware.Authentication("anonymous", "team", "admin", "red"))
+	UNAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Cors, middleware.Authentication(auth.RoleAnonymous, auth.RoleTeam, auth.RoleAdmin, auth.RoleRed))
 	// public API routes
 	mux.HandleFunc("POST /api/login", api.Login)
 
@@ -69,7 +70,7 @@ func (router *Router) Start() {
 	|                                         |
 	******************************************/
 
-	ALLAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin", "red", "inject"))
+	ALLAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication(auth.RoleTeam, auth.RoleAdmin, auth.RoleRed, auth.RoleInject))
 	// general auth API routes
 	mux.HandleFunc("GET /api/logout", ALLAUTH(api.Logout))
 
@@ -79,15 +80,13 @@ func (router *Router) Start() {
 	// general auth WWW routes
 	mux.HandleFunc("GET /logout", ALLAUTH(router.LogoutPage))
 	mux.HandleFunc("GET /announcements", ALLAUTH(router.AnnouncementsPage))
-	// mux.HandleFunc("GET /graphs", ALLAUTH(router.GraphPage))
-
 	/******************************************
 	|                                         |
 	|               TEAM ROUTES               |
 	|                                         |
 	******************************************/
 
-	TEAMAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("team", "admin", "inject"))
+	TEAMAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication(auth.RoleTeam, auth.RoleAdmin, auth.RoleInject))
 	// team auth API routes
 	mux.HandleFunc("GET /api/teams", TEAMAUTH(api.GetTeams))
 	mux.HandleFunc("GET /api/metadata", TEAMAUTH(api.GetMetadata))
@@ -113,22 +112,15 @@ func (router *Router) Start() {
 	|               RED ROUTES                |
 	|                                         |
 	******************************************/
-	REDAUTH := middleware.MiddlewareChain(middleware.Authentication("red", "admin"))
+	REDAUTH := middleware.MiddlewareChain(middleware.Authentication(auth.RoleRed, auth.RoleAdmin))
 
 	// red auth API routes
 	mux.HandleFunc("GET /api/red", REDAUTH(api.GetRed))
-	// mux.HandleFunc("POST /api/red/vuln", REDAUTH(api.CreatePcr))
 	mux.HandleFunc("POST /api/red/box", REDAUTH(api.CreateBox))
 	mux.HandleFunc("POST /api/red/vector", REDAUTH(api.CreateVector))
 	mux.HandleFunc("POST /api/red/attack", REDAUTH(api.CreateAttack))
 
 	mux.HandleFunc("POST /api/red/box/{id}", REDAUTH(api.EditBox))
-	mux.HandleFunc("POST /api/red/vector/{id}", REDAUTH(api.EditVector))
-	mux.HandleFunc("POST /api/red/attack/{id}", REDAUTH(api.EditAttack))
-
-	// mux.HandleFunc("DELETE /api/red/box/{id}", REDAUTH(api.DeleteBox))
-	// mux.HandleFunc("DELETE /api/red/vector/{id}", REDAUTH(api.DeleteVector))
-	// mux.HandleFunc("DELETE /api/red/attack/{id}", REDAUTH(api.DeleteAttack))
 
 	// red auth WWW routes
 	mux.HandleFunc("GET /red", REDAUTH(router.RedPage))
@@ -139,7 +131,7 @@ func (router *Router) Start() {
 	|                                         |
 	******************************************/
 
-	INJECTAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("admin", "inject"))
+	INJECTAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication(auth.RoleAdmin, auth.RoleInject))
 	// admin auth API routes
 	mux.HandleFunc("POST /api/announcements/create", INJECTAUTH(api.CreateAnnouncement))
 	mux.HandleFunc("POST /api/announcements/{id}", INJECTAUTH(api.UpdateAnnouncement))
@@ -150,11 +142,7 @@ func (router *Router) Start() {
 	mux.HandleFunc("DELETE /api/injects/{id}", INJECTAUTH(api.DeleteInject))
 	mux.HandleFunc("GET /api/injects/{id}/submissions/download", INJECTAUTH(api.DownloadAllSubmissions))
 
-	// router.HandleFunc("POST /api/engine/service/create", ADMINAUTH(api.CreateService))
-	// router.HandleFunc("POST /api/engine/service/update", ADMINAUTH(api.UpdateService))
-	// router.HandleFunc("DELETE /api/engine/service/delete", ADMINAUTH(api.DeleteService))
-
-	ADMINAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication("admin"))
+	ADMINAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication(auth.RoleAdmin))
 	mux.HandleFunc("POST /api/engine/pause", ADMINAUTH(api.PauseEngine))
 	mux.HandleFunc("GET /api/engine/reset", ADMINAUTH(api.ResetScores))
 	mux.HandleFunc("GET /api/engine", ADMINAUTH(api.GetEngine))
@@ -165,7 +153,6 @@ func (router *Router) Start() {
 	mux.HandleFunc("POST /api/admin/teamchecks", ADMINAUTH(api.UpdateTeamChecks))
 
 	mux.HandleFunc("GET /api/engine/export/scores", ADMINAUTH(api.ExportScores))
-	mux.HandleFunc("GET /api/engine/export/config", ADMINAUTH(api.ExportConfig))
 
 	// admin-only PCR routes
 	mux.HandleFunc("GET /api/pcrs", ADMINAUTH(api.GetPcrs))

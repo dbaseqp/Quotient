@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"quotient/engine/db"
+	"quotient/www/auth"
 	"slices"
 )
 
@@ -221,7 +222,7 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 func shouldScrub(r *http.Request) bool {
 	if r.Context().Value("roles") != nil {
 		req_roles := r.Context().Value("roles").([]string)
-		if slices.Contains(req_roles, "admin") {
+		if slices.Contains(req_roles, auth.RoleAdmin) {
 			return false
 		}
 	}

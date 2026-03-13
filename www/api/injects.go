@@ -12,6 +12,8 @@ import (
 	"slices"
 	"time"
 
+	"quotient/www/auth"
+
 	"gorm.io/gorm"
 )
 
@@ -24,7 +26,7 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 
 	// if not admin filter out injects that are not open yet
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
+	if !slices.Contains(req_roles, auth.RoleAdmin) {
 		openInjects := make([]db.InjectSchema, 0)
 		for _, a := range data {
 			if time.Now().After(a.OpenTime) {
@@ -40,7 +42,7 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
-		if !slices.Contains(req_roles, "admin") {
+		if !slices.Contains(req_roles, auth.RoleAdmin) {
 			var mySubmissions []db.SubmissionSchema
 			for _, submission := range data[i].Submissions {
 				if submission.Team.Name == r.Context().Value("username") {
@@ -88,7 +90,7 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 
 	// if not admin, check if the inject is open
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") && time.Now().Before(inject.OpenTime) {
+	if !slices.Contains(req_roles, auth.RoleAdmin) && time.Now().Before(inject.OpenTime) {
 		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Inject not found"})
 		return
 	}
