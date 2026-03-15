@@ -41,6 +41,16 @@ func GetInjects() ([]InjectSchema, error) {
 	return injects, nil
 }
 
+// GetInjectByID retrieves a single inject by ID
+func GetInjectByID(id uint) (InjectSchema, error) {
+	var inject InjectSchema
+	result := db.Table("inject_schemas").First(&inject, id)
+	if result.Error != nil {
+		return InjectSchema{}, result.Error
+	}
+	return inject, nil
+}
+
 // UpdateInject
 func UpdateInject(inject InjectSchema) (InjectSchema, error) {
 	result := db.Table("inject_schemas").Save(&inject)
@@ -50,8 +60,12 @@ func UpdateInject(inject InjectSchema) (InjectSchema, error) {
 	return inject, nil
 }
 
-// DeleteInject deletes an inject from the database
+// DeleteInject deletes an inject and its submissions from the database
 func DeleteInject(inject InjectSchema) error {
+	// Delete submissions first (foreign key constraint)
+	if err := db.Table("submission_schemas").Where("inject_id = ?", inject.ID).Delete(&SubmissionSchema{}).Error; err != nil {
+		return err
+	}
 	result := db.Table("inject_schemas").Delete(&inject)
 	if result.Error != nil {
 		return result.Error

@@ -1,15 +1,18 @@
 package checks
 
 import (
-	"encoding/csv"
 	"errors"
-	"fmt"
 	"log/slog"
 	"math/rand"
-	"os"
 	"strings"
 	"time"
 )
+
+// TaskCredential represents a credential from the task payload
+type TaskCredential struct {
+	Username string
+	Password string
+}
 
 // checks for each service
 type Runner interface {
@@ -20,24 +23,26 @@ type Runner interface {
 	GetName() string
 	GetAttempts() int
 	GetCredlists() []string
+	SetTaskCredentials(creds []TaskCredential)
 }
 
 // services will inherit Service so that config.Config can be read from file, but will not be used after initial read
 type Service struct {
-	Name         string    `toml:"-"`          // Name is the box name plus the service (ex. lunar-dns)
-	Display      string    `toml:",omitempty"` // Display is the name of the service (ex. dns)
-	CredLists    []string  `toml:",omitempty"`
-	Port         int       `toml:",omitzero"` // omitzero because custom checks might not specify port, and shouldn't be assigned 0
-	Points       int       `toml:",omitempty"`
-	Timeout      int       `toml:",omitempty"`
-	SlaPenalty   int       `toml:",omitempty"`
-	SlaThreshold int       `toml:",omitempty"`
-	LaunchTime   time.Time `toml:",omitempty"`
-	StopTime     time.Time `toml:",omitempty"`
-	Disabled     bool      `toml:",omitempty"`
-	Target       string    `toml:",omitempty"` // Target is the IP address or hostname for the box
-	ServiceType  string    `toml:",omitempty"` // ServiceType is the name of the Runner that checks the service
-	Attempts     int       `toml:",omitempty"` // Attempts is the number of times the service has been checked
+	Name            string           `toml:"-"`          // Name is the box name plus the service (ex. lunar-dns)
+	Display         string           `toml:",omitempty"` // Display is the name of the service (ex. dns)
+	CredLists       []string         `toml:",omitempty"`
+	Port            int              `toml:",omitzero"` // omitzero because custom checks might not specify port, and shouldn't be assigned 0
+	Points          int              `toml:",omitempty"`
+	Timeout         int              `toml:",omitempty"`
+	SlaPenalty      int              `toml:",omitempty"`
+	SlaThreshold    int              `toml:",omitempty"`
+	LaunchTime      time.Time        `toml:",omitempty"`
+	StopTime        time.Time        `toml:",omitempty"`
+	Disabled        bool             `toml:",omitempty"`
+	Target          string           `toml:",omitempty"` // Target is the IP address or hostname for the box
+	ServiceType     string           `toml:",omitempty"` // ServiceType is the name of the Runner that checks the service
+	Attempts        int              `toml:",omitempty"` // Attempts is the number of times the service has been checked
+	TaskCredentials []TaskCredential `toml:"-"`          // Credentials from task payload (set per-task, not from config)
 }
 
 type Result struct {
@@ -78,56 +83,19 @@ func (service *Service) SetCredlists(lists []string) {
 	service.CredLists = lists
 }
 
+// SetTaskCredentials sets credentials from the task payload (thread-safe per-instance)
+func (service *Service) SetTaskCredentials(creds []TaskCredential) {
+	service.TaskCredentials = creds
+}
+
 func (service *Service) getCreds(teamID uint) (string, string, error) {
-	// check if credlists are defined, if not return error
-	if len(service.CredLists) == 0 {
-		return "", "", errors.New("no credlists defined")
+	if len(service.TaskCredentials) == 0 {
+		return "", "", errors.New("no credentials available")
 	}
 
-	// pick which list to use
-	rng := rand.New(rand.NewSource(time.Now().UnixNano())) // #nosec G404 -- non-crypto RNG for credlist selection
-	credListName := service.CredLists[rng.Intn(len(service.CredLists))] // #nosec G404 -- non-crypto selection of credlist to use
-
-	// get the credlist from the filesystem using os.Root for path safety
-	baseDir := "submissions/pcrs"
-	relativePath := fmt.Sprintf("%d/%s", teamID, credListName)
-
-	root, err := os.OpenRoot(baseDir)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to open pcrs directory: %w", err)
-	}
-	defer func() {
-		if err := root.Close(); err != nil {
-			slog.Error("failed to close pcrs root directory", "error", err)
-		}
-	}()
-
-	file, err := root.Open(relativePath)
-	if err != nil {
-		return "", "", err
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			slog.Error("failed to close credlist file", "error", err)
-		}
-	}()
-
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return "", "", err
-	}
-
-	if len(records) == 0 || len(records[0]) < 2 {
-		return "", "", errors.New("invalid credlist format")
-	}
-
-	randomIndex := rng.Intn(len(records))
-
-	username := records[randomIndex][0]
-	password := records[randomIndex][1]
-
-	return username, password, nil
+	rng := rand.New(rand.NewSource(time.Now().UnixNano())) // #nosec G404 -- non-crypto RNG
+	randomIndex := rng.Intn(len(service.TaskCredentials))
+	return service.TaskCredentials[randomIndex].Username, service.TaskCredentials[randomIndex].Password, nil
 }
 
 func (service *Service) Configure(ip string, points int, timeout int, slapenalty int, slathreshold int) error {

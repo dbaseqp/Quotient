@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"quotient/engine/db"
 	"slices"
 	"time"
@@ -179,12 +180,13 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uploadDir := fmt.Sprintf("config/injects/%d", inject.ID)
-	if err := os.MkdirAll(uploadDir, 0750); err != nil {
+	subDir := fmt.Sprintf("%d", inject.ID)
+	if err := SafeMkdirAll("config/injects", subDir, 0750); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create directory"})
 		return
 	}
 
+	uploadDir := filepath.Join("config/injects", subDir)
 	for _, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {
@@ -193,7 +195,7 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 
-		dst, err := os.Create(fmt.Sprintf("%s/%s", uploadDir, fileHeader.Filename))
+		dst, err := SafeCreate(uploadDir, fileHeader.Filename)
 		if err != nil {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create file on disk"})
 			return
@@ -324,7 +326,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 			}
 			defer file.Close()
 
-			dst, err := os.Create(fmt.Sprintf("%s/%s", uploadDir, fileHeader.Filename))
+			dst, err := SafeCreate(uploadDir, fileHeader.Filename)
 			if err != nil {
 				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create file on disk"})
 				return

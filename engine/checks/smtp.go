@@ -8,17 +8,23 @@ import (
 	"math/rand"
 	"net"
 	"net/smtp"
-	"os"
-	"strings"
 	"time"
 )
+
+// generateRandomContent creates random email content for variety.
+func generateRandomContent() (subject string, body string) {
+	// #nosec G404 -- non-crypto random for email content
+	subject = fmt.Sprintf("%016x", rand.Uint64())
+	// #nosec G404 -- non-crypto random for email content
+	body = fmt.Sprintf("%016x%016x%016x%016x", rand.Uint64(), rand.Uint64(), rand.Uint64(), rand.Uint64())
+	return
+}
 
 type Smtp struct {
 	Service
 	Encrypted   bool
 	Domain      string
 	RequireAuth bool
-	Fortunes    []string
 }
 
 type unencryptedAuth struct {
@@ -34,38 +40,12 @@ func (a unencryptedAuth) Start(server *smtp.ServerInfo) (string, []byte, error) 
 
 func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		fortunes, err := os.ReadFile("/usr/share/fortune/fortunes")
-		if err != nil {
-			checkResult.Error = "failed to load fortune file (/usr/share/fortune/fortunes)"
-			checkResult.Debug = err.Error()
-			response <- checkResult
-			return
-		}
-		c.Fortunes = strings.Split(string(fortunes), "\n%\n")
-		if len(c.Fortunes) == 0 {
-			checkResult.Error = "failed to load fortune file (/usr/share/fortune/fortunes)"
-			checkResult.Debug = "no fortunes found"
-			response <- checkResult
-			return
-		}
-
 		// Create a dialer
 		dialer := net.Dialer{
 			Timeout: time.Duration(c.Timeout) * time.Second,
 		}
 
-		fortune := c.Fortunes[rand.Intn(len(c.Fortunes))] // #nosec G404 -- non-crypto selection of fortune text
-		words := strings.Fields(fortune)
-		subject := ""
-		if len(words) <= 3 {
-			subject = fortune
-		} else {
-			selected := make([]string, 3)
-			for i := range 3 {
-				selected[i] = words[rand.Intn(len(words))] // #nosec G404 -- non-crypto selection of words for subject
-			}
-			subject = strings.Join(selected, " ")
-		}
+		subject, body := generateRandomContent()
 
 		// ***********************************************
 		// Set up custom auth for bypassing net/smtp protections
@@ -176,20 +156,20 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			}
 		}()
 
-		body := fmt.Sprintf("Subject: %s\n\n%s\n\n", subject, fortune)
+		message := fmt.Sprintf("Subject: %s\n\n%s\n\n", subject, body)
 
-		// Write the body using Fprint to avoid treating the contents as a
+		// Write the message using Fprint to avoid treating the contents as a
 		// format string.
-		_, err = fmt.Fprint(wc, body)
+		_, err = fmt.Fprint(wc, message)
 		if err != nil {
-			checkResult.Error = "writing body failed"
+			checkResult.Error = "writing message failed"
 			checkResult.Debug = err.Error()
 			response <- checkResult
 			return
 		}
 
 		checkResult.Status = true
-		checkResult.Debug = "successfully wrote '" + body + "' to " + toUser + " from " + username
+		checkResult.Debug = "successfully wrote '" + message + "' to " + toUser + " from " + username
 		response <- checkResult
 	}
 

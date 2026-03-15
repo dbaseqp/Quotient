@@ -131,6 +131,7 @@
                                 })
                                 // y value is based on y value for some reason, so manually setting y value to
                                 // consistent value for all series to make sure the images are at a consistent height
+                                STATUSCHART.clearAnnotations()
                                 for (let i = 0; i < series.length; i++) {
                                     for (let j = 0; j < series[i].data.length; j++) {
                                         let status = series[i].data[j]

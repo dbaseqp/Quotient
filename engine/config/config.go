@@ -130,9 +130,10 @@ type MiscConfig struct {
 }
 
 type UIConfig struct {
-	EnablePublicGraphs          bool
-	DisableGraphsForBlueTeam    bool
-	ShowAnnouncementsForRedTeam bool
+	EnablePublicGraphs                  bool
+	DisableGraphsForBlueTeam            bool
+	AllowNonAnonymizedGraphsForBlueTeam bool
+	ShowAnnouncementsForRedTeam         bool
 }
 
 type User struct {

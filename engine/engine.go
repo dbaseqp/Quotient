@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -23,6 +24,7 @@ type ScoringEngine struct {
 	Config                *config.ConfigSettings
 	CredentialsMutex      map[uint]*sync.Mutex
 	UptimePerService      map[uint]map[string]db.Uptime
+	uptimeMu              sync.RWMutex
 	SlaPerService         map[uint]map[string]int
 	EnginePauseWg         *sync.WaitGroup
 	IsEnginePaused        bool
@@ -30,6 +32,9 @@ type ScoringEngine struct {
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
+
+	// Concurrency control for materialized view refresh
+	Refreshing atomic.Bool
 
 	// Config update handling
 	configPath string
@@ -77,16 +82,18 @@ func (se *ScoringEngine) Start() {
 		se.CurrentRound = uint(t.ID) + 1
 	}
 
+	se.uptimeMu.Lock()
 	if err := db.LoadUptimes(&se.UptimePerService); err != nil {
 		slog.Error("failed to load uptimes", "error", err)
 	}
+	se.uptimeMu.Unlock()
 
 	if err := db.LoadSLAs(&se.SlaPerService, se.Config.MiscSettings.SlaThreshold); err != nil {
 		slog.Error("failed to load SLAs", "error", err)
 	}
 
 	// load credentials
-	err := se.LoadCredentials()
+	err := se.EnsureCredentialsSeeded()
 	if err != nil {
 		slog.Error("failed to load credential files into teams", "error", err)
 	}
@@ -195,6 +202,14 @@ func waitForReset() {
 
 func (se *ScoringEngine) GetUptimePerService() map[uint]map[string]db.Uptime {
 	return se.UptimePerService
+}
+
+func (se *ScoringEngine) RLockUptime() {
+	se.uptimeMu.RLock()
+}
+
+func (se *ScoringEngine) RUnlockUptime() {
+	se.uptimeMu.RUnlock()
 }
 
 // GetActiveTasks returns all active and recently completed tasks
@@ -308,7 +323,9 @@ func (se *ScoringEngine) ResetScores() error {
 	se.RedisClient.Publish(context.Background(), "events", "reset")
 
 	se.CurrentRound = 1
+	se.uptimeMu.Lock()
 	se.UptimePerService = make(map[uint]map[string]db.Uptime)
+	se.uptimeMu.Unlock()
 	se.SlaPerService = make(map[uint]map[string]int)
 	slog.Info("Scores reset and Redis queues cleared successfully")
 
@@ -411,6 +428,28 @@ func (se *ScoringEngine) rvb() error {
 				Deadline:       se.NextRoundStartTime,
 				Attempts:       r.GetAttempts(),
 				CheckData:      data, // the entire specialized struct
+			}
+
+			// Populate credentials if check needs them
+			if credlists := r.GetCredlists(); len(credlists) > 0 {
+				for _, credlistName := range credlists {
+					creds, err := db.GetTeamCredentials(team.ID, credlistName)
+					if err != nil {
+						slog.Error("failed to get credentials for task", "team", team.ID, "credlist", credlistName, "error", err)
+						continue
+					}
+					for _, c := range creds {
+						task.Credentials = append(task.Credentials, Credential{
+							Username: c.Username,
+							Password: c.Password,
+						})
+					}
+				}
+				// Skip task if check requires credentials but none were loaded
+				if len(task.Credentials) == 0 {
+					slog.Error("skipping check: requires credentials but none seeded", "service", r.GetName(), "team", team.ID)
+					continue
+				}
 			}
 
 			payload, err := json.Marshal(task)
@@ -532,6 +571,7 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 		return
 	}
 
+	se.uptimeMu.Lock()
 	for _, result := range results {
 		// Update uptime and SLA maps
 		if _, ok := se.UptimePerService[result.TeamID]; !ok {
@@ -571,6 +611,20 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 			}
 		}
 	}
+	se.uptimeMu.Unlock()
 
 	slog.Debug("Successfully processed results for round", "round", se.CurrentRound, "total", len(dbResults))
+
+	// Refresh materialized view asynchronously, but avoid concurrent refreshes
+	currentRound := se.CurrentRound
+	if se.Refreshing.CompareAndSwap(false, true) {
+		go func(round uint) {
+			defer se.Refreshing.Store(false)
+			if err := db.RefreshScoresMaterializedView(); err != nil {
+				slog.Error("failed to refresh materialized view", "round", round, "error", err)
+			}
+		}(currentRound)
+	} else {
+		slog.Debug("refresh already in progress, skipping refresh spawn", "round", currentRound)
+	}
 }

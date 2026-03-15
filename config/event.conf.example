@@ -1,7 +1,20 @@
+# ===========================================
+# EXAMPLE CONFIGURATION - REFERENCE ONLY
+# ===========================================
+# This is a reference example showing all available check types.
+# To use this config, you must:
+#   1. Create credlist files in config/credlists/ (e.g., linux.credlist, windows.credlist)
+#   2. Set team identifiers in the admin UI to replace "_" in IPs
+#   3. Have actual infrastructure running at the configured IPs
+#   4. Create any custom check scripts referenced in Box.Custom
+#
+# See README.md for full documentation.
+# ===========================================
+
 [RequiredSettings]
-  EventName = "Example"
+  EventName = "Example Competition"
   EventType = "rvb"
-  DBConnectURL = "postgres://engineuser:postgres_password@quotient_database:5432/engine"
+  DBConnectURL = "postgres://engineuser:your_password@quotient_database:5432/engine"
   BindAddress = "0.0.0.0"
 
 [MiscSettings]
@@ -9,64 +22,196 @@
   ShowDebugToBlueTeam = false
   LogoImage = "/static/assets/quotient.svg"
   StartPaused = true
-  Delay = 30
-  Jitter = 5
-  Points = 1
-  Timeout = 15
+
+  Delay = 60
+  Jitter = 10
+
+  Points = 5
+  Timeout = 30
   SlaThreshold = 5
-  SlaPenalty = 5
+  SlaPenalty = 25
 
 [CredlistSettings]
   [[CredlistSettings.Credlist]]
-    CredlistName = "Users"
-    CredlistPath = "users.credlist"
-    CredlistExplainText = "username,password"
-  [[CredlistSettings.Credlist]]
-    CredlistName = "Admins"
-    CredlistPath = "admins.credlist"
+    CredlistName = "LinuxUsers"
+    CredlistPath = "linux.credlist"
     CredlistExplainText = "username,password"
 
+  [[CredlistSettings.Credlist]]
+    CredlistName = "WindowsUsers"
+    CredlistPath = "windows.credlist"
+    CredlistExplainText = "username,password"
+
+# ===========================================
+# USER ACCOUNTS
+# ===========================================
 [[Admin]]
   Name = "admin"
-  Pw = "admin"
+  Pw = "changeme"
 
 [[Team]]
-  Name = "team01"
-  Pw = "password"
+  Name = "team1"
+  Pw = "changeme"
 
 [[Team]]
-  Name = "team02"
-  Pw = "password"
+  Name = "team2"
+  Pw = "changeme"
 
-[[Team]]
-  Name = "team03"
-  Pw = "password"
+[[Red]]
+  Name = "redteam"
+  Pw = "changeme"
 
+[[Inject]]
+  Name = "inject"
+  Pw = "changeme"
+
+# ===========================================
+# BOX DEFINITIONS
+# ===========================================
+
+# ---- Linux Web Server ----
 [[Box]]
-  Name = "leto"
-  IP = "172.19.12_.22"
+  Name = "web-server"
+  IP = "10.100._.10"
 
-  [[Box.Tcp]]
-    Display = "cyclopes"
-    Port = 4444
+  [[Box.Ping]]
+    Display = "ping"
 
+  [[Box.Web]]
+    Display = "https"
+    Scheme = "https"
+    Port = 443
+    [[Box.Web.Url]]
+      Path = "/"
+      Status = 200
+      Regex = "<title>[^<]*Dashboard[^<]*</title>"
+    [[Box.Web.Url]]
+      Path = "/api/health"
+      Status = 200
+      Regex = "\"status\":\\s*\"(ok|healthy)\""
+
+  [[Box.Ssh]]
+    Display = "ssh"
+    CredLists = ["LinuxUsers"]
+    [[Box.Ssh.Command]]
+      Command = "cat /etc/hostname"
+      Contains = true
+      Output = "web"
+
+# ---- Mail Server ----
 [[Box]]
-  Name = "atlas"
-  IP = "172.19.12_.25"
-
-  [[Box.Custom]]
-    Display = "cassandra"
-    CredLists = ["Users", "Admins"]
-    Command = "/app/checks/example.sh ROUND TARGET TEAMIDENTIFIER USERNAME PASSWORD"
-
-[[Box]]
-  Name = "titan"
-  IP = "172.19.12_.27"
+  Name = "mail-server"
+  IP = "10.100._.11"
 
   [[Box.Smtp]]
-    Display = "marpessa"
-    CredLists = ["Users"]
+    Display = "smtp"
+    Port = 25
+    CredLists = ["LinuxUsers"]
+    Domain = "@example.local"
+    RequireAuth = true
+
+  [[Box.Imap]]
+    Display = "imap"
+    Port = 143
+    CredLists = ["LinuxUsers"]
+
+  [[Box.Pop3]]
+    Display = "pop3"
+    Port = 110
+    CredLists = ["LinuxUsers"]
+
+# ---- DNS Server ----
+[[Box]]
+  Name = "dns-server"
+  IP = "10.100._.2"
+
+  [[Box.Dns]]
+    Display = "dns"
+    Port = 53
+    [[Box.Dns.Record]]
+      Kind = "A"
+      Domain = "www.team_.example.local"
+      Answer = ["10.100._.10"]
+    [[Box.Dns.Record]]
+      Kind = "MX"
+      Domain = "team_.example.local"
+      Answer = ["mail.team_.example.local"]
+
+# ---- Database Server ----
+[[Box]]
+  Name = "db-server"
+  IP = "10.100._.12"
 
   [[Box.Tcp]]
-    Port = 4444
-    Display = "daphne"
+    Display = "mysql-port"
+    Port = 3306
+
+  [[Box.Sql]]
+    Display = "mysql"
+    Port = 3306
+    Kind = "mysql"
+    CredLists = ["LinuxUsers"]
+    [[Box.Sql.Query]]
+      Database = "production"
+      Command = "SELECT 1"
+      Output = "1"
+
+# ---- Windows Domain Controller ----
+[[Box]]
+  Name = "dc01"
+  IP = "10.100._.1"
+
+  [[Box.Ldap]]
+    Display = "ldap"
+    Port = 636
+    CredLists = ["WindowsUsers"]
+    Domain = "example.local"
+    Encrypted = true
+
+  [[Box.WinRM]]
+    Display = "winrm"
+    Port = 5985
+    CredLists = ["WindowsUsers"]
+    [[Box.WinRM.Command]]
+      Command = "hostname"
+      Output = "DC01"
+
+  [[Box.Rdp]]
+    Display = "rdp"
+    Port = 3389
+
+# ---- File Server ----
+[[Box]]
+  Name = "file-server"
+  IP = "10.100._.13"
+
+  [[Box.Ftp]]
+    Display = "ftp"
+    Port = 21
+    CredLists = ["LinuxUsers"]
+    [[Box.Ftp.File]]
+      Name = "/pub/readme.txt"
+      Regex = "Welcome"
+
+  [[Box.Smb]]
+    Display = "smb"
+    Port = 445
+    CredLists = ["WindowsUsers"]
+    Share = "shared"
+    [[Box.Smb.File]]
+      Name = "important.txt"
+
+# ---- Custom Check Example ----
+[[Box]]
+  Name = "app-server"
+  IP = "10.100._.14"
+
+  [[Box.Custom]]
+    Display = "api-health"
+    CredLists = ["LinuxUsers"]
+    Command = "/app/checks/api-check.sh ROUND TARGET TEAMIDENTIFIER USERNAME PASSWORD"
+    Regex = "SUCCESS"
+
+  [[Box.Vnc]]
+    Display = "vnc"
+    Port = 5900
