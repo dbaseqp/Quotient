@@ -105,6 +105,7 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
 		return

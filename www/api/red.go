@@ -57,6 +57,7 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateBox(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	ip := r.FormValue("ip")
 	hostname := r.FormValue("hostname")
 
@@ -75,6 +76,7 @@ func CreateBox(w http.ResponseWriter, r *http.Request) {
 }
 
 func EditBox(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var id uint
 	if temp, err := strconv.ParseUint(r.FormValue("box-id"), 10, 64); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert box id"})
@@ -102,6 +104,7 @@ func EditBox(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateVector(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	a := r.FormValue("vuln-id")
 	b := r.FormValue("box-id")
 	c := r.FormValue("port")
@@ -171,6 +174,7 @@ func EditVector(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateAttack(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
