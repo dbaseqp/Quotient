@@ -112,6 +112,7 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateInject(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
 		return
@@ -212,6 +213,7 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateInject(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
 		return

@@ -28,7 +28,8 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = r.ParseMultipartForm(50 << 20) // 50 MB
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20) // 50 MB
+	err = r.ParseMultipartForm(50 << 20)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Error parsing the form"})
 		return
