@@ -113,8 +113,9 @@ jobs:
           go install github.com/securego/gosec/v2/cmd/gosec@latest
           # G117: false positive on intentional struct fields (RefreshToken in Redis DTO, Password in login request)
           # G120: false positive — all form handlers use http.MaxBytesReader and ParseMultipartForm size limits
+          # G124: Secure flag is intentionally dynamic via cookieSecure() to support both HTTP and HTTPS deployments
           # G706: false positive with log/slog structured logging (values are auto-escaped)
-          gosec -exclude=G117,G120,G706 -exclude-generated -exclude-dir=divisor -exclude-dir=.worktrees ./...
+          gosec -exclude=G117,G120,G124,G706 -exclude-generated -exclude-dir=divisor -exclude-dir=.worktrees ./...
 
   property-tests:
     name: Property-Based Tests
