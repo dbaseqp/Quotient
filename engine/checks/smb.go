@@ -3,7 +3,6 @@ package checks
 import (
 	"io"
 	"log/slog"
-	"math/rand"
 	"net"
 	"regexp"
 	"strconv"
@@ -83,72 +82,71 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			}
 			defer fs.Umount()
 
-			file := c.File[rand.Intn(len(c.File))] // #nosec G404 -- non-crypto selection of file to test
-
-			f, err := fs.Open(file.Name)
-			if err != nil {
-				checkResult.Error = "failed to open file"
-				checkResult.Debug = "creds " + username + ":" + password + ", file was " + file.Name + " (" + err.Error() + ")"
-				response <- checkResult
-				return
-			}
-			defer func() {
-			if err := f.Close(); err != nil {
-				slog.Error("failed to close smb file", "error", err)
-			}
-		}()
-
-			buf, err := io.ReadAll(f)
-			if err != nil {
-				checkResult.Error = "failed to read file"
-				checkResult.Debug = "creds " + username + ":" + password + ", file was " + file.Name + " (" + err.Error() + ")"
-				response <- checkResult
-				return
-			}
-
-			if file.Regex != "" {
-				re, err := regexp.Compile(file.Regex)
+			checkResult = RunSubchecks(c.File, c.CheckAll, checkResult, "creds used were "+username+":"+password, func(file smbFile, res Result) Result {
+				f, err := fs.Open(file.Name)
 				if err != nil {
-					checkResult.Error = "error compiling regex to match for smb file"
-					checkResult.Debug = err.Error()
-					response <- checkResult
-					return
+					res.Error = "failed to open file"
+					res.Debug = "file was " + file.Name + " (" + err.Error() + ")"
+					res.Status = false
+					return res
 				}
-				reFind := re.Find(buf)
-				if reFind == nil {
-					checkResult.Error = "couldn't find regex in file"
-					checkResult.Debug = "couldn't find regex \"" + file.Regex + "\" for " + file.Name
-					response <- checkResult
-					return
+				defer func() {
+				if err := f.Close(); err != nil {
+					slog.Error("failed to close smb file", "error", err)
 				}
-				checkResult.Status = true
-				checkResult.Debug = "smb file " + file.Name + " matched regex, creds " + username + ":" + password
-				response <- checkResult
-				return
-			} else if file.Hash != "" {
-				fileHash, err := StringHash(string(buf))
+			}()
+
+				buf, err := io.ReadAll(f)
 				if err != nil {
-					checkResult.Error = "error calculating file hash"
-					checkResult.Debug = "file " + file.Name + ", " + err.Error()
-					response <- checkResult
-					return
-				} else if fileHash != file.Hash {
-					checkResult.Error = "file hash did not match"
-					checkResult.Debug = "file " + file.Name + " hash " + fileHash + " did not match specified hash " + file.Hash
-					response <- checkResult
-					return
+					res.Error = "failed to read file"
+					res.Debug = "file was " + file.Name + " (" + err.Error() + ")"
+					res.Status = false
+					return res
 				}
 
-				checkResult.Status = true
-				checkResult.Debug = "smb file " + file.Name + " matched hash file, creds " + username + ":" + password
-				response <- checkResult
-				return
-			} else {
-				checkResult.Status = true
-				checkResult.Debug = "smb file " + file.Name + " retrieval successful, creds " + username + ":" + password
-				response <- checkResult
-				return
-			}
+				if file.Regex != "" {
+					re, err := regexp.Compile(file.Regex)
+					if err != nil {
+						res.Error = "error compiling regex to match for smb file"
+						res.Debug = err.Error()
+						res.Status = false
+						return res
+					}
+					reFind := re.Find(buf)
+					if reFind == nil {
+						res.Error = "couldn't find regex in file"
+						res.Debug = "couldn't find regex \"" + file.Regex + "\" for " + file.Name
+						res.Status = false
+						return res
+					}
+					res.Status = true
+					res.Debug = "smb file " + file.Name + " matched regex"
+					return res
+				} else if file.Hash != "" {
+					fileHash, err := StringHash(string(buf))
+					if err != nil {
+						res.Error = "error calculating file hash"
+						res.Debug = "file " + file.Name + ", " + err.Error()
+						res.Status = false
+						return res
+					} else if fileHash != file.Hash {
+						res.Error = "file hash did not match"
+						res.Debug = "file " + file.Name + " hash " + fileHash + " did not match specified hash " + file.Hash
+						res.Status = false
+						return res
+					}
+
+					res.Status = true
+					res.Debug = "smb file " + file.Name + " matched hash file"
+					return res
+				} else {
+					res.Status = true
+					res.Debug = "smb file " + file.Name + " retrieval successful"
+					return res
+				}
+			})
+			response <- checkResult
+			return
 		} else {
 			checkResult.Status = true
 			checkResult.Debug = "smb login succeeded, creds " + username + ":" + password

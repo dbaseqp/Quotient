@@ -39,6 +39,7 @@ type Service struct {
 	LaunchTime      time.Time        `toml:",omitempty"`
 	StopTime        time.Time        `toml:",omitempty"`
 	Disabled        bool             `toml:",omitempty"`
+	CheckAll        bool             `toml:",omitempty"` // If true, check all subchecks (urls, commands, files, etc) instead of picking one at random
 	Target          string           `toml:",omitempty"` // Target is the IP address or hostname for the box
 	ServiceType     string           `toml:",omitempty"` // ServiceType is the name of the Runner that checks the service
 	Attempts        int              `toml:",omitempty"` // Attempts is the number of times the service has been checked

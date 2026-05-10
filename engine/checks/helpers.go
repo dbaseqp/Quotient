@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
+	"strings"
 
 	"github.com/pmezard/go-difflib/difflib"
 )
@@ -69,4 +71,60 @@ func GetFile(fileName string) (string, error) {
 		return "", err
 	}
 	return string(fileContent), nil
+}
+
+// RunSubchecks abstracts the pattern of checking either a single random subcheck
+// or all subchecks (stopping at the first failure).
+// An optional debugSuffix (like credentials used) will be appended to the final debug string.
+func RunSubchecks[T any](items []T, checkAll bool, baseResult Result, debugSuffix string, checkFn func(item T, result Result) Result) Result {
+	if len(items) == 0 {
+		baseResult.Status = true
+		if debugSuffix != "" {
+			baseResult.Debug = debugSuffix
+		}
+		return baseResult
+	}
+
+	if checkAll {
+		debugParts := []string{}
+		for _, item := range items {
+			result := checkFn(item, baseResult)
+			if !result.Status {
+				if debugSuffix != "" {
+					if result.Debug == "" {
+						result.Debug = debugSuffix
+					} else {
+						result.Debug += " (" + debugSuffix + ")"
+					}
+				}
+				return result
+			}
+			if result.Debug != "" {
+				debugParts = append(debugParts, result.Debug)
+			}
+		}
+		baseResult.Status = true
+		
+		if len(debugParts) > 0 {
+			baseResult.Debug = fmt.Sprintf("all %d checks passed: %s", len(items), strings.Join(debugParts, "; "))
+		} else {
+			baseResult.Debug = fmt.Sprintf("all %d checks passed", len(items))
+		}
+
+		if debugSuffix != "" {
+			baseResult.Debug += " (" + debugSuffix + ")"
+		}
+		return baseResult
+	} else {
+		item := items[rand.Intn(len(items))] // #nosec G404 -- non-crypto random selection
+		res := checkFn(item, baseResult)
+		if debugSuffix != "" {
+			if res.Debug == "" {
+				res.Debug = debugSuffix
+			} else {
+				res.Debug += " (" + debugSuffix + ")"
+			}
+		}
+		return res
+	}
 }

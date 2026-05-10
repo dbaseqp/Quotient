@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -31,105 +30,102 @@ type urlData struct {
 	CompareFile string `toml:",omitempty"` // TODO implement
 }
 
-func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
-	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		u := c.Url[rand.Intn(len(c.Url))] // #nosec G404 -- non-crypto selection of URL to test
+func (c Web) checkUrl(u urlData, checkResult Result) Result {
+	// random user agent
+	ua := uarand.GetRandom()
 
-		// random user agent
-		ua := uarand.GetRandom()
+	tr := &http.Transport{
+		MaxIdleConns:      1,
+		IdleConnTimeout:   time.Duration(c.Timeout) * time.Second, // address this
+		DisableKeepAlives: true,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // #nosec G402 -- competition services may use self-signed certs
+		},
+	}
+	// Set client timeout to slightly less than check timeout to get better error messages
+	clientTimeout := time.Duration(c.Timeout) * time.Second
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   clientTimeout,
+	}
 
-		tr := &http.Transport{
-			MaxIdleConns:      1,
-			IdleConnTimeout:   time.Duration(c.Timeout) * time.Second, // address this
-			DisableKeepAlives: true,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, // #nosec G402 -- competition services may use self-signed certs
-			},
+	requestURL := fmt.Sprintf("%s://%s:%d%s", c.Scheme, c.Target, c.Port, u.Path)
+	parsedURL, err := url.Parse(requestURL)
+	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+		checkResult.Error = "invalid request URL"
+		checkResult.Debug = "URL failed validation: " + requestURL
+		return checkResult
+	}
+	req, err := http.NewRequest("GET", parsedURL.String(), nil)
+	if err != nil {
+		checkResult.Error = "error creating web request"
+		checkResult.Debug = err.Error()
+		return checkResult
+	}
+
+	req.Header.Set("User-Agent", ua)
+
+	// Store request info for timeout debugging
+	checkResult.Debug = fmt.Sprintf("Attempting GET %s", requestURL)
+
+	resp, err := client.Do(req) // #nosec G704 -- URL is validated above; target comes from admin-controlled event.conf
+	if err != nil {
+		checkResult.Error = "web request errored out"
+		if strings.Contains(err.Error(), "Client.Timeout exceeded") {
+			checkResult.Debug = fmt.Sprintf("HTTP request to %s timed out after %v (TCP connection may have succeeded but server did not respond)", requestURL, clientTimeout)
+		} else {
+			checkResult.Debug = err.Error() + " for url " + u.Path
 		}
-		// Set client timeout to slightly less than check timeout to get better error messages
-		clientTimeout := time.Duration(c.Timeout) * time.Second
-		client := &http.Client{
-			Transport: tr,
-			Timeout:   clientTimeout,
-		}
+		return checkResult
+	}
 
-		requestURL := fmt.Sprintf("%s://%s:%d%s", c.Scheme, c.Target, c.Port, u.Path)
-		parsedURL, err := url.Parse(requestURL)
-		if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-			checkResult.Error = "invalid request URL"
-			checkResult.Debug = "URL failed validation: " + requestURL
-			response <- checkResult
-			return
-		}
-		req, err := http.NewRequest("GET", parsedURL.String(), nil)
-		if err != nil {
-			checkResult.Error = "error creating web request"
-			checkResult.Debug = err.Error()
-			response <- checkResult
-			return
-		}
-
-		req.Header.Set("User-Agent", ua)
-
-		// Store request info for timeout debugging
-		checkResult.Debug = fmt.Sprintf("Attempting GET %s", requestURL)
-
-		resp, err := client.Do(req) // #nosec G704 -- URL is validated above; target comes from admin-controlled event.conf
-		if err != nil {
-			checkResult.Error = "web request errored out"
-			if strings.Contains(err.Error(), "Client.Timeout exceeded") {
-				checkResult.Debug = fmt.Sprintf("HTTP request to %s timed out after %v (TCP connection may have succeeded but server did not respond)", requestURL, clientTimeout)
-			} else {
-				checkResult.Debug = err.Error() + " for url " + u.Path
-			}
-			response <- checkResult
-			return
-		}
-
-		if u.Status != 0 && resp.StatusCode != u.Status {
-			checkResult.Error = "status returned by webserver was incorrect"
-			checkResult.Debug = "status was " + strconv.Itoa(resp.StatusCode) + " wanted " + strconv.Itoa(u.Status) + " for url " + u.Path
-			response <- checkResult
-			return
-		}
-
-		defer func() {
+	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			slog.Error("failed to close http response body", "error", err)
 		}
 	}()
-		body, err := io.ReadAll(resp.Body)
+
+	if u.Status != 0 && resp.StatusCode != u.Status {
+		checkResult.Error = "status returned by webserver was incorrect"
+		checkResult.Debug = "status was " + strconv.Itoa(resp.StatusCode) + " wanted " + strconv.Itoa(u.Status) + " for url " + u.Path
+		return checkResult
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		checkResult.Error = "error reading page content"
+		checkResult.Debug = "error was '" + err.Error() + "' for url " + u.Path
+		return checkResult
+	}
+
+	if u.Regex != "" {
+		re, err := regexp.Compile(u.Regex)
 		if err != nil {
-			checkResult.Error = "error reading page content"
-			checkResult.Debug = "error was '" + err.Error() + "' for url " + u.Path
-			response <- checkResult
-			return
+			checkResult.Error = "error compiling regex to match for web page"
+			checkResult.Debug = err.Error()
+			return checkResult
 		}
-
-		if u.Regex != "" {
-			re, err := regexp.Compile(u.Regex)
-			if err != nil {
-				checkResult.Error = "error compiling regex to match for web page"
-				checkResult.Debug = err.Error()
-				response <- checkResult
-				return
-			}
-			reFind := re.Find(body)
-			if reFind == nil {
-				checkResult.Error = "didn't find regex on page"
-				checkResult.Debug = "couldn't find regex \"" + u.Regex + "\" for " + u.Path
-				response <- checkResult
-				return
-			} else {
-				checkResult.Status = true
-				checkResult.Debug = "matched regex \"" + u.Regex + "\" for " + u.Path
-				response <- checkResult
-				return
-			}
+		reFind := re.Find(body)
+		if reFind == nil {
+			checkResult.Error = "didn't find regex on page"
+			checkResult.Debug = "couldn't find regex \"" + u.Regex + "\" for " + u.Path
+			return checkResult
+		} else {
+			checkResult.Status = true
+			checkResult.Debug = "matched regex \"" + u.Regex + "\" for " + u.Path
+			return checkResult
 		}
+	}
 
-		checkResult.Status = true
-		response <- checkResult
+	checkResult.Status = true
+	return checkResult
+}
+
+func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
+	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
+		response <- RunSubchecks(c.Url, c.CheckAll, checkResult, "", func(u urlData, res Result) Result {
+			return c.checkUrl(u, res)
+		})
 	}
 
 	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)

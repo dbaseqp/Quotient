@@ -21,6 +21,7 @@ require (
 	github.com/masterzen/winrm v0.0.0-20240702205601-3fad6e106085
 	github.com/miekg/dns v1.1.62
 	github.com/mitchellh/go-vnc v0.0.0-20150629162542-723ed9867aed
+	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/ramr/go-reaper v0.3.1
 	github.com/redis/go-redis/v9 v9.7.0
