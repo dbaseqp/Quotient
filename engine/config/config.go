@@ -116,6 +116,8 @@ type MiscConfig struct {
 
 	StartPaused bool
 
+	TeamCount int // Auto-generate teams (team01, team02, ...) if > 0
+
 	// Round settings
 	Delay  int
 	Jitter int
