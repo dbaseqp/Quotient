@@ -199,7 +199,48 @@ OIDCRefreshTokenExpiryInject = 86400   # 1 day
 
 # UI option
 OIDCDisableLocalLogin = false
+
+# Optional: map a group directly to a team Name from [[Team]].
+# Must be the last thing in [OIDCSettings]; TOML assigns every key after a
+# table header to that table.
+[OIDCSettings.OIDCTeamGroupMap]
+"ccdc-blue-charlie" = "team03"
 ```
+
+##### How OIDC users are placed on a team
+
+The groups listed in `OIDCAdminGroups`, `OIDCRedGroups`, `OIDCTeamGroups` and
+`OIDCInjectGroups` decide a user's *role*. They do not by themselves decide
+*which team* a `team` user belongs to. A trailing `*` makes an entry a prefix
+pattern; anything else must match the whole group name.
+
+A user's team is resolved separately from their group memberships, in three
+passes, stopping at the first that resolves:
+
+1. `OIDCTeamGroupMap`, if the group appears there.
+2. A group name equal to a team `Name` under `[[Team]]`, ignoring case.
+3. The trailing number of a group covered by `OIDCTeamGroups`, compared against
+   the trailing number of each team `Name`. So `quotient-blue-Team-05` places a
+   user on a team named `team05`, `team5` or `Team 5` alike. A trailing
+   division letter is part of the comparison, so `quotient-blue-Team-05b` only
+   matches `team05b`, never `team05`.
+
+If a group matches more than one team, no team is assigned and the reason is
+logged. Use `OIDCTeamGroupMap` to make the assignment explicit.
+
+The OIDC username (`preferred_username`, falling back to `email`, then `sub`)
+does **not** have to equal the team name and is never used to pick a team.
+
+Local and LDAP accounts are the opposite case: they are named after their team.
+A local team account is a `[[Team]]` entry, whose `Name` is also the team, and
+LDAP creates one team per `sAMAccountName` in `LdapTeamGroupDn`. For those two
+sources the username *is* the team name, by construction.
+
+A `team` user who resolves to no team can sign in and read the public
+scoreboard, but every request scoped to their own team is refused with 403.
+Password change requests and inject submissions are the usual places this
+shows up. The server logs the username, its groups and the configured team
+group patterns whenever this happens.
 
 #### SSL Settings
 
