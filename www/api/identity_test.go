@@ -136,6 +136,34 @@ func TestMapOIDCUserToTeamExplicitMapWorksWithoutTeamGroupPattern(t *testing.T) 
 	assert.Equal(t, "team03", team.Name)
 }
 
+// A mapped group whose team does not exist must resolve to nothing. Falling
+// through to the trailing-ordinal pass would turn a typo, or a team renamed
+// after the config was written, into a silent placement on another team.
+func TestMapOIDCUserToTeamRefusesBrokenMapEntry(t *testing.T) {
+	withOIDCConfig(t, []string{"ccdc-blue-*"}, map[string]string{
+		// The operator meant team01 and dropped the zero.
+		"ccdc-blue-alpha-room3": "team1",
+	})
+	teams := teamList("team01", "team02", "team03")
+
+	// Without the refusal this resolves to team03, from the trailing 3 of
+	// "room3", granting PCR authority over a team the operator never named.
+	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"ccdc-blue-alpha-room3"}))
+}
+
+// The refusal is scoped to the mapped group. Another group the user holds still
+// resolves normally.
+func TestMapOIDCUserToTeamBrokenEntryDoesNotBlockUnmappedGroups(t *testing.T) {
+	withOIDCConfig(t, []string{"ccdc-blue-*"}, map[string]string{
+		"ccdc-blue-alpha-room3": "team1",
+	})
+	teams := teamList("team01", "team02", "team03")
+
+	team := mapOIDCUserToTeam(teams, []string{"ccdc-blue-Team-02"})
+	require.NotNil(t, team)
+	assert.Equal(t, "team02", team.Name)
+}
+
 func TestMapOIDCUserToTeamRefusesAmbiguousMatch(t *testing.T) {
 	// "team5" and "team05" both reduce to ordinal 5. Guessing would put the
 	// user on the wrong team, so nothing is resolved.

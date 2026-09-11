@@ -225,8 +225,16 @@ passes, stopping at the first that resolves:
    division letter is part of the comparison, so `quotient-blue-Team-05b` only
    matches `team05b`, never `team05`.
 
-If a group matches more than one team, no team is assigned and the reason is
-logged. Use `OIDCTeamGroupMap` to make the assignment explicit.
+If a group matches more than one team in pass 3, no team is assigned and the
+reason is logged. Use `OIDCTeamGroupMap` to make the assignment explicit.
+
+`OIDCTeamGroupMap` decides on its own. A group listed there resolves to the team
+it names, or to no team at all; it never falls back to passes 2 and 3. So an
+entry naming a team that does not exist, through a typo or a team renamed after
+the config was written, denies that group's users rather than placing them on
+whichever team their group name happens to resemble. The server logs the group
+and the team it could not find. Where LDAP is not also configured, the same
+mistake is caught at startup instead.
 
 The OIDC username (`preferred_username`, falling back to `email`, then `sub`)
 does **not** have to equal the team name and is never used to pick a team.

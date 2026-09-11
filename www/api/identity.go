@@ -204,9 +204,18 @@ func isTeamGroup(group string) bool {
 //  3. Trailing-ordinal match, so "quotient-blue-Team-05" resolves to a team
 //     named "team05", "team5" or "Team 5" alike.
 //
-// Passes 2 and 3 only consider groups covered by OIDCTeamGroups. A pass that
-// finds more than one candidate team resolves nothing rather than guessing:
-// putting a user on the wrong team is worse than refusing to place them.
+// Passes 2 and 3 only consider groups covered by OIDCTeamGroups. Pass 1 does
+// not, because naming a group there is already the operator saying it is a team
+// group.
+//
+// Pass 1 is authoritative rather than advisory: a group listed in
+// OIDCTeamGroupMap resolves to the team it names or to nothing at all. It never
+// falls through to the later passes, since the map exists precisely to override
+// the heuristic they apply, and an entry naming a team that does not exist is a
+// configuration error, not an invitation to guess.
+//
+// Pass 3 resolves nothing when more than one team matches. Throughout, putting
+// a user on the wrong team is worse than refusing to place them.
 func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchema {
 	// Pass 1: explicit configuration.
 	for _, group := range userGroups {
@@ -219,8 +228,14 @@ func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchem
 					return &teams[i]
 				}
 			}
-			slog.Error("OIDCTeamGroupMap points at a team that does not exist",
+			// The operator mapped this group deliberately, so refuse rather
+			// than fall through to the heuristic the mapping exists to
+			// override. Falling through turns a typo or a renamed team into a
+			// silent placement on whichever team the group name happens to
+			// look like.
+			slog.Error("OIDCTeamGroupMap points at a team that does not exist, refusing to place this user",
 				"group", group, "configured_team", teamName)
+			return nil
 		}
 	}
 
