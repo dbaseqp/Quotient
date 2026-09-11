@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"quotient/engine/config"
 	"quotient/engine/db"
 	"regexp"
@@ -21,9 +22,8 @@ import (
 // determines it differently: local and LDAP accounts are named after their
 // team, an OIDC account carries its team in a group claim.
 type Identity struct {
-	Username   string
-	AuthSource string
-	Roles      []string
+	Username string
+	Roles    []string
 
 	// TeamID is valid only when HasTeam is true. Team IDs are Postgres serials
 	// and never zero, but do not use that to detect absence.
@@ -59,10 +59,26 @@ func CallerTeamID(ctx context.Context) (uint, bool) {
 	return id.TeamID, id.HasTeam
 }
 
+// requireOwnTeam reports whether the caller acts as teamID, writing the 403
+// itself when not. bypassRoles name the roles exempt from the check.
+func requireOwnTeam(w http.ResponseWriter, r *http.Request, teamID uint, bypassRoles ...string) bool {
+	roles, _ := r.Context().Value("roles").([]string)
+	for _, role := range bypassRoles {
+		if slices.Contains(roles, role) {
+			return true
+		}
+	}
+	if myTeamID, hasTeam := CallerTeamID(r.Context()); hasTeam && myTeamID == teamID {
+		return true
+	}
+	WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
+	return false
+}
+
 // resolveIdentity turns an authenticated username and auth source into roles
 // and a team. A new auth source needs one case in the switch below.
 func resolveIdentity(username string, authSource string) (Identity, error) {
-	id := Identity{Username: username, AuthSource: authSource}
+	id := Identity{Username: username}
 
 	// teamFor resolves the team for this auth source. Set alongside the roles,
 	// from the same read, so both come from one source at one point in time.
@@ -164,37 +180,33 @@ func teamOrdinal(name string) (uint64, bool) {
 	return number, true
 }
 
-// isTeamGroup reports whether a group is covered by an OIDCTeamGroups pattern.
-// A trailing "*" makes the entry a prefix pattern; anything else matches the
-// whole group name.
+// isTeamGroup reports whether a group is covered by an OIDCTeamGroups pattern,
+// by the same rule that grants the team role in mapGroupsToRoles.
 func isTeamGroup(group string) bool {
-	for _, pattern := range conf.OIDCSettings.OIDCTeamGroups {
-		if strings.HasSuffix(pattern, "*") {
-			if strings.HasPrefix(strings.ToLower(group), strings.ToLower(strings.TrimSuffix(pattern, "*"))) {
-				return true
-			}
-			continue
-		}
-		if strings.EqualFold(group, pattern) {
-			return true
+	one := []string{group}
+	return slices.ContainsFunc(conf.OIDCSettings.OIDCTeamGroups, func(pattern string) bool {
+		return matchesGroup(one, pattern)
+	})
+}
+
+// teamByNameFold returns the team with this name, ignoring case.
+func teamByNameFold(teams []db.TeamSchema, name string) *db.TeamSchema {
+	for i := range teams {
+		if strings.EqualFold(teams[i].Name, name) {
+			return &teams[i]
 		}
 	}
-	return false
+	return nil
 }
 
 // mapOIDCUserToTeam resolves an OIDC user's team from their group memberships.
-// Group names need not equal team names. Three passes, most explicit first:
+// Group names need not equal team names; see "How OIDC users are placed on a
+// team" in README.md for the three passes.
 //
-//  1. OIDCTeamGroupMap, an operator-supplied group name to team Name mapping.
-//  2. Exact (case-insensitive) match between a group name and a team Name.
-//  3. Trailing-ordinal match: "quotient-blue-Team-05" matches a team named
-//     "team05", "team5" or "Team 5".
-//
-// Passes 2 and 3 consider only groups covered by OIDCTeamGroups. Pass 1 does
-// not; listing a group there declares it a team group.
-//
-// Two cases resolve to nil rather than a guess: a pass 1 entry naming a team
-// that does not exist, and a pass 3 group matching more than one team.
+// Pass 1 is not filtered by OIDCTeamGroups: listing a group there declares it a
+// team group. Two cases resolve to nil rather than a guess: a pass 1 entry
+// naming a team that does not exist, and a pass 3 group matching more than one
+// team.
 func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchema {
 	// Pass 1: explicit configuration.
 	for _, group := range userGroups {
@@ -202,10 +214,8 @@ func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchem
 			if !strings.EqualFold(group, configuredGroup) {
 				continue
 			}
-			for i := range teams {
-				if strings.EqualFold(teams[i].Name, teamName) {
-					return &teams[i]
-				}
+			if team := teamByNameFold(teams, teamName); team != nil {
+				return team
 			}
 			// Do not fall through to passes 2 and 3: the map exists to
 			// override them. Falling through would resolve a typo or a renamed
@@ -221,39 +231,34 @@ func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchem
 		if !isTeamGroup(group) {
 			continue
 		}
-		for i := range teams {
-			if strings.EqualFold(teams[i].Name, group) {
-				return &teams[i]
-			}
+		if team := teamByNameFold(teams, group); team != nil {
+			return team
 		}
 	}
 
-	// Pass 3: the group carries the team's ordinal.
-	var matched []*db.TeamSchema
-	var matchedGroup string
+	// Pass 3: the group carries the team's ordinal. Reduce each covered group
+	// once, then walk teams, so every team is considered at most once.
+	var groupOrdinals []uint64
 	for _, group := range userGroups {
 		if !isTeamGroup(group) {
 			continue
 		}
-		groupOrdinal, ok := teamOrdinal(group)
-		if !ok {
-			continue
+		if ordinal, ok := teamOrdinal(group); ok {
+			groupOrdinals = append(groupOrdinals, ordinal)
 		}
-		for i := range teams {
-			teamOrd, ok := teamOrdinal(teams[i].Name)
-			if !ok || teamOrd != groupOrdinal {
-				continue
-			}
-			if !slices.Contains(matched, &teams[i]) {
-				matched = append(matched, &teams[i])
-				matchedGroup = group
-			}
+	}
+
+	var matched []db.TeamSchema
+	for i := range teams {
+		teamOrd, ok := teamOrdinal(teams[i].Name)
+		if ok && slices.Contains(groupOrdinals, teamOrd) {
+			matched = append(matched, teams[i])
 		}
 	}
 
 	switch len(matched) {
 	case 1:
-		return matched[0]
+		return &matched[0]
 	case 0:
 		slog.Warn("no team matched any of the user's groups",
 			"groups", userGroups, "team_groups", conf.OIDCSettings.OIDCTeamGroups)
@@ -262,8 +267,8 @@ func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchem
 		for _, t := range matched {
 			names = append(names, t.Name)
 		}
-		slog.Error("group matches multiple teams, refusing to guess; set OIDCTeamGroupMap",
-			"group", matchedGroup, "candidates", names)
+		slog.Error("groups match multiple teams, refusing to guess; set OIDCTeamGroupMap",
+			"groups", userGroups, "candidates", names)
 	}
 
 	return nil

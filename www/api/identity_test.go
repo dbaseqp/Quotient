@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"quotient/engine/config"
@@ -105,9 +107,13 @@ func TestMapOIDCUserToTeamExactNameMatch(t *testing.T) {
 	withOIDCConfig(t, []string{"BlueAlpha", "BlueBravo"}, nil)
 	teams := teamList("BlueAlpha", "BlueBravo")
 
-	team := mapOIDCUserToTeam(teams, []string{"bluebravo"})
+	// The group must match a configured pattern as the role mapper matches it,
+	// but the team Name comparison itself ignores case.
+	team := mapOIDCUserToTeam(teams, []string{"BlueBravo"})
 	require.NotNil(t, team)
 	assert.Equal(t, "BlueBravo", team.Name)
+
+	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"bluebravo"}))
 }
 
 func TestMapOIDCUserToTeamExplicitMapWins(t *testing.T) {
@@ -227,11 +233,53 @@ func TestCallerTeamIDReportsAbsence(t *testing.T) {
 
 // The context carries the identity the middleware stored.
 func TestIdentityRoundTripsThroughContext(t *testing.T) {
-	want := Identity{Username: "hola", AuthSource: "oidc", Roles: []string{"team"}, TeamID: 5, HasTeam: true}
+	want := Identity{Username: "hola", Roles: []string{"team"}, TeamID: 5, HasTeam: true}
 	got, ok := IdentityFrom(WithIdentity(context.Background(), want))
 	require.True(t, ok)
 	assert.Equal(t, want, got)
 
 	_, ok = IdentityFrom(context.Background())
 	assert.False(t, ok)
+}
+
+func requestAs(roles []string, id Identity) *http.Request {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	ctx := WithIdentity(r.Context(), id)
+	ctx = context.WithValue(ctx, "roles", roles)
+	return r.WithContext(ctx)
+}
+
+func TestRequireOwnTeam(t *testing.T) {
+	onTeam5 := Identity{Username: "hola", Roles: []string{"team"}, TeamID: 5, HasTeam: true}
+	noTeam := Identity{Username: "injectmgr", Roles: []string{"inject"}}
+
+	cases := []struct {
+		name        string
+		roles       []string
+		identity    Identity
+		teamID      uint
+		bypassRoles []string
+		allowed     bool
+	}{
+		{"own team", []string{"team"}, onTeam5, 5, []string{"admin"}, true},
+		{"other team", []string{"team"}, onTeam5, 6, []string{"admin"}, false},
+		{"no team", []string{"team"}, noTeam, 5, []string{"admin"}, false},
+		{"admin bypasses", []string{"admin"}, noTeam, 5, []string{"admin"}, true},
+		{"inject bypasses when listed", []string{"inject"}, noTeam, 5, []string{"admin", "inject"}, true},
+		{"inject does not bypass when unlisted", []string{"inject"}, noTeam, 5, []string{"admin"}, false},
+		{"team zero is not a team", []string{"team"}, noTeam, 0, []string{"admin"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			got := requireOwnTeam(w, requestAs(tc.roles, tc.identity), tc.teamID, tc.bypassRoles...)
+			assert.Equal(t, tc.allowed, got)
+			if tc.allowed {
+				assert.Equal(t, http.StatusOK, w.Code)
+			} else {
+				assert.Equal(t, http.StatusForbidden, w.Code)
+				assert.JSONEq(t, `{"error":"Forbidden"}`, w.Body.String())
+			}
+		})
+	}
 }

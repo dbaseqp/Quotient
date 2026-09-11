@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"quotient/engine/db"
-	"slices"
 	"strconv"
 	"time"
 )
@@ -130,13 +129,8 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") && !slices.Contains(req_roles, "inject") {
-		myTeamID, hasTeam := CallerTeamID(r.Context())
-		if !hasTeam || myTeamID != teamID {
-			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
-			return
-		}
+	if !requireOwnTeam(w, r, teamID, "admin", "inject") {
+		return
 	}
 
 	submissions, err := db.GetSubmissionsForInject(injectID)

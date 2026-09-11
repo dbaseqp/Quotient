@@ -79,6 +79,28 @@ func GetPcrHistory(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, history)
 }
 
+// allowPCRForTeam reports whether the caller may act on formTeamID, writing the
+// 403 itself when not. disabledMsg is the message for EasyPCR being off.
+func allowPCRForTeam(w http.ResponseWriter, r *http.Request, formTeamID string, disabledMsg string) bool {
+	if slices.Contains(r.Context().Value("roles").([]string), "admin") {
+		return true
+	}
+	if !conf.MiscSettings.EasyPCR {
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": disabledMsg})
+		return false
+	}
+	myTeamID, hasTeam := CallerTeamID(r.Context())
+	if !hasTeam {
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Your account is not associated with a team"})
+		return false
+	}
+	if formTeamID != fmt.Sprint(myTeamID) {
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
+		return false
+	}
+	return true
+}
+
 func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	// get teamid from request
 	// get username,password from request
@@ -100,21 +122,8 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
-		if !conf.MiscSettings.EasyPCR {
-			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
-			return
-		}
-		myTeamID, hasTeam := CallerTeamID(r.Context())
-		if !hasTeam {
-			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Your account is not associated with a team"})
-			return
-		}
-		if form.TeamID != fmt.Sprint(myTeamID) {
-			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
-			return
-		}
+	if !allowPCRForTeam(w, r, form.TeamID, "PCR not allowed") {
+		return
 	}
 
 	id, err := strconv.ParseUint(form.TeamID, 10, 64)
@@ -155,21 +164,8 @@ func ResetPcr(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Failed to decode PCR json", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
-	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
-		if !conf.MiscSettings.EasyPCR {
-			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR reset not allowed"})
-			return
-		}
-		myTeamID, hasTeam := CallerTeamID(r.Context())
-		if !hasTeam {
-			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Your account is not associated with a team"})
-			return
-		}
-		if form.TeamID != fmt.Sprint(myTeamID) {
-			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
-			return
-		}
+	if !allowPCRForTeam(w, r, form.TeamID, "PCR reset not allowed") {
+		return
 	}
 
 	id, err := strconv.ParseUint(form.TeamID, 10, 64)

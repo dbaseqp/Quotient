@@ -49,13 +49,8 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	teamID := uint(temp)
 
-	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
-		myTeamID, hasTeam := CallerTeamID(r.Context())
-		if !hasTeam || teamID != myTeamID {
-			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
-			return
-		}
+	if !requireOwnTeam(w, r, teamID, "admin") {
+		return
 	}
 
 	summaries, err := db.GetTeamSummary(teamID)
@@ -102,14 +97,10 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 	teamID := uint(temp)
 
 	serviceID := r.PathValue("service_name")
-
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") {
-		myTeamID, hasTeam := CallerTeamID(r.Context())
-		if !hasTeam || teamID != myTeamID {
-			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
-			return
-		}
+
+	if !requireOwnTeam(w, r, teamID, "admin") {
+		return
 	}
 
 	service, err := db.GetServiceAllChecksByTeam(teamID, serviceID)
