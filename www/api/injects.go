@@ -41,10 +41,16 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !slices.Contains(req_roles, "admin") && !slices.Contains(req_roles, "inject") {
+			// Compare team IDs. Matching submission.Team.Name against the
+			// username only holds when the two happen to be identical, which
+			// is not true for OIDC accounts.
+			myTeamID, hasTeam := CallerTeamID(r.Context())
 			var mySubmissions []db.SubmissionSchema
-			for _, submission := range data[i].Submissions {
-				if submission.Team.Name == r.Context().Value("username") {
-					mySubmissions = append(mySubmissions, submission)
+			if hasTeam {
+				for _, submission := range data[i].Submissions {
+					if submission.TeamID == myTeamID {
+						mySubmissions = append(mySubmissions, submission)
+					}
 				}
 			}
 			data[i].Submissions = mySubmissions

@@ -18,9 +18,9 @@ import (
 func Authentication(roles ...string) Middleware {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			username, user_roles := api.Authenticate(w, r)
+			identity, ok := api.Authenticate(w, r)
 
-			if username == "" {
+			if !ok {
 				if slices.Contains(roles, "anonymous") {
 					next(w, r)
 					return
@@ -34,10 +34,14 @@ func Authentication(roles ...string) Middleware {
 			}
 
 			// need to refactor for multi-roles
-			for _, user_role := range user_roles {
+			for _, user_role := range identity.Roles {
 				if slices.Contains(roles, user_role) {
-					ctx := context.WithValue(r.Context(), "username", username)
-					ctx = context.WithValue(ctx, "roles", user_roles)
+					// The Identity is authoritative. The username and roles
+					// values are the same data under the keys existing
+					// handlers already read.
+					ctx := api.WithIdentity(r.Context(), identity)
+					ctx = context.WithValue(ctx, "username", identity.Username)
+					ctx = context.WithValue(ctx, "roles", identity.Roles)
 					next(w, r.WithContext(ctx))
 					return
 				}

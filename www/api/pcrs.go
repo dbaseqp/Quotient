@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"quotient/engine/db"
 	"slices"
 	"strconv"
 )
@@ -103,17 +102,16 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
-		if conf.MiscSettings.EasyPCR {
-			me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
-			if err != nil {
-				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error looking up team"})
-				return
-			}
-			if form.TeamID != fmt.Sprint(me.ID) {
-				WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
-				return
-			}
-		} else {
+		if !conf.MiscSettings.EasyPCR {
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
+			return
+		}
+		myTeamID, hasTeam := CallerTeamID(r.Context())
+		if !hasTeam {
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Your account is not associated with a team"})
+			return
+		}
+		if form.TeamID != fmt.Sprint(myTeamID) {
 			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
 			return
 		}
@@ -159,18 +157,17 @@ func ResetPcr(w http.ResponseWriter, r *http.Request) {
 	}
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
-		if conf.MiscSettings.EasyPCR {
-			me, err := db.GetTeamByUsername(r.Context().Value("username").(string))
-			if err != nil {
-				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error looking up team"})
-				return
-			}
-			if form.TeamID != fmt.Sprint(me.ID) {
-				WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
-				return
-			}
-		} else {
+		if !conf.MiscSettings.EasyPCR {
 			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR reset not allowed"})
+			return
+		}
+		myTeamID, hasTeam := CallerTeamID(r.Context())
+		if !hasTeam {
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Your account is not associated with a team"})
+			return
+		}
+		if form.TeamID != fmt.Sprint(myTeamID) {
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
 			return
 		}
 	}

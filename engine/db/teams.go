@@ -40,18 +40,12 @@ func GetTeams() ([]TeamSchema, error) {
 	return teams, nil
 }
 
-func GetTeamByUsername(name string) (TeamSchema, error) {
-	var team TeamSchema
-	result := db.Table("team_schemas").Where("name = ?", name).First(&team)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return team, nil
-		} else {
-			return TeamSchema{}, result.Error
-		}
-	}
-	return team, nil
-}
+// There is deliberately no lookup of a team by name here. Team membership is
+// resolved once per request at the authentication boundary, in
+// www/api.resolveIdentity, and reaches handlers on the request context. A bare
+// name lookup invites treating an authenticated username as a team name, which
+// only holds for local and LDAP accounts and silently mis-attributes writes for
+// every other auth source.
 
 func GetTeamSummary(teamID uint) ([]map[string]any, error) {
 	serviceSummaries := []map[string]any{}
