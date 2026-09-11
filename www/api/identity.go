@@ -189,54 +189,24 @@ func isTeamGroup(group string) bool {
 	})
 }
 
-// teamByNameFold returns the team with this name, ignoring case.
-func teamByNameFold(teams []db.TeamSchema, name string) *db.TeamSchema {
-	for i := range teams {
-		if strings.EqualFold(teams[i].Name, name) {
-			return &teams[i]
-		}
-	}
-	return nil
-}
-
 // mapOIDCUserToTeam resolves an OIDC user's team from their group memberships.
 // Group names need not equal team names; see "How OIDC users are placed on a
-// team" in README.md for the three passes.
-//
-// Pass 1 is not filtered by OIDCTeamGroups: listing a group there declares it a
-// team group. Two cases resolve to nil rather than a guess: a pass 1 entry
-// naming a team that does not exist, and a pass 3 group matching more than one
-// team.
+// team" in README.md for the two passes. Groups matching more than one team
+// resolve to nil rather than a guess.
 func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchema {
-	// Pass 1: explicit configuration.
-	for _, group := range userGroups {
-		for configuredGroup, teamName := range conf.OIDCSettings.OIDCTeamGroupMap {
-			if !strings.EqualFold(group, configuredGroup) {
-				continue
-			}
-			if team := teamByNameFold(teams, teamName); team != nil {
-				return team
-			}
-			// Do not fall through to passes 2 and 3: the map exists to
-			// override them. Falling through would resolve a typo or a renamed
-			// team to whatever the group name resembles.
-			slog.Error("OIDCTeamGroupMap points at a team that does not exist, refusing to place this user",
-				"group", group, "configured_team", teamName)
-			return nil
-		}
-	}
-
-	// Pass 2: the group is named after the team.
+	// Pass 1: the group is named after the team.
 	for _, group := range userGroups {
 		if !isTeamGroup(group) {
 			continue
 		}
-		if team := teamByNameFold(teams, group); team != nil {
-			return team
+		for i := range teams {
+			if strings.EqualFold(teams[i].Name, group) {
+				return &teams[i]
+			}
 		}
 	}
 
-	// Pass 3: the group carries the team's ordinal. Reduce each covered group
+	// Pass 2: the group carries the team's ordinal. Reduce each covered group
 	// once, then walk teams, so every team is considered at most once.
 	var groupOrdinals []uint64
 	for _, group := range userGroups {
@@ -267,7 +237,7 @@ func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchem
 		for _, t := range matched {
 			names = append(names, t.Name)
 		}
-		slog.Error("groups match multiple teams, refusing to guess; set OIDCTeamGroupMap",
+		slog.Error("groups match multiple teams, refusing to guess; name the group after its team",
 			"groups", userGroups, "candidates", names)
 	}
 

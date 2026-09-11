@@ -199,12 +199,6 @@ OIDCRefreshTokenExpiryInject = 86400   # 1 day
 
 # UI option
 OIDCDisableLocalLogin = false
-
-# Optional: map a group to a team Name from [[Team]].
-# Must come last in [OIDCSettings]: TOML assigns every key after a table
-# header to that table.
-[OIDCSettings.OIDCTeamGroupMap]
-"ccdc-blue-charlie" = "team03"
 ```
 
 ##### How OIDC users are placed on a team
@@ -213,21 +207,18 @@ OIDCDisableLocalLogin = false
 a user's *role*. They do not set which team a `team` user belongs to. A trailing
 `*` makes an entry a prefix pattern; anything else matches the whole group name.
 
-The team is resolved from the same group memberships in three passes, stopping
-at the first that resolves:
+The team is resolved from the same group memberships. Only groups covered by
+`OIDCTeamGroups` are considered, in two passes, stopping at the first that
+resolves:
 
-1. `OIDCTeamGroupMap`, if the group appears there.
-2. A group name equal to a team `Name` under `[[Team]]`, ignoring case.
-3. The trailing number of a group covered by `OIDCTeamGroups`, compared with the
-   trailing number of each team `Name`. `quotient-blue-Team-05` matches a team
-   named `team05`, `team5` or `Team 5`. A name ending in anything but a digit,
-   such as `team05b`, has no trailing number and is matched only by pass 1 or 2.
+1. A group name equal to a team `Name` under `[[Team]]`, ignoring case.
+2. The trailing number of the group, compared with the trailing number of each
+   team `Name`. `quotient-blue-Team-05` matches a team named `team05`, `team5`
+   or `Team 5`. A name ending in anything but a digit, such as `team05b`, has no
+   trailing number and is matched only by pass 1.
 
-Two cases resolve to no team and are logged: a pass 3 group matching more than
-one team, and an `OIDCTeamGroupMap` entry naming a team that does not exist. The
-map does not fall back to passes 2 and 3, so a typo or a renamed team denies
-that group's users rather than placing them by resemblance. Without LDAP, such
-an entry is rejected at startup instead.
+Groups matching more than one team resolve to no team, and the reason is logged.
+Name the group after its team to make the assignment unambiguous.
 
 The OIDC username (`preferred_username`, then `email`, then `sub`) need not
 equal the team name and is never used to pick a team.
