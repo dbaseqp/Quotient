@@ -23,7 +23,7 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 	injectID := uint(temp)
 	teamID, hasTeam := CallerTeamID(r.Context())
 	if !hasTeam {
-		// Refuse rather than writing a submission attributed to team zero.
+		// Refuse rather than write a submission attributed to team zero.
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Your account is not associated with a team"})
 		return
 	}

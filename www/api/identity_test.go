@@ -60,8 +60,7 @@ func TestTeamOrdinal(t *testing.T) {
 	}
 }
 
-// The reported failure: a user named "hola" in group "quotient-blue-Team-05"
-// submitting a PCR for team05.
+// The reported failure: user "hola" in group "quotient-blue-Team-05", team05.
 func TestMapOIDCUserToTeamReportedCase(t *testing.T) {
 	withOIDCConfig(t, []string{"quotient-blue-*"}, nil)
 	teams := teamList("team01", "team02", "team03", "team04", "team05")
@@ -73,7 +72,7 @@ func TestMapOIDCUserToTeamReportedCase(t *testing.T) {
 }
 
 func TestMapOIDCUserToTeamUnpaddedTeamNames(t *testing.T) {
-	// The shipped event.conf.example names teams "team1", "team2" - unpadded.
+	// event.conf.example names teams "team1", "team2" - unpadded.
 	withOIDCConfig(t, []string{"quotient-blue-*"}, nil)
 	teams := teamList("team1", "team2", "team3", "team4", "team5")
 
@@ -99,7 +98,7 @@ func TestMapOIDCUserToTeamDivisionSuffix(t *testing.T) {
 	require.NotNil(t, team)
 	assert.Equal(t, "team05b", team.Name)
 
-	// A group with no division must not silently land on a division team.
+	// A group with no division must not match a division team.
 	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05"}))
 }
 
@@ -124,8 +123,7 @@ func TestMapOIDCUserToTeamExplicitMapWins(t *testing.T) {
 }
 
 func TestMapOIDCUserToTeamExplicitMapWorksWithoutTeamGroupPattern(t *testing.T) {
-	// Group names carrying no team ordinal at all are only resolvable via the
-	// explicit map.
+	// A group with no team ordinal resolves only via the explicit map.
 	withOIDCConfig(t, []string{"ccdc-blue-*"}, map[string]string{
 		"ccdc-blue-charlie": "team03",
 	})
@@ -136,9 +134,8 @@ func TestMapOIDCUserToTeamExplicitMapWorksWithoutTeamGroupPattern(t *testing.T) 
 	assert.Equal(t, "team03", team.Name)
 }
 
-// A mapped group whose team does not exist must resolve to nothing. Falling
-// through to the trailing-ordinal pass would turn a typo, or a team renamed
-// after the config was written, into a silent placement on another team.
+// A mapped group whose team does not exist must resolve to nothing, not fall
+// through to the trailing-ordinal pass.
 func TestMapOIDCUserToTeamRefusesBrokenMapEntry(t *testing.T) {
 	withOIDCConfig(t, []string{"ccdc-blue-*"}, map[string]string{
 		// The operator meant team01 and dropped the zero.
@@ -147,12 +144,11 @@ func TestMapOIDCUserToTeamRefusesBrokenMapEntry(t *testing.T) {
 	teams := teamList("team01", "team02", "team03")
 
 	// Without the refusal this resolves to team03, from the trailing 3 of
-	// "room3", granting PCR authority over a team the operator never named.
+	// "room3".
 	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"ccdc-blue-alpha-room3"}))
 }
 
-// The refusal is scoped to the mapped group. Another group the user holds still
-// resolves normally.
+// The refusal is scoped to the mapped group; other groups still resolve.
 func TestMapOIDCUserToTeamBrokenEntryDoesNotBlockUnmappedGroups(t *testing.T) {
 	withOIDCConfig(t, []string{"ccdc-blue-*"}, map[string]string{
 		"ccdc-blue-alpha-room3": "team1",
@@ -165,8 +161,7 @@ func TestMapOIDCUserToTeamBrokenEntryDoesNotBlockUnmappedGroups(t *testing.T) {
 }
 
 func TestMapOIDCUserToTeamRefusesAmbiguousMatch(t *testing.T) {
-	// "team5" and "team05" both reduce to ordinal 5. Guessing would put the
-	// user on the wrong team, so nothing is resolved.
+	// "team5" and "team05" both reduce to ordinal 5, so nothing resolves.
 	withOIDCConfig(t, []string{"quotient-blue-*"}, nil)
 	teams := teamList("team5", "team05")
 
@@ -177,8 +172,8 @@ func TestMapOIDCUserToTeamIgnoresNonTeamGroups(t *testing.T) {
 	withOIDCConfig(t, []string{"quotient-blue-*"}, nil)
 	teams := teamList("team01", "team05")
 
-	// A group outside the configured team patterns must not assign a team,
-	// even though it ends in digits.
+	// A group outside the configured patterns must not assign a team, even
+	// though it ends in digits.
 	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"vpn-users-05", "some-other-group"}))
 }
 
@@ -192,7 +187,7 @@ func TestMapOIDCUserToTeamNoMatch(t *testing.T) {
 
 func TestMapOIDCUserToTeamNegativeLookingSuffix(t *testing.T) {
 	// The previous implementation read the last two characters and called
-	// strconv.Atoi, so "-5" parsed as -5 and produced the team name "team-5".
+	// strconv.Atoi, so "-5" parsed as -5 and produced "team-5".
 	withOIDCConfig(t, []string{"quotient-blue-*"}, nil)
 	teams := teamList("team05")
 
@@ -201,8 +196,7 @@ func TestMapOIDCUserToTeamNegativeLookingSuffix(t *testing.T) {
 	assert.Equal(t, "team05", team.Name)
 }
 
-// Local and LDAP accounts are named after their team, so the rule for both is
-// a plain name match.
+// Local and LDAP accounts are named after their team; the rule is a name match.
 func TestTeamNamedMatchesTeamName(t *testing.T) {
 	teams := teamList("team01", "team02")
 
@@ -218,8 +212,8 @@ func TestTeamNamedWithoutTeam(t *testing.T) {
 	require.Error(t, err)
 }
 
-// A team ID must never be readable without the caller learning whether one
-// exists. Reading team zero as a real team is what produced the original 403.
+// A team ID must not be readable without the caller learning whether one
+// exists.
 func TestCallerTeamIDReportsAbsence(t *testing.T) {
 	_, hasTeam := CallerTeamID(context.Background())
 	assert.False(t, hasTeam, "a request with no identity must report no team")
@@ -234,8 +228,7 @@ func TestCallerTeamIDReportsAbsence(t *testing.T) {
 	assert.Equal(t, uint(5), id)
 }
 
-// The identity carried on the context is the one the middleware stored, not a
-// value any handler re-derived.
+// The context carries the identity the middleware stored.
 func TestIdentityRoundTripsThroughContext(t *testing.T) {
 	want := Identity{Username: "hola", AuthSource: "oidc", Roles: []string{"team"}, TeamID: 5, HasTeam: true}
 	got, ok := IdentityFrom(WithIdentity(context.Background(), want))

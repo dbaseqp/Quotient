@@ -396,10 +396,8 @@
                                         return response.json()
                                             .catch(() => ({ error: `HTTP ${response.status}` }));
                                     }).then((data) => {
-                                        // The API reports why it refused in the
-                                        // body. Logging it to the console only
-                                        // leaves the submitter with a form that
-                                        // silently does nothing.
+                                        // Show the reason from the body, not
+                                        // just in the console.
                                         if (data.error) {
                                             showSubmitError(data.error);
                                             return;

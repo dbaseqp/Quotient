@@ -36,9 +36,8 @@ func Authentication(roles ...string) Middleware {
 			// need to refactor for multi-roles
 			for _, user_role := range identity.Roles {
 				if slices.Contains(roles, user_role) {
-					// The Identity is authoritative. The username and roles
-					// values are the same data under the keys existing
-					// handlers already read.
+					// Identity is authoritative; the username and roles values
+					// are the same data under the keys handlers already read.
 					ctx := api.WithIdentity(r.Context(), identity)
 					ctx = context.WithValue(ctx, "username", identity.Username)
 					ctx = context.WithValue(ctx, "roles", identity.Roles)

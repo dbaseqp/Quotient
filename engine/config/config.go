@@ -92,10 +92,9 @@ type OIDCAuthConfig struct {
 	OIDCTeamGroups   []string
 	OIDCInjectGroups []string
 
-	// OIDCTeamGroupMap maps an OIDC group name directly to a team Name as
-	// configured under [[Team]]. Use it when group names do not carry the
-	// team number in a form the automatic matcher can read. Keys are matched
-	// case-insensitively and take precedence over automatic matching.
+	// OIDCTeamGroupMap maps an OIDC group name to a team Name from [[Team]].
+	// Keys match case-insensitively and take precedence over automatic
+	// matching.
 	OIDCTeamGroupMap map[string]string
 
 	// Token Expiration Settings (in seconds)
@@ -376,11 +375,9 @@ func checkConfig(conf *ConfigSettings) error {
 			conf.OIDCSettings.OIDCRefreshTokenExpiryInject = 86400 // 1 day
 		}
 
-		// An OIDCTeamGroupMap entry naming a team that does not exist resolves
-		// to nothing at login, which surfaces as an unexplained 403 on PCR and
-		// inject submission. Catch it here instead. LDAP creates team rows at
-		// startup from directory accounts, so the [[Team]] list is only the
-		// full set of teams when LDAP is not configured.
+		// Reject an OIDCTeamGroupMap entry naming a team that does not exist.
+		// Skipped under LDAP: AddTeams creates team rows from directory
+		// accounts, so [[Team]] is not the full set of teams there.
 		if conf.LdapSettings == (LdapAuthConfig{}) {
 			for group, teamName := range conf.OIDCSettings.OIDCTeamGroupMap {
 				found := false

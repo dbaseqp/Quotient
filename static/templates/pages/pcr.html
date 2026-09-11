@@ -716,9 +716,7 @@ john.doe,SecurePassword!
 
     function handleResponse(response) {
         if (!response.ok) {
-            // The API reports why in the body. Surfacing only the status code
-            // turns an actionable message such as "Your account is not
-            // associated with a team" into an unexplained 403.
+            // Reject with the reason from the body, not just the status code.
             return response.json()
                 .catch(() => null)
                 .then(body => {

@@ -200,55 +200,45 @@ OIDCRefreshTokenExpiryInject = 86400   # 1 day
 # UI option
 OIDCDisableLocalLogin = false
 
-# Optional: map a group directly to a team Name from [[Team]].
-# Must be the last thing in [OIDCSettings]; TOML assigns every key after a
-# table header to that table.
+# Optional: map a group to a team Name from [[Team]].
+# Must come last in [OIDCSettings]: TOML assigns every key after a table
+# header to that table.
 [OIDCSettings.OIDCTeamGroupMap]
 "ccdc-blue-charlie" = "team03"
 ```
 
 ##### How OIDC users are placed on a team
 
-The groups listed in `OIDCAdminGroups`, `OIDCRedGroups`, `OIDCTeamGroups` and
-`OIDCInjectGroups` decide a user's *role*. They do not by themselves decide
-*which team* a `team` user belongs to. A trailing `*` makes an entry a prefix
-pattern; anything else must match the whole group name.
+`OIDCAdminGroups`, `OIDCRedGroups`, `OIDCTeamGroups` and `OIDCInjectGroups` set
+a user's *role*. They do not set which team a `team` user belongs to. A trailing
+`*` makes an entry a prefix pattern; anything else matches the whole group name.
 
-A user's team is resolved separately from their group memberships, in three
-passes, stopping at the first that resolves:
+The team is resolved from the same group memberships in three passes, stopping
+at the first that resolves:
 
 1. `OIDCTeamGroupMap`, if the group appears there.
 2. A group name equal to a team `Name` under `[[Team]]`, ignoring case.
-3. The trailing number of a group covered by `OIDCTeamGroups`, compared against
-   the trailing number of each team `Name`. So `quotient-blue-Team-05` places a
-   user on a team named `team05`, `team5` or `Team 5` alike. A trailing
-   division letter is part of the comparison, so `quotient-blue-Team-05b` only
-   matches `team05b`, never `team05`.
+3. The trailing number of a group covered by `OIDCTeamGroups`, compared with the
+   trailing number of each team `Name`. `quotient-blue-Team-05` matches a team
+   named `team05`, `team5` or `Team 5`. A trailing division letter is part of
+   the comparison, so `quotient-blue-Team-05b` matches only `team05b`.
 
-If a group matches more than one team in pass 3, no team is assigned and the
-reason is logged. Use `OIDCTeamGroupMap` to make the assignment explicit.
+Two cases resolve to no team and are logged: a pass 3 group matching more than
+one team, and an `OIDCTeamGroupMap` entry naming a team that does not exist. The
+map does not fall back to passes 2 and 3, so a typo or a renamed team denies
+that group's users rather than placing them by resemblance. Without LDAP, such
+an entry is rejected at startup instead.
 
-`OIDCTeamGroupMap` decides on its own. A group listed there resolves to the team
-it names, or to no team at all; it never falls back to passes 2 and 3. So an
-entry naming a team that does not exist, through a typo or a team renamed after
-the config was written, denies that group's users rather than placing them on
-whichever team their group name happens to resemble. The server logs the group
-and the team it could not find. Where LDAP is not also configured, the same
-mistake is caught at startup instead.
+The OIDC username (`preferred_username`, then `email`, then `sub`) need not
+equal the team name and is never used to pick a team.
 
-The OIDC username (`preferred_username`, falling back to `email`, then `sub`)
-does **not** have to equal the team name and is never used to pick a team.
-
-Local and LDAP accounts are the opposite case: they are named after their team.
-A local team account is a `[[Team]]` entry, whose `Name` is also the team, and
-LDAP creates one team per `sAMAccountName` in `LdapTeamGroupDn`. For those two
-sources the username *is* the team name, by construction.
+Local and LDAP accounts are named after their team. A local team account is a
+`[[Team]]` entry whose `Name` is also the team; LDAP creates one team per
+`sAMAccountName` in `LdapTeamGroupDn`.
 
 A `team` user who resolves to no team can sign in and read the public
-scoreboard, but every request scoped to their own team is refused with 403.
-Password change requests and inject submissions are the usual places this
-shows up. The server logs the username, its groups and the configured team
-group patterns whenever this happens.
+scoreboard, but every team-scoped request returns 403. The server logs the
+username, its groups and the configured team group patterns.
 
 #### SSL Settings
 

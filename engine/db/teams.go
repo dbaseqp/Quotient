@@ -40,12 +40,10 @@ func GetTeams() ([]TeamSchema, error) {
 	return teams, nil
 }
 
-// There is deliberately no lookup of a team by name here. Team membership is
-// resolved once per request at the authentication boundary, in
-// www/api.resolveIdentity, and reaches handlers on the request context. A bare
-// name lookup invites treating an authenticated username as a team name, which
-// only holds for local and LDAP accounts and silently mis-attributes writes for
-// every other auth source.
+// No lookup of a team by name here. Team membership is resolved in
+// www/api.resolveIdentity and reaches handlers on the request context. A name
+// lookup would be called with an authenticated username, which equals the team
+// name only for local and LDAP accounts.
 
 func GetTeamSummary(teamID uint) ([]map[string]any, error) {
 	serviceSummaries := []map[string]any{}

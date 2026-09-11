@@ -24,7 +24,7 @@ func GetTeams(w http.ResponseWriter, r *http.Request) {
 }
 
 // filterToTeam narrows a team list to the caller's own team. A caller with no
-// team sees nothing, which is the correct answer for red and inject accounts.
+// team gets an empty list.
 func filterToTeam(teams []db.TeamSchema, teamID uint, hasTeam bool) []db.TeamSchema {
 	if !hasTeam {
 		return []db.TeamSchema{}

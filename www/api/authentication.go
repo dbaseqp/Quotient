@@ -138,9 +138,8 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Successful logout", "username", r.Context().Value("username"))
 }
 
-// Authenticate resolves the caller from their session cookie. The returned
-// Identity carries the caller's roles and team; the boolean is false when the
-// request carries no usable session.
+// Authenticate resolves the caller from their session cookie. Reports false
+// when the request carries no usable session.
 func Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
 	token, err := r.Cookie(COOKIENAME)
 	if err != nil {
