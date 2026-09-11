@@ -368,6 +368,7 @@
                                     <input type="file" class="form-control" id="submit-inject-files">
                                 </div>
                                 <button type="submit" class="btn btn-primary">Submit</button>
+                                <div id="submit-inject-error" class="alert alert-danger mt-3 d-none" role="alert"></div>
                             </form>
                             <script>
                                 const formSubmit = (event) => {
@@ -380,19 +381,32 @@
                                     const PAYLOAD = new FormData();
                                     PAYLOAD.append("file", FILES.files[0]);
 
+                                    const ERROR_BOX = FORM.querySelector("#submit-inject-error");
+                                    const showSubmitError = (message) => {
+                                        console.error(message);
+                                        ERROR_BOX.textContent = message;
+                                        ERROR_BOX.classList.remove("d-none");
+                                    };
+                                    ERROR_BOX.classList.add("d-none");
+
                                     fetch(`/api/injects/${ID}/submit`, {
                                         method: "POST",
                                         body: PAYLOAD,
                                     }).then((response) => {
-                                        return response.json();
+                                        return response.json()
+                                            .catch(() => ({ error: `HTTP ${response.status}` }));
                                     }).then((data) => {
+                                        // The API reports why it refused in the
+                                        // body. Logging it to the console only
+                                        // leaves the submitter with a form that
+                                        // silently does nothing.
                                         if (data.error) {
-                                            console.error(data.error);
+                                            showSubmitError(data.error);
                                             return;
-                                        } else {
-                                            console.log(data);
-                                            refreshInjects();
                                         }
+                                        refreshInjects();
+                                    }).catch((error) => {
+                                        showSubmitError(error.message);
                                     });
                                 };
                             </script>

@@ -553,7 +553,7 @@ john.doe,SecurePassword!
         })
         .catch(err => {
             console.error("Error submitting PCR:", err);
-            showAlert("Failed to submit changes. Please try again.", "danger");
+            showAlert(`Failed to submit changes: ${err.message}`, "danger");
         })
         .finally(() => {
             setButtonLoading("submit-btn", false);
@@ -580,7 +580,7 @@ john.doe,SecurePassword!
         })
         .catch(err => {
             console.error("Error resetting PCR:", err);
-            showAlert("Failed to reset credentials. Please try again.", "danger");
+            showAlert(`Failed to reset credentials: ${err.message}`, "danger");
         })
         .finally(() => {
             setButtonLoading("confirm-reset-btn", false);
@@ -716,7 +716,15 @@ john.doe,SecurePassword!
 
     function handleResponse(response) {
         if (!response.ok) {
-            return Promise.reject(new Error(`HTTP ${response.status}`));
+            // The API reports why in the body. Surfacing only the status code
+            // turns an actionable message such as "Your account is not
+            // associated with a team" into an unexplained 403.
+            return response.json()
+                .catch(() => null)
+                .then(body => {
+                    const detail = body && body.error ? body.error : `HTTP ${response.status}`;
+                    return Promise.reject(new Error(detail));
+                });
         }
         return response.json();
     }
