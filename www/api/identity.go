@@ -145,23 +145,23 @@ func teamNamed(name string) func([]db.TeamSchema) (db.TeamSchema, error) {
 	}
 }
 
-// teamOrdinalPattern captures a trailing run of digits and an optional division
-// letter. End-anchored: "quotient-blue-Team-05" yields ("05", ""),
-// "WCComps_Blue_Team05b" yields ("05", "b").
-var teamOrdinalPattern = regexp.MustCompile(`([0-9]+)([A-Za-z]?)$`)
+// teamOrdinalPattern captures a trailing run of digits. End-anchored, so
+// "quotient-blue-Team-05" yields "05".
+var teamOrdinalPattern = regexp.MustCompile(`([0-9]+)$`)
 
-// teamOrdinal reduces a group or team name to a comparable ordinal such as "5"
-// or "5b". Reports false when the name has no trailing number, as in "redteam".
-func teamOrdinal(name string) (string, bool) {
+// teamOrdinal reduces a group or team name to its trailing number, so "team05",
+// "team5" and "Team 5" all yield 5. Reports false when the name has no trailing
+// number, as in "redteam".
+func teamOrdinal(name string) (uint64, bool) {
 	m := teamOrdinalPattern.FindStringSubmatch(strings.TrimSpace(name))
 	if m == nil {
-		return "", false
+		return 0, false
 	}
 	number, err := strconv.ParseUint(m[1], 10, 32)
 	if err != nil {
-		return "", false
+		return 0, false
 	}
-	return fmt.Sprintf("%d%s", number, strings.ToLower(m[2])), true
+	return number, true
 }
 
 // isTeamGroup reports whether a group is covered by an OIDCTeamGroups pattern.

@@ -35,21 +35,22 @@ func withOIDCConfig(t *testing.T, teamGroups []string, groupMap map[string]strin
 func TestTeamOrdinal(t *testing.T) {
 	cases := []struct {
 		name     string
-		expected string
+		expected uint64
 		ok       bool
 	}{
-		{"quotient-blue-Team-05", "5", true},
-		{"quotient-blue-Team-5", "5", true},
-		{"team05", "5", true},
-		{"team5", "5", true},
-		{"Team 5", "5", true},
-		{"WCComps_Quotient_Blue_Team01", "1", true},
-		{"quotient-blue-Team-05b", "5b", true},
-		{"quotient-blue-Team-05B", "5b", true},
-		{"team10", "10", true},
-		{"team100", "100", true},
-		{"redteam", "", false},
-		{"", "", false},
+		{"quotient-blue-Team-05", 5, true},
+		{"quotient-blue-Team-5", 5, true},
+		{"team05", 5, true},
+		{"team5", 5, true},
+		{"Team 5", 5, true},
+		{"WCComps_Quotient_Blue_Team01", 1, true},
+		{"team10", 10, true},
+		{"team100", 100, true},
+		{"redteam", 0, false},
+		{"", 0, false},
+		// A trailing letter is not an ordinal.
+		{"quotient-blue-Team-05b", 0, false},
+		{"ccdc-blue-alpha", 0, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -90,15 +91,13 @@ func TestMapOIDCUserToTeamSingleDigitGroup(t *testing.T) {
 	assert.Equal(t, "team05", team.Name)
 }
 
-func TestMapOIDCUserToTeamDivisionSuffix(t *testing.T) {
+// A group or team name ending in a letter carries no ordinal, so pass 3 skips
+// it. Such names need the explicit map or an exact name match.
+func TestMapOIDCUserToTeamIgnoresLetterSuffixedNames(t *testing.T) {
 	withOIDCConfig(t, []string{"quotient-blue-*"}, nil)
-	teams := teamList("team05a", "team05b", "team05c")
+	teams := teamList("team05a", "team05b")
 
-	team := mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05b"})
-	require.NotNil(t, team)
-	assert.Equal(t, "team05b", team.Name)
-
-	// A group with no division must not match a division team.
+	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05b"}))
 	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05"}))
 }
 

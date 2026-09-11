@@ -220,8 +220,8 @@ at the first that resolves:
 2. A group name equal to a team `Name` under `[[Team]]`, ignoring case.
 3. The trailing number of a group covered by `OIDCTeamGroups`, compared with the
    trailing number of each team `Name`. `quotient-blue-Team-05` matches a team
-   named `team05`, `team5` or `Team 5`. A trailing division letter is part of
-   the comparison, so `quotient-blue-Team-05b` matches only `team05b`.
+   named `team05`, `team5` or `Team 5`. A name ending in anything but a digit,
+   such as `team05b`, has no trailing number and is matched only by pass 1 or 2.
 
 Two cases resolve to no team and are logged: a pass 3 group matching more than
 one team, and an `OIDCTeamGroupMap` entry naming a team that does not exist. The
