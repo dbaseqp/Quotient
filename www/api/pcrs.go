@@ -80,13 +80,13 @@ func GetPcrHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 // allowPCRForTeam reports whether the caller may act on formTeamID, writing the
-// 403 itself when not. disabledMsg is the message for EasyPCR being off.
-func allowPCRForTeam(w http.ResponseWriter, r *http.Request, formTeamID string, disabledMsg string) bool {
+// 403 itself when not.
+func allowPCRForTeam(w http.ResponseWriter, r *http.Request, formTeamID string, easyPCRDisabledMsg string) bool {
 	if slices.Contains(r.Context().Value("roles").([]string), "admin") {
 		return true
 	}
 	if !conf.MiscSettings.EasyPCR {
-		WriteJSON(w, http.StatusForbidden, map[string]any{"error": disabledMsg})
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": easyPCRDisabledMsg})
 		return false
 	}
 	myTeamID, hasTeam := CallerTeamID(r.Context())

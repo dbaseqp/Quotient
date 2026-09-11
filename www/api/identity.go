@@ -42,15 +42,16 @@ func WithIdentity(ctx context.Context, id Identity) context.Context {
 }
 
 // IdentityFrom returns the caller's identity. Reports false if the request did
-// not pass through the authentication middleware.
+// not pass through the authentication middleware, or passed through it
+// anonymously.
 func IdentityFrom(ctx context.Context) (Identity, bool) {
 	id, ok := ctx.Value(identityContextKey).(Identity)
 	return id, ok
 }
 
 // CallerTeamID returns the team the caller acts as. Reports false when the
-// caller has no team, normal for admin, red and inject accounts. No variant
-// returns a bare team ID.
+// caller has no team, normal for admin and inject accounts. Do not add a
+// variant returning the ID alone: every caller must handle the no-team case.
 func CallerTeamID(ctx context.Context) (uint, bool) {
 	id, ok := IdentityFrom(ctx)
 	if !ok {
@@ -76,19 +77,18 @@ func requireOwnTeam(w http.ResponseWriter, r *http.Request, teamID uint, bypassR
 }
 
 // resolveIdentity turns an authenticated username and auth source into roles
-// and a team. A new auth source needs one case in the switch below.
+// and a team.
 func resolveIdentity(username string, authSource string) (Identity, error) {
 	id := Identity{Username: username}
 
-	// teamFor resolves the team for this auth source. Set alongside the roles,
-	// from the same read, so both come from one source at one point in time.
+	// teamFor carries what this auth source needs to pick the team: the OIDC
+	// groups read alongside the roles, or the username for local and LDAP.
 	var teamFor func(teams []db.TeamSchema) (db.TeamSchema, error)
 
 	switch authSource {
 	case "oidc":
 		userInfo, exists := GetOIDCUserInfo(username)
 		if !exists {
-			// Session gone after a restart or expiry; the user re-logs in.
 			return Identity{}, errors.New("OIDC session expired - please login again")
 		}
 		id.Roles = userInfo.Roles
@@ -107,8 +107,7 @@ func resolveIdentity(username string, authSource string) (Identity, error) {
 			return Identity{}, errors.New("local user has no roles")
 		}
 		id.Roles = roles
-		// A local team account is a [[Team]] entry whose Name is also the team
-		// row, so the username is the team name.
+		// A local team account's username is the team name.
 		teamFor = teamNamed(username)
 
 	case "ldap":
@@ -117,8 +116,8 @@ func resolveIdentity(username string, authSource string) (Identity, error) {
 			return Identity{}, err
 		}
 		id.Roles = roles
-		// AddTeams creates one team row per LDAP sAMAccountName, so the same
-		// rule applies.
+		// LDAP team accounts get one team row per sAMAccountName, so the
+		// username is again the team name.
 		teamFor = teamNamed(username)
 
 	default:
@@ -137,8 +136,7 @@ func resolveIdentity(username string, authSource string) (Identity, error) {
 
 	team, err := teamFor(teams)
 	if err != nil {
-		// Not fatal: the user can still read the public scoreboard. It is
-		// always a misconfiguration, so log at error level.
+		// Not fatal: the user can still read the public scoreboard.
 		slog.Error("user holds the team role but no team could be resolved",
 			"username", username, "auth_source", authSource, "err", err)
 		return id, nil
@@ -149,7 +147,7 @@ func resolveIdentity(username string, authSource string) (Identity, error) {
 	return id, nil
 }
 
-// teamNamed matches a team by name, the rule for local and LDAP accounts.
+// teamNamed matches a team by name, case-sensitively.
 func teamNamed(name string) func([]db.TeamSchema) (db.TeamSchema, error) {
 	return func(teams []db.TeamSchema) (db.TeamSchema, error) {
 		for _, team := range teams {
@@ -161,8 +159,6 @@ func teamNamed(name string) func([]db.TeamSchema) (db.TeamSchema, error) {
 	}
 }
 
-// teamOrdinalPattern captures a trailing run of digits. End-anchored, so
-// "quotient-blue-Team-05" yields "05".
 var teamOrdinalPattern = regexp.MustCompile(`([0-9]+)$`)
 
 // teamOrdinal reduces a group or team name to its trailing number, so "team05",
@@ -189,12 +185,12 @@ func isTeamGroup(group string) bool {
 	})
 }
 
-// mapOIDCUserToTeam resolves an OIDC user's team from their group memberships.
-// Group names need not equal team names; see "How OIDC users are placed on a
-// team" in README.md for the two passes. Groups matching more than one team
-// resolve to nil rather than a guess.
+// mapOIDCUserToTeam resolves an OIDC user's team from their group memberships;
+// see "How OIDC users are placed on a team" in README.md for the two passes.
+// Returns nil when nothing matches, which every caller must handle.
 func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchema {
-	// Pass 1: the group is named after the team.
+	// Pass 1: the group is named after the team. The first group that names a
+	// team wins; this pass does not look for a second.
 	for _, group := range userGroups {
 		if !isTeamGroup(group) {
 			continue
@@ -206,8 +202,8 @@ func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchem
 		}
 	}
 
-	// Pass 2: the group carries the team's ordinal. Reduce each covered group
-	// once, then walk teams, so every team is considered at most once.
+	// Pass 2: the group carries the team's ordinal. An ordinal matching more
+	// than one team resolves to nil rather than a guess.
 	var groupOrdinals []uint64
 	for _, group := range userGroups {
 		if !isTeamGroup(group) {
@@ -244,7 +240,6 @@ func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchem
 	return nil
 }
 
-// localRoles reads the roles of a local account.
 func localRoles(username string) []string {
 	roles := make([]string, 0)
 	for _, admin := range conf.Admin {

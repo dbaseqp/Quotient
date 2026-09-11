@@ -211,25 +211,27 @@ The team is resolved from the same group memberships. Only groups covered by
 `OIDCTeamGroups` are considered, in two passes, stopping at the first that
 resolves:
 
-1. A group name equal to a team `Name` under `[[Team]]`, ignoring case.
+1. A group name equal to a team name, ignoring case. The first group that
+   names a team wins.
 2. The trailing number of the group, compared with the trailing number of each
-   team `Name`. `quotient-blue-Team-05` matches a team named `team05`, `team5`
-   or `Team 5`. A name ending in anything but a digit, such as `team05b`, has no
-   trailing number and is matched only by pass 1.
+   team name. `quotient-blue-Team-05` matches a team named `team05`, `team5` or
+   `Team 5`. A name ending in a non-digit, such as `team05b`, is matched only by
+   pass 1. A number matching more than one team resolves to no team, and the
+   reason is logged.
 
-Groups matching more than one team resolve to no team, and the reason is logged.
 Name the group after its team to make the assignment unambiguous.
 
-The OIDC username (`preferred_username`, then `email`, then `sub`) need not
-equal the team name and is never used to pick a team.
+The OIDC username (`preferred_username`, then `email`, then `sub`) is never
+used to pick a team.
 
 Local and LDAP accounts are named after their team. A local team account is a
 `[[Team]]` entry whose `Name` is also the team; LDAP creates one team per
 `sAMAccountName` in `LdapTeamGroupDn`.
 
 A `team` user who resolves to no team can sign in and read the public
-scoreboard, but every team-scoped request returns 403. The server logs the
-username, its groups and the configured team group patterns.
+scoreboard. Requests that name a team, such as service detail, inject
+submission and password changes, return 403; list endpoints such as
+`/api/teams` and `/api/injects` come back empty.
 
 #### SSL Settings
 

@@ -62,7 +62,6 @@ func TestTeamOrdinal(t *testing.T) {
 	}
 }
 
-// A prefix-matched group with a padded ordinal maps to a padded team name.
 func TestMapOIDCUserToTeamPaddedOrdinal(t *testing.T) {
 	withOIDCConfig(t, []string{"quotient-blue-*"})
 	teams := teamList("team01", "team02", "team03", "team04", "team05")
@@ -92,8 +91,7 @@ func TestMapOIDCUserToTeamSingleDigitGroup(t *testing.T) {
 	assert.Equal(t, "team05", team.Name)
 }
 
-// A group or team name ending in a letter carries no ordinal, so pass 3 skips
-// it. Such names need the explicit map or an exact name match.
+// A name ending in a letter carries no ordinal, so only pass 1 can match it.
 func TestMapOIDCUserToTeamIgnoresLetterSuffixedNames(t *testing.T) {
 	withOIDCConfig(t, []string{"quotient-blue-*"})
 	teams := teamList("team05a", "team05b")
@@ -140,7 +138,6 @@ func TestMapOIDCUserToTeamNoMatch(t *testing.T) {
 	assert.Nil(t, mapOIDCUserToTeam(teams, nil))
 }
 
-// The hyphen in "Team-5" separates the ordinal; it is not part of it.
 func TestMapOIDCUserToTeamHyphenBeforeSingleDigit(t *testing.T) {
 	withOIDCConfig(t, []string{"quotient-blue-*"})
 	teams := teamList("team05")
@@ -150,7 +147,6 @@ func TestMapOIDCUserToTeamHyphenBeforeSingleDigit(t *testing.T) {
 	assert.Equal(t, "team05", team.Name)
 }
 
-// Local and LDAP accounts are named after their team; the rule is a name match.
 func TestTeamNamedMatchesTeamName(t *testing.T) {
 	teams := teamList("team01", "team02")
 
@@ -166,8 +162,6 @@ func TestTeamNamedWithoutTeam(t *testing.T) {
 	require.Error(t, err)
 }
 
-// A team ID must not be readable without the caller learning whether one
-// exists.
 func TestCallerTeamIDReportsAbsence(t *testing.T) {
 	_, hasTeam := CallerTeamID(context.Background())
 	assert.False(t, hasTeam, "a request with no identity must report no team")
@@ -182,7 +176,6 @@ func TestCallerTeamIDReportsAbsence(t *testing.T) {
 	assert.Equal(t, uint(5), id)
 }
 
-// The context carries the identity the middleware stored.
 func TestIdentityRoundTripsThroughContext(t *testing.T) {
 	want := Identity{Username: "hola", Roles: []string{"team"}, TeamID: 5, HasTeam: true}
 	got, ok := IdentityFrom(WithIdentity(context.Background(), want))

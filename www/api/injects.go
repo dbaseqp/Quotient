@@ -41,8 +41,6 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !slices.Contains(req_roles, "admin") && !slices.Contains(req_roles, "inject") {
-			// Compare team IDs. submission.Team.Name equals the username only
-			// for local and LDAP accounts.
 			myTeamID, hasTeam := CallerTeamID(r.Context())
 			var mySubmissions []db.SubmissionSchema
 			if hasTeam {

@@ -139,7 +139,9 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // Authenticate resolves the caller from their session cookie. Reports false
-// when the request carries no usable session.
+// when the request carries no usable session, or when the identity cannot be
+// resolved, in which case it also clears the cookie. Refreshes the cookie on
+// success.
 func Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
 	token, err := r.Cookie(COOKIENAME)
 	if err != nil {

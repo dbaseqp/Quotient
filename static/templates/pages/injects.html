@@ -393,11 +393,10 @@
                                         method: "POST",
                                         body: PAYLOAD,
                                     }).then((response) => {
+                                        // A non-JSON body still needs a message.
                                         return response.json()
                                             .catch(() => ({ error: `HTTP ${response.status}` }));
                                     }).then((data) => {
-                                        // Show the reason from the response
-                                        // body.
                                         if (data.error) {
                                             showSubmitError(data.error);
                                             return;

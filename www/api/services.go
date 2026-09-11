@@ -23,8 +23,7 @@ func GetTeams(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, teams)
 }
 
-// filterToTeam narrows a team list to the caller's own team. A caller with no
-// team gets an empty list.
+// filterToTeam narrows a team list to the caller's own team.
 func filterToTeam(teams []db.TeamSchema, teamID uint, hasTeam bool) []db.TeamSchema {
 	if !hasTeam {
 		return []db.TeamSchema{}
