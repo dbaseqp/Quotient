@@ -40,19 +40,6 @@ func GetTeams() ([]TeamSchema, error) {
 	return teams, nil
 }
 
-func GetTeamByUsername(name string) (TeamSchema, error) {
-	var team TeamSchema
-	result := db.Table("team_schemas").Where("name = ?", name).First(&team)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return team, nil
-		} else {
-			return TeamSchema{}, result.Error
-		}
-	}
-	return team, nil
-}
-
 func GetTeamSummary(teamID uint) ([]map[string]any, error) {
 	serviceSummaries := []map[string]any{}
 	namePerService := []string{}

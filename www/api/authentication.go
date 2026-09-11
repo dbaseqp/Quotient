@@ -138,25 +138,30 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Successful logout", "username", r.Context().Value("username"))
 }
 
-// helper func
-// should return value
-func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
+// Authenticate resolves the caller from their session cookie. Reports false
+// when the request carries no usable session, or when the identity cannot be
+// resolved, in which case it also clears the cookie. Refreshes the cookie on
+// success.
+func Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
 	token, err := r.Cookie(COOKIENAME)
 	if err != nil {
-		if err == http.ErrNoCookie {
-			return "", nil
+		if err != http.ErrNoCookie {
+			slog.Error(err.Error())
 		}
-		slog.Error(err.Error())
-		return "", nil
+		return Identity{}, false
 	}
 
 	var value map[string]any
 	if err := CookieEncoder.Decode(COOKIENAME, token.Value, &value); err != nil {
 		slog.Error(err.Error())
-		return "", nil
+		return Identity{}, false
 	}
 
-	username := value["username"].(string)
+	username, ok := value["username"].(string)
+	if !ok || username == "" {
+		slog.Error("session cookie carries no username")
+		return Identity{}, false
+	}
 
 	// Extract auth source (default to "local" for backward compatibility)
 	authSource := "local"
@@ -164,8 +169,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 		authSource = source
 	}
 
-	roles, err := findRolesByUsername(username, authSource)
-
+	id, err := resolveIdentity(username, authSource)
 	if err != nil {
 		slog.Error(err.Error())
 		http.SetCookie(w, &http.Cookie{
@@ -177,7 +181,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 			SameSite: http.SameSiteLaxMode,
 			Path:     "/",
 		})
-		return "", nil
+		return Identity{}, false
 	}
 
 	// cookie refresh while still have value
@@ -191,7 +195,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (string, []string) {
 		Path:     "/",
 	})
 
-	return username, roles
+	return id, true
 }
 
 func auth(username string, password string) (map[string]any, error) {
@@ -296,104 +300,4 @@ func auth(username string, password string) (map[string]any, error) {
 	}
 
 	return nil, errors.New("no auth source matched credentials")
-}
-
-func findRolesByUsername(username string, authSource string) ([]string, error) {
-	roles := make([]string, 0)
-
-	// Only check OIDC users if auth source is OIDC
-	if authSource == "oidc" {
-		if userInfo, exists := GetOIDCUserInfo(username); exists {
-			return userInfo.Roles, nil
-		}
-		// OIDC user not found in cache after server restart
-		// User will need to re-authenticate
-		return nil, errors.New("OIDC session expired - please login again")
-	}
-
-	// Check local users only if auth source is local
-	if authSource == "local" {
-		for _, admin := range conf.Admin {
-			if username == admin.Name {
-				roles = append(roles, "admin")
-			}
-		}
-		for _, red := range conf.Red {
-			if username == red.Name {
-				roles = append(roles, "red")
-			}
-		}
-		for _, team := range conf.Team {
-			if username == team.Name {
-				roles = append(roles, "team")
-			}
-		}
-		for _, inject := range conf.Inject {
-			if username == inject.Name {
-				roles = append(roles, "inject")
-			}
-		}
-
-		if len(roles) > 0 {
-			return roles, nil
-		}
-		return nil, errors.New("local user has no roles")
-	}
-
-	// Check LDAP users only if auth source is LDAP
-	if authSource == "ldap" && conf.LdapSettings != (config.LdapAuthConfig{}) {
-		conn, err := ldap.DialURL(conf.LdapSettings.LdapConnectUrl)
-		if err != nil {
-			return nil, err
-		}
-		defer conn.Close()
-
-		// bind using the given username and password and searchbase from config
-		err = conn.Bind(conf.LdapSettings.LdapBindDn, conf.LdapSettings.LdapBindPassword)
-		if err != nil {
-			return nil, err
-		}
-
-		// query for the user's roles
-		searchRequest := ldap.NewSearchRequest(
-			conf.LdapSettings.LdapSearchBaseDn,
-			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", ldap.EscapeFilter(username)),
-			[]string{"memberOf"},
-			nil,
-		)
-
-		sr, err := conn.Search(searchRequest)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, entry := range sr.Entries {
-			for _, memberOf := range entry.GetAttributeValues("memberOf") {
-				if memberOf == conf.LdapSettings.LdapAdminGroupDn {
-					roles = append(roles, "admin")
-				}
-
-				if memberOf == conf.LdapSettings.LdapRedGroupDn {
-					roles = append(roles, "red")
-				}
-
-				if memberOf == conf.LdapSettings.LdapTeamGroupDn {
-					roles = append(roles, "team")
-				}
-
-				if memberOf == conf.LdapSettings.LdapInjectGroupDn {
-					roles = append(roles, "inject")
-				}
-			}
-		}
-
-		if len(roles) > 0 {
-			return roles, nil
-		}
-		return nil, errors.New("LDAP user has no authorized roles")
-	}
-
-	// Unknown auth source
-	return nil, fmt.Errorf("unknown auth source: %s", authSource)
 }
