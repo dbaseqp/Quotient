@@ -716,7 +716,7 @@ john.doe,SecurePassword!
 
     function handleResponse(response) {
         if (!response.ok) {
-            // Reject with the reason from the body, not just the status code.
+            // Reject with the reason from the body, or the status code.
             return response.json()
                 .catch(() => null)
                 .then(body => {

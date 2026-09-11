@@ -396,8 +396,8 @@
                                         return response.json()
                                             .catch(() => ({ error: `HTTP ${response.status}` }));
                                     }).then((data) => {
-                                        // Show the reason from the body, not
-                                        // just in the console.
+                                        // Show the reason from the response
+                                        // body.
                                         if (data.error) {
                                             showSubmitError(data.error);
                                             return;

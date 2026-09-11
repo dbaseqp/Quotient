@@ -191,7 +191,7 @@ func isTeamGroup(group string) bool {
 //     "team05", "team5" or "Team 5".
 //
 // Passes 2 and 3 consider only groups covered by OIDCTeamGroups. Pass 1 does
-// not; listing a group there already declares it a team group.
+// not; listing a group there declares it a team group.
 //
 // Two cases resolve to nil rather than a guess: a pass 1 entry naming a team
 // that does not exist, and a pass 3 group matching more than one team.

@@ -60,8 +60,8 @@ func TestTeamOrdinal(t *testing.T) {
 	}
 }
 
-// The reported failure: user "hola" in group "quotient-blue-Team-05", team05.
-func TestMapOIDCUserToTeamReportedCase(t *testing.T) {
+// A prefix-matched group with a padded ordinal maps to a padded team name.
+func TestMapOIDCUserToTeamPaddedOrdinal(t *testing.T) {
 	withOIDCConfig(t, []string{"quotient-blue-*"}, nil)
 	teams := teamList("team01", "team02", "team03", "team04", "team05")
 
@@ -143,8 +143,7 @@ func TestMapOIDCUserToTeamRefusesBrokenMapEntry(t *testing.T) {
 	})
 	teams := teamList("team01", "team02", "team03")
 
-	// Without the refusal this resolves to team03, from the trailing 3 of
-	// "room3".
+	// The trailing 3 of "room3" would otherwise match team03.
 	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"ccdc-blue-alpha-room3"}))
 }
 
@@ -185,9 +184,8 @@ func TestMapOIDCUserToTeamNoMatch(t *testing.T) {
 	assert.Nil(t, mapOIDCUserToTeam(teams, nil))
 }
 
-func TestMapOIDCUserToTeamNegativeLookingSuffix(t *testing.T) {
-	// The previous implementation read the last two characters and called
-	// strconv.Atoi, so "-5" parsed as -5 and produced "team-5".
+// The hyphen in "Team-5" separates the ordinal; it is not part of it.
+func TestMapOIDCUserToTeamHyphenBeforeSingleDigit(t *testing.T) {
 	withOIDCConfig(t, []string{"quotient-blue-*"}, nil)
 	teams := teamList("team05")
 
