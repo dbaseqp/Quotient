@@ -16,6 +16,37 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// Common OpenSSH client versions from popular OS distributions
+var commonSSHClientVersions = []string{
+	"SSH-2.0-OpenSSH_7.4",
+	"SSH-2.0-OpenSSH_7.6p1 Ubuntu-4ubuntu0.7",
+	"SSH-2.0-OpenSSH_7.9p1 Debian-10+deb10u3",
+	"SSH-2.0-OpenSSH_8.0",
+	"SSH-2.0-OpenSSH_8.1",
+	"SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.11",
+	"SSH-2.0-OpenSSH_8.4p1 Debian-5+deb11u3",
+	"SSH-2.0-OpenSSH_8.6",
+	"SSH-2.0-OpenSSH_8.7",
+	"SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10",
+	"SSH-2.0-OpenSSH_9.0",
+	"SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3",
+	"SSH-2.0-OpenSSH_9.3",
+	"SSH-2.0-OpenSSH_9.3 FreeBSD-20230316",
+	"SSH-2.0-OpenSSH_9.3 FreeBSD-20230719",
+	"SSH-2.0-OpenSSH_9.3p2",
+	"SSH-2.0-OpenSSH_9.4",
+	"SSH-2.0-OpenSSH_9.6",
+	"SSH-2.0-OpenSSH_9.6p1",
+	"SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13",
+	"SSH-2.0-OpenSSH_9.7",
+	"SSH-2.0-OpenSSH_9.7 FreeBSD-20240701",
+	"SSH-2.0-OpenSSH_for_Windows_7.7",
+	"SSH-2.0-OpenSSH_for_Windows_8.1",
+	"SSH-2.0-OpenSSH_for_Windows_8.6",
+	"SSH-2.0-PuTTY_Release_0.79",
+	"SSH-2.0-PuTTY_Release_0.81",
+}
+
 type Ssh struct {
 	Service
 	PrivKey     string `toml:",omitempty"`
@@ -46,6 +77,7 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			User:            username,
 			HostKeyCallback: ssh.InsecureIgnoreHostKey(), // #nosec G106 -- competition hosts have unknown keys
 			Timeout:         time.Duration(c.Timeout) * time.Second,
+			ClientVersion:   commonSSHClientVersions[rand.Intn(len(commonSSHClientVersions))], // #nosec G404 -- non-crypto random client version
 		}
 		config.SetDefaults()
 		config.Ciphers = append(config.Ciphers, "3des-cbc")
@@ -81,6 +113,7 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				},
 				HostKeyCallback: ssh.InsecureIgnoreHostKey(), // #nosec G106 -- competition hosts have unknown keys
 				Timeout:         time.Duration(c.Timeout) * time.Second,
+				ClientVersion:   commonSSHClientVersions[rand.Intn(len(commonSSHClientVersions))], // #nosec G404 -- non-crypto random client version
 			}
 
 			badConn, err := ssh.Dial("tcp", c.Target+":"+strconv.Itoa(c.Port), badConf)

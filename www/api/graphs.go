@@ -53,7 +53,7 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 		Data []Point
 	}
 
-	var series []Series
+	series := make([]Series, 0, len(teams))
 	for _, team := range teams {
 		temp := make(map[string]Point)
 		for _, uniqueName := range uniqueServices {
@@ -69,7 +69,7 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		var points []Point
+		points := make([]Point, 0, len(temp))
 		for _, point := range temp {
 			points = append(points, point)
 		}
@@ -119,7 +119,7 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })
 
 	for _, team := range teams {
-		s := Series{Name: team.Name}
+		s := Series{Name: team.Name, Data: make([]Point, 0)}
 		series = append(series, s)
 	}
 
@@ -166,6 +166,7 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })
 
+	eng.RLockUptime()
 	uptime := eng.GetUptimePerService()
 
 	// TODO: make db unique function or get from config
@@ -193,7 +194,7 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	for _, team := range teams {
 		s := Series{Name: team.Name}
 
-		var points []Point
+		points := make([]Point, 0, len(uniqueServices))
 		for _, servicename := range uniqueServices {
 			percentage := -0.01
 			for service, uptime := range uptime[team.ID] {
@@ -206,6 +207,7 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 		s.Data = points
 		series = append(series, s)
 	}
+	eng.RUnlockUptime()
 
 	if shouldScrub(r) {
 		for i := range series {

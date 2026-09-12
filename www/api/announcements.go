@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -105,6 +106,7 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
 		return
@@ -147,12 +149,13 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uploadDir := fmt.Sprintf("submissions/announcements/%d", announcement.ID)
-	if err := os.MkdirAll(uploadDir, 0750); err != nil {
+	subDir := fmt.Sprintf("%d", announcement.ID)
+	if err := SafeMkdirAll("submissions/announcements", subDir, 0750); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create directory"})
 		return
 	}
 
+	uploadDir := filepath.Join("submissions/announcements", subDir)
 	for _, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {
@@ -161,7 +164,7 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 
-		dst, err := os.Create(fmt.Sprintf("%s/%s", uploadDir, fileHeader.Filename))
+		dst, err := SafeCreate(uploadDir, fileHeader.Filename)
 		if err != nil {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create file on disk"})
 			return

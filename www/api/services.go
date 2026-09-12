@@ -155,9 +155,11 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		Uptime       float64          `json:"Uptime"`
 	}
 
+	eng.RLockUptime()
+	uptimeMap := eng.GetUptimePerService()
 	var s []summary
 	for _, v := range summaries {
-		uptime := eng.UptimePerService[teamID][v["ServiceName"].(string)]
+		uptime := uptimeMap[teamID][v["ServiceName"].(string)]
 		s = append(s, summary{
 			ServiceName:  v["ServiceName"].(string),
 			SlaCount:     v["SlaCount"].(int),
@@ -165,6 +167,7 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 			Uptime:       float64(uptime.PassedChecks) / float64(uptime.TotalChecks),
 		})
 	}
+	eng.RUnlockUptime()
 
 	WriteJSON(w, http.StatusOK, s)
 }

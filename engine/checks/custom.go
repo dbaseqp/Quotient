@@ -69,7 +69,7 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 			}
 		}()
 
-		tmpfileName := fmt.Sprintf("custom-check-%d-%d-%s", roundID, teamID, c.Name)
+		tmpfileName := fmt.Sprintf("custom-check-%d-%d-%s-%d", roundID, teamID, c.Name, time.Now().UnixNano())
 		tmpfile, err := tmpRoot.Create(tmpfileName)
 		if err != nil {
 			checkResult.Error = "error creating tmpfile"

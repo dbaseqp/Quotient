@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -30,7 +29,8 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = r.ParseMultipartForm(50 << 20) // 50 MB
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20) // 50 MB
+	err = r.ParseMultipartForm(50 << 20)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Error parsing the form"})
 		return
@@ -80,13 +80,14 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uploadDir := fmt.Sprintf("submissions/%d/%d/%d", injectID, team.ID, submission.Version)
-	err = os.MkdirAll(uploadDir, 0750)
+	subDir := fmt.Sprintf("%d/%d/%d", injectID, team.ID, submission.Version)
+	err = SafeMkdirAll("submissions", subDir, 0750)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error creating directories"})
 		return
 	}
 
+	uploadDir := filepath.Join("submissions", subDir)
 	out, err := SafeCreate(uploadDir, fileHeader.Filename)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error creating the file"})

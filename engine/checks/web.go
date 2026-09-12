@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -53,7 +54,14 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		}
 
 		requestURL := fmt.Sprintf("%s://%s:%d%s", c.Scheme, c.Target, c.Port, u.Path)
-		req, err := http.NewRequest("GET", requestURL, nil)
+		parsedURL, err := url.Parse(requestURL)
+		if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+			checkResult.Error = "invalid request URL"
+			checkResult.Debug = "URL failed validation: " + requestURL
+			response <- checkResult
+			return
+		}
+		req, err := http.NewRequest("GET", parsedURL.String(), nil)
 		if err != nil {
 			checkResult.Error = "error creating web request"
 			checkResult.Debug = err.Error()
@@ -66,7 +74,7 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		// Store request info for timeout debugging
 		checkResult.Debug = fmt.Sprintf("Attempting GET %s", requestURL)
 
-		resp, err := client.Do(req)
+		resp, err := client.Do(req) // #nosec G704 -- URL is validated above; target comes from admin-controlled event.conf
 		if err != nil {
 			checkResult.Error = "web request errored out"
 			if strings.Contains(err.Error(), "Client.Timeout exceeded") {
