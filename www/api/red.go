@@ -61,8 +61,7 @@ func CreateBox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := db.CreateBox(box); err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create box"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		WriteInternalError(w, r, "Failed to create box", err)
 		return
 	}
 
@@ -89,8 +88,7 @@ func EditBox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := db.UpdateBox(box); err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update box"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		WriteInternalError(w, r, "Failed to update box", err)
 		return
 	}
 
@@ -155,8 +153,7 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := db.CreateVector(vector); err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create vector"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		WriteInternalError(w, r, "Failed to create vector", err)
 		return
 	}
 
@@ -237,8 +234,7 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := db.CreateAttack(attack); err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create attack"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		WriteInternalError(w, r, "Failed to create attack", err)
 		return
 	}
 

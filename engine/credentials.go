@@ -125,16 +125,16 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 	return nil
 }
 
-// ErrUnknownTeam reports a team ID that does not belong to any team.
-var ErrUnknownTeam = errors.New("unknown team")
+// errNoCredentialLock reports that no credential lock exists for a team. It is
+// a floor under the callers, which resolve the team before calling in; reaching
+// it means the lock map and the team list have diverged.
+var errNoCredentialLock = errors.New("no credential lock for team")
 
-// teamCredentialsMutex returns the per-team credential lock. The map is
-// populated from the team list at startup, so a team ID that is not in it is
-// not a real team.
+// teamCredentialsMutex returns the per-team credential lock.
 func (se *ScoringEngine) teamCredentialsMutex(teamID uint) (*sync.Mutex, error) {
 	mu, ok := se.CredentialsMutex[teamID]
 	if !ok {
-		return nil, fmt.Errorf("%w: %d", ErrUnknownTeam, teamID)
+		return nil, fmt.Errorf("%w: %d", errNoCredentialLock, teamID)
 	}
 	return mu, nil
 }

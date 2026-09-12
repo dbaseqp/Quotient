@@ -2,11 +2,10 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"quotient/engine"
+	"quotient/engine/db"
 	"slices"
 	"strconv"
 )
@@ -20,8 +19,7 @@ func GetCredlists(w http.ResponseWriter, r *http.Request) {
 
 	credlists, err := eng.GetCredlists()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error getting credlists"})
-		slog.Error("Error getting credlists", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		WriteInternalError(w, r, "Error getting credlists", err)
 		return
 	}
 
@@ -46,8 +44,7 @@ func GetPcrs(w http.ResponseWriter, r *http.Request) {
 
 	credentials, err := eng.GetTeamCredentials(uint(teamID), credlistName)
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error getting credentials"})
-		slog.Error("Error getting credentials", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		WriteInternalError(w, r, "Error getting credentials", err)
 		return
 	}
 
@@ -73,8 +70,7 @@ func GetPcrHistory(w http.ResponseWriter, r *http.Request) {
 
 	history, err := eng.GetPCRHistory(uint(teamID), credlistName, username)
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error getting PCR history"})
-		slog.Error("Error getting PCR history", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		WriteInternalError(w, r, "Error getting PCR history", err)
 		return
 	}
 
@@ -103,6 +99,32 @@ func allowPCRForTeam(w http.ResponseWriter, r *http.Request, formTeamID string, 
 	return true
 }
 
+// pcrTeamID authorizes the caller for formTeamID and resolves it to a real
+// team, writing the refusal itself when either fails. Resolution runs after
+// authorization so a caller cannot learn which teams exist from the status.
+func pcrTeamID(w http.ResponseWriter, r *http.Request, formTeamID string, easyPCRDisabledMsg string) (uint, bool) {
+	if !allowPCRForTeam(w, r, formTeamID, easyPCRDisabledMsg) {
+		return 0, false
+	}
+
+	id, err := strconv.ParseUint(formTeamID, 10, 32)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
+		return 0, false
+	}
+
+	teams, err := db.GetTeams()
+	if err != nil {
+		WriteInternalError(w, r, "Error retrieving teams", err)
+		return 0, false
+	}
+	if !slices.ContainsFunc(teams, func(t db.TeamSchema) bool { return t.ID == uint(id) }) {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
+		return 0, false
+	}
+	return uint(id), true
+}
+
 func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	// get teamid from request
 	// get username,password from request
@@ -124,23 +146,14 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !allowPCRForTeam(w, r, form.TeamID, "PCR not allowed") {
+	teamID, ok := pcrTeamID(w, r, form.TeamID, "PCR not allowed")
+	if !ok {
 		return
 	}
 
-	id, err := strconv.ParseUint(form.TeamID, 10, 64)
+	updatedCount, skippedUsernames, err := eng.UpdateCredentials(teamID, form.CredlistPath, form.Usernames, form.Passwords)
 	if err != nil {
-		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
-		return
-	}
-	updatedCount, skippedUsernames, err := eng.UpdateCredentials(uint(id), form.CredlistPath, form.Usernames, form.Passwords)
-	if err != nil {
-		if errors.Is(err, engine.ErrUnknownTeam) {
-			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
-			return
-		}
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error updating PCR"})
-		slog.Error("Error updating PCR", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		WriteInternalError(w, r, "Error updating PCR", err)
 		return
 	}
 
@@ -170,24 +183,14 @@ func ResetPcr(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Failed to decode PCR json", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
-	if !allowPCRForTeam(w, r, form.TeamID, "PCR reset not allowed") {
-		return
-	}
-
-	id, err := strconv.ParseUint(form.TeamID, 10, 64)
-	if err != nil {
-		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
+	teamID, ok := pcrTeamID(w, r, form.TeamID, "PCR reset not allowed")
+	if !ok {
 		return
 	}
 
 	changedBy := r.Context().Value("username").(string)
-	if err := eng.ResetCredentials(uint(id), form.CredlistPath, changedBy); err != nil {
-		if errors.Is(err, engine.ErrUnknownTeam) {
-			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
-			return
-		}
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error resetting PCR"})
-		slog.Error("Error resetting PCR", "request_id", r.Context().Value("request_id"), "error", err.Error())
+	if err := eng.ResetCredentials(teamID, form.CredlistPath, changedBy); err != nil {
+		WriteInternalError(w, r, "Error resetting PCR", err)
 		return
 	}
 	data := map[string]any{
