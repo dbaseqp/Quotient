@@ -68,7 +68,7 @@ func newTestEngine(t *testing.T, redis *testutil.RedisContainer, slaThreshold in
 
 	return &ScoringEngine{
 		Config:           conf,
-		CredentialsMutex: make(map[uint]*sync.Mutex),
+		credentialsMutex: make(map[uint]*sync.Mutex),
 		UptimePerService: make(map[uint]map[string]db.Uptime),
 		SlaPerService:    make(map[uint]map[string]int),
 		RedisClient:      redis.Client,

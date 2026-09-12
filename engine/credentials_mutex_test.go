@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	"quotient/engine/config"
+	"quotient/engine/db"
 )
 
-// A team ID with no entry in CredentialsMutex must report an error rather than
+// A team ID with no entry in credentialsMutex must report an error rather than
 // dereference a nil mutex.
 func TestCredentialsUnknownTeam(t *testing.T) {
 	se := &ScoringEngine{
@@ -17,7 +18,7 @@ func TestCredentialsUnknownTeam(t *testing.T) {
 				Credlist: []config.Credlist{{CredlistPath: "linux.credlist"}},
 			},
 		},
-		CredentialsMutex: map[uint]*sync.Mutex{1: {}},
+		credentialsMutex: map[uint]*sync.Mutex{1: {}},
 	}
 
 	t.Run("update", func(t *testing.T) {
@@ -33,4 +34,37 @@ func TestCredentialsUnknownTeam(t *testing.T) {
 			t.Fatalf("want errNoCredentialLock, got %v", err)
 		}
 	})
+}
+
+// A competition reset re-enters Start, which re-seeds the credential locks
+// while the web server keeps serving. A team appearing in that re-seed writes
+// the map under a concurrent reader, which Go treats as a fatal throw rather
+// than a stale read. Run under -race.
+func TestCredentialLocksConcurrentReseed(t *testing.T) {
+	se := &ScoringEngine{credentialsMutex: map[uint]*sync.Mutex{}}
+	se.setTeamCredentialLocks([]db.TeamSchema{{ID: 1}})
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() { // the reset loop, seeing a team it has not seen before
+		defer close(done)
+		for id := uint(2); ; id++ {
+			select {
+			case <-stop:
+				return
+			default:
+				se.setTeamCredentialLocks([]db.TeamSchema{{ID: id}})
+			}
+		}
+	}()
+
+	for i := 0; i < 5000; i++ { // a PCR request
+		if _, err := se.teamcredentialsMutex(1); err != nil {
+			break
+		}
+	}
+
+	close(stop)
+	<-done
 }

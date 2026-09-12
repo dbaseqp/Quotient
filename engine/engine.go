@@ -21,8 +21,13 @@ import (
 )
 
 type ScoringEngine struct {
-	Config                *config.ConfigSettings
-	CredentialsMutex      map[uint]*sync.Mutex
+	Config *config.ConfigSettings
+	// credentialsMutex holds one lock per team. A competition reset re-seeds it
+	// while the web server is serving, so credentialsMu guards the map itself.
+	// Unexported so every access goes through setTeamCredentialLocks and
+	// teamCredentialsMutex, which take credentialsMu.
+	credentialsMutex      map[uint]*sync.Mutex
+	credentialsMu         sync.RWMutex
 	UptimePerService      map[uint]map[string]db.Uptime
 	uptimeMu              sync.RWMutex
 	SlaPerService         map[uint]map[string]int
@@ -60,7 +65,7 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 
 	se := &ScoringEngine{
 		Config:           conf,
-		CredentialsMutex: make(map[uint]*sync.Mutex),
+		credentialsMutex: make(map[uint]*sync.Mutex),
 		UptimePerService: make(map[uint]map[string]db.Uptime),
 		SlaPerService:    make(map[uint]map[string]int),
 		RedisClient:      rdb,

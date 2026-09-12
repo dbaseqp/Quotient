@@ -26,10 +26,7 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 		return fmt.Errorf("failed to get teams: %v", err)
 	}
 
-	// Initialize mutex map
-	for _, team := range teams {
-		se.CredentialsMutex[team.ID] = &sync.Mutex{}
-	}
+	se.setTeamCredentialLocks(teams)
 
 	// Check if credentials are already seeded in DB
 	seeded, err := db.IsCredentialsSeeded()
@@ -130,9 +127,23 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 // it means the lock map and the team list have diverged.
 var errNoCredentialLock = errors.New("no credential lock for team")
 
-// teamCredentialsMutex returns the per-team credential lock.
-func (se *ScoringEngine) teamCredentialsMutex(teamID uint) (*sync.Mutex, error) {
-	mu, ok := se.CredentialsMutex[teamID]
+// setTeamCredentialLocks gives every team a credential lock, adding entries for
+// teams that appeared since the last call.
+func (se *ScoringEngine) setTeamCredentialLocks(teams []db.TeamSchema) {
+	se.credentialsMu.Lock()
+	defer se.credentialsMu.Unlock()
+	for _, team := range teams {
+		if _, ok := se.credentialsMutex[team.ID]; !ok {
+			se.credentialsMutex[team.ID] = &sync.Mutex{}
+		}
+	}
+}
+
+// teamcredentialsMutex returns the per-team credential lock.
+func (se *ScoringEngine) teamcredentialsMutex(teamID uint) (*sync.Mutex, error) {
+	se.credentialsMu.RLock()
+	mu, ok := se.credentialsMutex[teamID]
+	se.credentialsMu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("%w: %d", errNoCredentialLock, teamID)
 	}
@@ -152,7 +163,7 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 		return 0, nil, fmt.Errorf("invalid credlist name")
 	}
 
-	mu, err := se.teamCredentialsMutex(teamID)
+	mu, err := se.teamcredentialsMutex(teamID)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -225,7 +236,7 @@ func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string, chan
 		return fmt.Errorf("invalid credlist name")
 	}
 
-	mu, err := se.teamCredentialsMutex(teamID)
+	mu, err := se.teamcredentialsMutex(teamID)
 	if err != nil {
 		return err
 	}
