@@ -3,11 +3,12 @@ package integration
 import (
 	"context"
 	"encoding/json"
-	"quotient/engine"
-	"quotient/engine/checks"
-	"quotient/tests/testutil"
 	"testing"
 	"time"
+
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/checks"
+	"github.com/dbaseqp/Quotient/tests/testutil"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -239,10 +240,10 @@ func TestEngineRedisResultCollection(t *testing.T) {
 
 		// Push results from different rounds
 		results := []checks.Result{
-			{TeamID: 1, ServiceName: "web01-web", RoundID: currentRound - 1, Status: true, Points: 5},   // Old round
-			{TeamID: 1, ServiceName: "web01-ssh", RoundID: currentRound, Status: true, Points: 5},       // Current round
-			{TeamID: 2, ServiceName: "web01-web", RoundID: currentRound + 1, Status: true, Points: 5},   // Future round
-			{TeamID: 2, ServiceName: "web01-dns", RoundID: currentRound, Status: true, Points: 5},       // Current round
+			{TeamID: 1, ServiceName: "web01-web", RoundID: currentRound - 1, Status: true, Points: 5}, // Old round
+			{TeamID: 1, ServiceName: "web01-ssh", RoundID: currentRound, Status: true, Points: 5},     // Current round
+			{TeamID: 2, ServiceName: "web01-web", RoundID: currentRound + 1, Status: true, Points: 5}, // Future round
+			{TeamID: 2, ServiceName: "web01-dns", RoundID: currentRound, Status: true, Points: 5},     // Current round
 		}
 
 		for _, result := range results {
