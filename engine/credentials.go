@@ -122,13 +122,10 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 	return nil
 }
 
-// errNoCredentialLock reports that no credential lock exists for a team. It is
-// a floor under the callers, which resolve the team before calling in; reaching
-// it means the lock map and the team list have diverged.
+// errNoCredentialLock reports that no credential lock exists for a team.
 var errNoCredentialLock = errors.New("no credential lock for team")
 
-// setTeamCredentialLocks gives every team a credential lock, adding entries for
-// teams that appeared since the last call.
+// setTeamCredentialLocks gives every team a credential lock.
 func (se *ScoringEngine) setTeamCredentialLocks(teams []db.TeamSchema) {
 	se.credentialsMu.Lock()
 	defer se.credentialsMu.Unlock()
@@ -139,8 +136,8 @@ func (se *ScoringEngine) setTeamCredentialLocks(teams []db.TeamSchema) {
 	}
 }
 
-// teamcredentialsMutex returns the per-team credential lock.
-func (se *ScoringEngine) teamcredentialsMutex(teamID uint) (*sync.Mutex, error) {
+// teamCredentialLock returns the per-team credential lock.
+func (se *ScoringEngine) teamCredentialLock(teamID uint) (*sync.Mutex, error) {
 	se.credentialsMu.RLock()
 	mu, ok := se.credentialsMutex[teamID]
 	se.credentialsMu.RUnlock()
@@ -163,7 +160,7 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 		return 0, nil, fmt.Errorf("invalid credlist name")
 	}
 
-	mu, err := se.teamcredentialsMutex(teamID)
+	mu, err := se.teamCredentialLock(teamID)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -236,7 +233,7 @@ func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string, chan
 		return fmt.Errorf("invalid credlist name")
 	}
 
-	mu, err := se.teamcredentialsMutex(teamID)
+	mu, err := se.teamCredentialLock(teamID)
 	if err != nil {
 		return err
 	}

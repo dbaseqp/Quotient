@@ -22,10 +22,8 @@ import (
 
 type ScoringEngine struct {
 	Config *config.ConfigSettings
-	// credentialsMutex holds one lock per team. A competition reset re-seeds it
-	// while the web server is serving, so credentialsMu guards the map itself.
-	// Unexported so every access goes through setTeamCredentialLocks and
-	// teamCredentialsMutex, which take credentialsMu.
+	// credentialsMutex holds one lock per team. Seeding runs on the engine
+	// goroutine while the web server serves, so credentialsMu guards the map.
 	credentialsMutex      map[uint]*sync.Mutex
 	credentialsMu         sync.RWMutex
 	UptimePerService      map[uint]map[string]db.Uptime

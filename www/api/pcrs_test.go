@@ -10,15 +10,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// allowPCRForTeam compares team IDs as numbers, so a zero-padded ID names the
-// same team as its bare form for an admin and a team user alike.
-func TestAllowPCRForTeamComparesNumerically(t *testing.T) {
+func withEasyPCR(t *testing.T, enabled bool) {
+	t.Helper()
 	previous := conf
 	t.Cleanup(func() { conf = previous })
-	conf = &config.ConfigSettings{MiscSettings: config.MiscConfig{EasyPCR: true}}
+	conf = &config.ConfigSettings{MiscSettings: config.MiscConfig{EasyPCR: enabled}}
+}
+
+// allowPCRForTeam admits an admin for any team and a team user only for their
+// own, and says which refusal applies.
+func TestAllowPCRForTeam(t *testing.T) {
+	withEasyPCR(t, true)
 
 	onTeam1 := Identity{Username: "hola", Roles: []string{"team"}, TeamID: 1, HasTeam: true}
-	noTeam := Identity{Username: "admin", Roles: []string{"admin"}}
+	noTeam := Identity{Username: "injectmgr"}
 
 	cases := []struct {
 		name     string
@@ -26,33 +31,35 @@ func TestAllowPCRForTeamComparesNumerically(t *testing.T) {
 		identity Identity
 		teamID   uint
 		allowed  bool
+		wantErr  string
 	}{
-		{"team user, own team", []string{"team"}, onTeam1, 1, true},
-		{"team user, other team", []string{"team"}, onTeam1, 2, false},
-		{"team user, no such team", []string{"team"}, onTeam1, 999, false},
-		{"admin, any team", []string{"admin"}, noTeam, 999, true},
+		{"team user, own team", []string{"team"}, onTeam1, 1, true, ""},
+		{"team user, other team", []string{"team"}, onTeam1, 2, false, "PCR not allowed"},
+		{"team user, no team", []string{"team"}, noTeam, 1, false, "Your account is not associated with a team"},
+		{"admin, any team", []string{"admin"}, noTeam, 999, true, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			got := allowPCRForTeam(w, requestAs(tc.roles, tc.identity), tc.teamID, "PCR not allowed")
 			assert.Equal(t, tc.allowed, got)
-			if !tc.allowed {
-				assert.Equal(t, http.StatusForbidden, w.Code)
+			if tc.allowed {
+				return
 			}
+			assert.Equal(t, http.StatusForbidden, w.Code)
+			assert.JSONEq(t, `{"error":"`+tc.wantErr+`"}`, w.Body.String())
 		})
 	}
 }
 
-// A team user with no team is refused before any team ID is compared.
-func TestAllowPCRForTeamWithoutTeam(t *testing.T) {
-	previous := conf
-	t.Cleanup(func() { conf = previous })
-	conf = &config.ConfigSettings{MiscSettings: config.MiscConfig{EasyPCR: true}}
+// EasyPCR off refuses a team user with the caller-supplied message.
+func TestAllowPCRForTeamEasyPCRDisabled(t *testing.T) {
+	withEasyPCR(t, false)
 
+	onTeam1 := Identity{Username: "hola", Roles: []string{"team"}, TeamID: 1, HasTeam: true}
 	w := httptest.NewRecorder()
-	got := allowPCRForTeam(w, requestAs([]string{"team"}, Identity{Username: "injectmgr"}), 1, "PCR not allowed")
-	assert.False(t, got)
+
+	assert.False(t, allowPCRForTeam(w, requestAs([]string{"team"}, onTeam1), 1, "PCR reset not allowed"))
 	assert.Equal(t, http.StatusForbidden, w.Code)
-	assert.JSONEq(t, `{"error":"Your account is not associated with a team"}`, w.Body.String())
+	assert.JSONEq(t, `{"error":"PCR reset not allowed"}`, w.Body.String())
 }

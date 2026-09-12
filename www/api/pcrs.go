@@ -100,11 +100,6 @@ func allowPCRForTeam(w http.ResponseWriter, r *http.Request, teamID uint, easyPC
 
 // pcrTeamID parses formTeamID, authorizes the caller for it and resolves it to
 // a real team, writing the refusal itself when any of the three fails.
-//
-// Parsing comes first so a team ID is compared as a number: "01" and "1" name
-// the same team and must be treated alike whoever sends them. Existence is
-// checked last, after authorization, so a caller cannot learn which teams exist
-// from the status they get back.
 func pcrTeamID(w http.ResponseWriter, r *http.Request, formTeamID string, easyPCRDisabledMsg string) (uint, bool) {
 	parsed, err := strconv.ParseUint(formTeamID, 10, 32)
 	if err != nil {
@@ -117,6 +112,8 @@ func pcrTeamID(w http.ResponseWriter, r *http.Request, formTeamID string, easyPC
 		return 0, false
 	}
 
+	// Existence is checked after authorization, so a caller cannot tell a team
+	// that does not exist from one that is not theirs.
 	teams, err := db.GetTeams()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving teams", err)
