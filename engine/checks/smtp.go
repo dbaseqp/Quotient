@@ -95,10 +95,10 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			return
 		}
 		defer func() {
-		if err := conn.Close(); err != nil {
-			slog.Error("failed to close smtp connection", "error", err)
-		}
-	}()
+			if err := conn.Close(); err != nil {
+				slog.Error("failed to close smtp connection", "error", err)
+			}
+		}()
 
 		// Create smtp client
 		sconn, err := smtp.NewClient(conn, c.Target)

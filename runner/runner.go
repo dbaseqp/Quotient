@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"quotient/engine"
-	"quotient/engine/checks"
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/checks"
 
 	reaper "github.com/ramr/go-reaper"
 	"github.com/redis/go-redis/v9"

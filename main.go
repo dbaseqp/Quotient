@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"os"
 
-	"quotient/engine"
-	"quotient/engine/config"
-	"quotient/engine/db"
-	"quotient/www"
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
+	"github.com/dbaseqp/Quotient/www"
 )
 
 var logLvels = map[string]slog.Level{

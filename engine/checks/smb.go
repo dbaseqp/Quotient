@@ -48,10 +48,10 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 		defer func() {
-		if err := conn.Close(); err != nil {
-			slog.Error("failed to close smb connection", "error", err)
-		}
-	}()
+			if err := conn.Close(); err != nil {
+				slog.Error("failed to close smb connection", "error", err)
+			}
+		}()
 
 		d := &smb2.Dialer{
 			Initiator: &smb2.NTLMInitiator{
@@ -93,10 +93,10 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				return
 			}
 			defer func() {
-			if err := f.Close(); err != nil {
-				slog.Error("failed to close smb file", "error", err)
-			}
-		}()
+				if err := f.Close(); err != nil {
+					slog.Error("failed to close smb file", "error", err)
+				}
+			}()
 
 			buf, err := io.ReadAll(f)
 			if err != nil {

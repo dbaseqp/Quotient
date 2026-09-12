@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"quotient/engine"
-	"quotient/engine/config"
-	"quotient/engine/db"
+
 	"strings"
+
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 var (

@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"quotient/engine"
-	"quotient/engine/checks"
-	"quotient/engine/db"
-	"quotient/tests/testutil"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/checks"
+	"github.com/dbaseqp/Quotient/engine/db"
+	"github.com/dbaseqp/Quotient/tests/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -173,13 +174,13 @@ func TestFullEngineWorkflow(t *testing.T) {
 		// Create result with malicious content
 		result := checks.Result{
 			TeamID:      team.ID,
-			ServiceName: "web\x00-malicious",  // Null byte
+			ServiceName: "web\x00-malicious", // Null byte
 			ServiceType: "Web",
 			RoundID:     roundID,
 			Status:      false,
 			Points:      0,
-			Error:       "SQL'; DROP TABLE users\x00--",  // SQL injection attempt with null byte
-			Debug:       "<script>alert('xss')</script>\x00",  // XSS attempt with null byte
+			Error:       "SQL'; DROP TABLE users\x00--",      // SQL injection attempt with null byte
+			Debug:       "<script>alert('xss')</script>\x00", // XSS attempt with null byte
 		}
 
 		// Process with sanitization
@@ -236,7 +237,7 @@ func TestFullEngineWorkflow(t *testing.T) {
 				ServiceName: serviceName,
 				ServiceType: "Web",
 				RoundID:     roundID + uint(i),
-				Status:      false,  // Failed
+				Status:      false, // Failed
 				Points:      0,
 				Error:       "Service unavailable",
 			}

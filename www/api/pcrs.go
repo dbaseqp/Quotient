@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"quotient/engine/db"
 	"slices"
 	"strconv"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 func GetCredlists(w http.ResponseWriter, r *http.Request) {

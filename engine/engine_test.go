@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"quotient/engine/checks"
-	"quotient/engine/config"
-	"quotient/engine/db"
-	"quotient/tests/testutil"
+	"github.com/dbaseqp/Quotient/engine/checks"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
+	"github.com/dbaseqp/Quotient/tests/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -333,11 +333,11 @@ func (m *mockRunner) Run(teamID uint, identifier string, roundID uint, resultsCh
 	}
 }
 
-func (m *mockRunner) Runnable() bool                  { return true }
-func (m *mockRunner) GetType() string                 { return m.ServiceType }
-func (m *mockRunner) GetName() string                 { return m.Name }
-func (m *mockRunner) GetAttempts() int                { return 1 }
-func (m *mockRunner) GetCredlists() []string          { return nil }
+func (m *mockRunner) Runnable() bool         { return true }
+func (m *mockRunner) GetType() string        { return m.ServiceType }
+func (m *mockRunner) GetName() string        { return m.Name }
+func (m *mockRunner) GetAttempts() int       { return 1 }
+func (m *mockRunner) GetCredlists() []string { return nil }
 func (m *mockRunner) Verify(box, ip string, points, timeout, slapenalty, slathreshold int) error {
 	m.Name = box + "-" + m.Service.Display
 	m.Target = ip

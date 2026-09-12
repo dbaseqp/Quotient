@@ -9,11 +9,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"quotient/engine/db"
-	"quotient/tests/testutil"
-	"quotient/www/api"
 	"testing"
 	"time"
+
+	"github.com/dbaseqp/Quotient/engine/db"
+	"github.com/dbaseqp/Quotient/tests/testutil"
+	"github.com/dbaseqp/Quotient/www/api"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
