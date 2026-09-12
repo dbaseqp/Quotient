@@ -2,9 +2,11 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"quotient/engine"
 	"slices"
 	"strconv"
 )
@@ -133,6 +135,10 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	}
 	updatedCount, skippedUsernames, err := eng.UpdateCredentials(uint(id), form.CredlistPath, form.Usernames, form.Passwords)
 	if err != nil {
+		if errors.Is(err, engine.ErrUnknownTeam) {
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
+			return
+		}
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error updating PCR"})
 		slog.Error("Error updating PCR", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
@@ -176,6 +182,10 @@ func ResetPcr(w http.ResponseWriter, r *http.Request) {
 
 	changedBy := r.Context().Value("username").(string)
 	if err := eng.ResetCredentials(uint(id), form.CredlistPath, changedBy); err != nil {
+		if errors.Is(err, engine.ErrUnknownTeam) {
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
+			return
+		}
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error resetting PCR"})
 		slog.Error("Error resetting PCR", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -124,6 +125,20 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 	return nil
 }
 
+// ErrUnknownTeam reports a team ID that does not belong to any team.
+var ErrUnknownTeam = errors.New("unknown team")
+
+// teamCredentialsMutex returns the per-team credential lock. The map is
+// populated from the team list at startup, so a team ID that is not in it is
+// not a real team.
+func (se *ScoringEngine) teamCredentialsMutex(teamID uint) (*sync.Mutex, error) {
+	mu, ok := se.CredentialsMutex[teamID]
+	if !ok {
+		return nil, fmt.Errorf("%w: %d", ErrUnknownTeam, teamID)
+	}
+	return mu, nil
+}
+
 func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string) (int, []string, error) {
 	// Validate credlist name
 	validCredlist := false
@@ -137,8 +152,12 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 		return 0, nil, fmt.Errorf("invalid credlist name")
 	}
 
-	se.CredentialsMutex[teamID].Lock()
-	defer se.CredentialsMutex[teamID].Unlock()
+	mu, err := se.teamCredentialsMutex(teamID)
+	if err != nil {
+		return 0, nil, err
+	}
+	mu.Lock()
+	defer mu.Unlock()
 
 	slog.Debug("updating credentials", "teamID", teamID, "credlistName", credlistName)
 
@@ -206,8 +225,12 @@ func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string, chan
 		return fmt.Errorf("invalid credlist name")
 	}
 
-	se.CredentialsMutex[teamID].Lock()
-	defer se.CredentialsMutex[teamID].Unlock()
+	mu, err := se.teamCredentialsMutex(teamID)
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
 
 	return db.ResetTeamCredlist(teamID, credlistName, changedBy)
 }
