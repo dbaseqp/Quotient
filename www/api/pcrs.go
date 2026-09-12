@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"quotient/engine/db"
@@ -77,9 +76,9 @@ func GetPcrHistory(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, history)
 }
 
-// allowPCRForTeam reports whether the caller may act on formTeamID, writing the
+// allowPCRForTeam reports whether the caller may act on teamID, writing the
 // 403 itself when not.
-func allowPCRForTeam(w http.ResponseWriter, r *http.Request, formTeamID string, easyPCRDisabledMsg string) bool {
+func allowPCRForTeam(w http.ResponseWriter, r *http.Request, teamID uint, easyPCRDisabledMsg string) bool {
 	if slices.Contains(r.Context().Value("roles").([]string), "admin") {
 		return true
 	}
@@ -92,24 +91,29 @@ func allowPCRForTeam(w http.ResponseWriter, r *http.Request, formTeamID string, 
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Your account is not associated with a team"})
 		return false
 	}
-	if formTeamID != fmt.Sprint(myTeamID) {
+	if teamID != myTeamID {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR not allowed"})
 		return false
 	}
 	return true
 }
 
-// pcrTeamID authorizes the caller for formTeamID and resolves it to a real
-// team, writing the refusal itself when either fails. Resolution runs after
-// authorization so a caller cannot learn which teams exist from the status.
+// pcrTeamID parses formTeamID, authorizes the caller for it and resolves it to
+// a real team, writing the refusal itself when any of the three fails.
+//
+// Parsing comes first so a team ID is compared as a number: "01" and "1" name
+// the same team and must be treated alike whoever sends them. Existence is
+// checked last, after authorization, so a caller cannot learn which teams exist
+// from the status they get back.
 func pcrTeamID(w http.ResponseWriter, r *http.Request, formTeamID string, easyPCRDisabledMsg string) (uint, bool) {
-	if !allowPCRForTeam(w, r, formTeamID, easyPCRDisabledMsg) {
-		return 0, false
-	}
-
-	id, err := strconv.ParseUint(formTeamID, 10, 32)
+	parsed, err := strconv.ParseUint(formTeamID, 10, 32)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
+		return 0, false
+	}
+	teamID := uint(parsed)
+
+	if !allowPCRForTeam(w, r, teamID, easyPCRDisabledMsg) {
 		return 0, false
 	}
 
@@ -118,11 +122,11 @@ func pcrTeamID(w http.ResponseWriter, r *http.Request, formTeamID string, easyPC
 		WriteInternalError(w, r, "Error retrieving teams", err)
 		return 0, false
 	}
-	if !slices.ContainsFunc(teams, func(t db.TeamSchema) bool { return t.ID == uint(id) }) {
+	if !slices.ContainsFunc(teams, func(t db.TeamSchema) bool { return t.ID == teamID }) {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
 		return 0, false
 	}
-	return uint(id), true
+	return teamID, true
 }
 
 func CreatePcr(w http.ResponseWriter, r *http.Request) {
