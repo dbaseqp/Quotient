@@ -39,6 +39,14 @@ func WriteJSON(w http.ResponseWriter, status int, data any) {
 	}
 }
 
+// WriteInternalError logs err and sends msg to the client. Database and
+// filesystem errors carry schema, paths and query text, so only msg crosses the
+// wire.
+func WriteInternalError(w http.ResponseWriter, r *http.Request, msg string, err error) {
+	slog.Error(msg, "request_id", r.Context().Value("request_id"), "error", err.Error())
+	WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": msg})
+}
+
 // SafeOpen opens a file within the given base directory safely.
 // It prevents directory traversal attacks using os.Root.
 func SafeOpen(baseDir, relativePath string) (*os.File, error) {
