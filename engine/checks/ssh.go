@@ -138,10 +138,10 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 		defer func() {
-		if err := conn.Close(); err != nil {
-			slog.Error("failed to close ssh connection", "error", err)
-		}
-	}()
+			if err := conn.Close(); err != nil {
+				slog.Error("failed to close ssh connection", "error", err)
+			}
+		}()
 
 		// Create a session
 		session, err := conn.NewSession()
@@ -190,38 +190,47 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
-		// If any commands specified, run a random one
+		// If any commands specified, run a random one (or all if CheckAll)
 		if len(c.Command) > 0 {
-			r := c.Command[rand.Intn(len(c.Command))] // #nosec G404 -- non-crypto selection of command to test
-			fmt.Fprintln(stdin, r.Command)
-			time.Sleep(time.Duration(int(time.Duration(c.Timeout)*time.Second) / 8)) // command wait time
-			if r.Contains {
-				if !strings.Contains(stdoutBytes.String(), r.Output) {
-					checkResult.Error = "command output didn't contain string"
-					checkResult.Debug = "command output of '" + r.Command + "' didn't contain string '" + r.Output + "': " + stdoutBytes.String() + ",  " + stderrBytes.String()
-					response <- checkResult
-					return
+			checkResult = RunSubchecks(c.Command, c.CheckAll, checkResult, "creds used were "+username+":"+password, func(r commandData, res Result) Result {
+				fmt.Fprintln(stdin, r.Command)
+				time.Sleep(time.Duration(int(time.Duration(c.Timeout)*time.Second) / 8)) // command wait time
+				if r.Contains {
+					if !strings.Contains(stdoutBytes.String(), r.Output) {
+						res.Error = "command output didn't contain string"
+						res.Debug = "command output of '" + r.Command + "' didn't contain string '" + r.Output + "': " + stdoutBytes.String() + ",  " + stderrBytes.String()
+						res.Status = false
+						return res
+					}
+				} else if r.UseRegex {
+					re := regexp.MustCompile(r.Output)
+					if !re.Match(stdoutBytes.Bytes()) {
+						res.Error = "command output didn't match regex"
+						res.Debug = "command output'" + r.Command + "' didn't match regex '" + r.Output
+						res.Status = false
+						return res
+					}
+				} else {
+					if stderrBytes.Len() != 0 {
+						res.Error = "command returned an error"
+						res.Debug = "command stderr was not empty: " + stderrBytes.String()
+						res.Status = false
+						return res
+					}
 				}
-			} else if r.UseRegex {
-				re := regexp.MustCompile(r.Output)
-				if !re.Match(stdoutBytes.Bytes()) {
-					checkResult.Error = "command output didn't match regex"
-					checkResult.Debug = "command output'" + r.Command + "' didn't match regex '" + r.Output
-					response <- checkResult
-					return
-				}
-			} else {
-				if stderrBytes.Len() != 0 {
-					checkResult.Error = "command returned an error"
-					checkResult.Debug = "command stderr was not empty: " + stderrBytes.String()
-					response <- checkResult
-					return
-				}
+				res.Status = true
+				return res
+			})
+			if !checkResult.Status {
+				response <- checkResult
+				return
 			}
+		} else {
+			checkResult.Status = true
+			checkResult.Debug = "creds used were " + username + ":" + password
 		}
-		checkResult.Status = true
+
 		checkResult.Points = c.Points
-		checkResult.Debug = "creds used were " + username + ":" + password
 		response <- checkResult
 	}
 

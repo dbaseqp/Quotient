@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
@@ -57,55 +56,59 @@ func (c Ftp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		}
 
 		if len(c.File) > 0 {
-			file := c.File[rand.Intn(len(c.File))] // #nosec G404 -- non-crypto selection of file to test
-			r, err := conn.Retr(file.Name)
-			if err != nil {
-				checkResult.Error = "failed to retrieve file " + file.Name
-				checkResult.Debug = "creds used were " + username + ":" + password
-				response <- checkResult
-				return
-			}
-			defer func() {
-			if err := r.Close(); err != nil {
-				slog.Error("failed to close ftp reader", "error", err)
-			}
-		}()
-			buf, err := io.ReadAll(r)
-			if err != nil {
-				checkResult.Error = "failed to read ftp file"
-				checkResult.Debug = "tried to read " + file.Name
-				response <- checkResult
-				return
-			}
-			if file.Regex != "" {
-				re, err := regexp.Compile(file.Regex)
+			checkResult = RunSubchecks(c.File, c.CheckAll, checkResult, "creds used were "+username+":"+password, func(file FtpFile, res Result) Result {
+				r, err := conn.Retr(file.Name)
 				if err != nil {
-					checkResult.Error = "error compiling regex to match for ftp file"
-					checkResult.Debug = err.Error()
-					response <- checkResult
-					return
+					res.Error = "failed to retrieve file " + file.Name
+					res.Status = false
+					return res
 				}
-				reFind := re.Find(buf)
-				if reFind == nil {
-					checkResult.Error = "couldn't find regex in file"
-					checkResult.Debug = "couldn't find regex \"" + file.Regex + "\" for " + file.Name
-					response <- checkResult
-					return
+				defer func() {
+				if err := r.Close(); err != nil {
+					slog.Error("failed to close ftp reader", "error", err)
 				}
-			} else if file.Hash != "" {
-				fileHash, err := StringHash(string(buf))
+			}()
+				buf, err := io.ReadAll(r)
 				if err != nil {
-					checkResult.Error = "error calculating file hash"
-					checkResult.Debug = err.Error()
-					response <- checkResult
-					return
-				} else if !strings.EqualFold(fileHash, file.Hash) {
-					checkResult.Error = "file hash did not match"
-					checkResult.Debug = "file hash " + fileHash + " did not match specified hash " + file.Hash
-					response <- checkResult
-					return
+					res.Error = "failed to read ftp file"
+					res.Debug = "tried to read " + file.Name
+					res.Status = false
+					return res
 				}
-			}
+				if file.Regex != "" {
+					re, err := regexp.Compile(file.Regex)
+					if err != nil {
+						res.Error = "error compiling regex to match for ftp file"
+						res.Debug = err.Error()
+						res.Status = false
+						return res
+					}
+					reFind := re.Find(buf)
+					if reFind == nil {
+						res.Error = "couldn't find regex in file"
+						res.Debug = "couldn't find regex \"" + file.Regex + "\" for " + file.Name
+						res.Status = false
+						return res
+					}
+				} else if file.Hash != "" {
+					fileHash, err := StringHash(string(buf))
+					if err != nil {
+						res.Error = "error calculating file hash"
+						res.Debug = err.Error()
+						res.Status = false
+						return res
+					} else if !strings.EqualFold(fileHash, file.Hash) {
+						res.Error = "file hash did not match"
+						res.Debug = "file hash " + fileHash + " did not match specified hash " + file.Hash
+						res.Status = false
+						return res
+					}
+				}
+				res.Status = true
+				return res
+			})
+			response <- checkResult
+			return
 		}
 
 		checkResult.Status = true

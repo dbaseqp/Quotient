@@ -3,7 +3,6 @@ package checks
 import (
 	"bytes"
 	"log/slog"
-	"math/rand"
 	"regexp"
 	"strings"
 	"time"
@@ -61,41 +60,48 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 		// If any commands specified, run them; otherwise run a simple connectivity test
 		var powershellCmd string
 		if len(c.Command) > 0 {
-			r := c.Command[rand.Intn(len(c.Command))] // #nosec G404 -- non-crypto selection of command to test
-			powershellCmd = winrm.Powershell(r.Command)
-			bufOut := new(bytes.Buffer)
-			bufErr := new(bytes.Buffer)
-			_, err = client.Run(powershellCmd, bufOut, bufErr)
-			output := bufOut.Bytes()
-			errString := bufErr.String()
-			if err != nil {
-				checkResult.Error = "failed with creds " + username + ":" + password
-				checkResult.Debug = err.Error()
-				response <- checkResult
-				return
-			} else if errString != "" {
-				checkResult.Error = "command produced an error message"
-				checkResult.Debug = "error: " + errString
-				response <- checkResult
-				return
-			}
-			if r.Output != "" {
-				if r.UseRegex {
-					re := regexp.MustCompile(r.Output)
-					if !re.Match(output) {
-						checkResult.Error = "command output didn't match regex"
-						checkResult.Debug = "command output'" + r.Command + "' didn't match regex '" + r.Output
-						response <- checkResult
-						return
-					}
-				} else {
-					if strings.TrimSpace(string(output)) != r.Output {
-						checkResult.Error = "command output didn't match string"
-						checkResult.Debug = "command output of '" + r.Command + "' didn't match string '" + r.Output
-						response <- checkResult
-						return
+			checkResult = RunSubchecks(c.Command, c.CheckAll, checkResult, "creds used were "+username+":"+password, func(r winCommandData, res Result) Result {
+				powershellCmd = winrm.Powershell(r.Command)
+				bufOut := new(bytes.Buffer)
+				bufErr := new(bytes.Buffer)
+				_, err = client.Run(powershellCmd, bufOut, bufErr)
+				output := bufOut.Bytes()
+				errString := bufErr.String()
+				if err != nil {
+					res.Error = "failed with creds " + username + ":" + password
+					res.Debug = err.Error()
+					res.Status = false
+					return res
+				} else if errString != "" {
+					res.Error = "command produced an error message"
+					res.Debug = "error: " + errString
+					res.Status = false
+					return res
+				}
+				if r.Output != "" {
+					if r.UseRegex {
+						re := regexp.MustCompile(r.Output)
+						if !re.Match(output) {
+							res.Error = "command output didn't match regex"
+							res.Debug = "command output'" + r.Command + "' didn't match regex '" + r.Output
+							res.Status = false
+							return res
+						}
+					} else {
+						if strings.TrimSpace(string(output)) != r.Output {
+							res.Error = "command output didn't match string"
+							res.Debug = "command output of '" + r.Command + "' didn't match string '" + r.Output
+							res.Status = false
+							return res
+						}
 					}
 				}
+				res.Status = true
+				return res
+			})
+			if !checkResult.Status {
+				response <- checkResult
+				return
 			}
 		} else {
 			powershellCmd = winrm.Powershell("hostname")
@@ -108,10 +114,11 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 				response <- checkResult
 				return
 			}
+			checkResult.Status = true
+			checkResult.Debug = "creds used were " + username + ":" + password
 		}
-		checkResult.Status = true
+		
 		checkResult.Points = c.Points
-		checkResult.Debug = "creds used were " + username + ":" + password
 		response <- checkResult
 	}
 
