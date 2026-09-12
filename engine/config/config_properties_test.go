@@ -12,8 +12,8 @@ import (
 func TestPropertyConfigTimingConstraints(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Generate random valid timing values that satisfy constraints
-		delay := rapid.IntRange(20, 300).Draw(t, "delay")       // Start at 20 to ensure room for jitter and timeout
-		jitter := rapid.IntRange(1, delay/2).Draw(t, "jitter")  // Valid: jitter < delay, max half of delay
+		delay := rapid.IntRange(20, 300).Draw(t, "delay")               // Start at 20 to ensure room for jitter and timeout
+		jitter := rapid.IntRange(1, delay/2).Draw(t, "jitter")          // Valid: jitter < delay, max half of delay
 		timeout := rapid.IntRange(1, delay-jitter-1).Draw(t, "timeout") // Valid: timeout < delay - jitter
 
 		conf := &ConfigSettings{

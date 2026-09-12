@@ -40,10 +40,10 @@ func (c Ldap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			return
 		}
 		defer func() {
-		if err := lconn.Close(); err != nil {
-			slog.Error("failed to close ldap connection", "error", err)
-		}
-	}()
+			if err := lconn.Close(); err != nil {
+				slog.Error("failed to close ldap connection", "error", err)
+			}
+		}()
 
 		// Set message timeout
 		lconn.SetTimeout(time.Duration(c.Timeout) * time.Second)

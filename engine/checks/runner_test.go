@@ -438,10 +438,10 @@ func TestSshCheckVerification(t *testing.T) {
 // TestSimpleCheckVerification tests basic verification for check types with simple default port logic
 func TestSimpleCheckVerification(t *testing.T) {
 	tests := []struct {
-		name         string
-		serviceType  string
-		defaultPort  int
-		needsCreds   bool
+		name        string
+		serviceType string
+		defaultPort int
+		needsCreds  bool
 	}{
 		{"Tcp", "Tcp", 0, false},
 		{"Ping", "Ping", 0, false},
@@ -624,8 +624,8 @@ func TestSqlCheckVerification(t *testing.T) {
 // TestWinRMCheckVerification tests WinRM check configuration validation
 func TestWinRMCheckVerification(t *testing.T) {
 	tests := []struct {
-		name        string
-		check       *WinRM
+		name         string
+		check        *WinRM
 		expectedPort int
 	}{
 		{
