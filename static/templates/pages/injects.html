@@ -428,14 +428,62 @@
         </div>
     </div>
 </div>
+
+<div class="offcanvas offcanvas-end inject-pdf-viewer" id="inject-pdf-viewer" tabindex="-1"
+    aria-labelledby="inject-pdf-viewer-title">
+    <div class="offcanvas-header border-bottom">
+        <h2 class="offcanvas-title fs-5 text-truncate" id="inject-pdf-viewer-title">Inject PDF</h2>
+        <a class="btn btn-outline-primary ms-auto me-2 flex-shrink-0" id="inject-pdf-download" href="#" download>
+            <i class="bi bi-download me-1"></i>Download
+        </a>
+        <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body p-0 d-flex">
+        <iframe class="border-0 flex-grow-1" id="inject-pdf-frame" title="Inject PDF viewer"></iframe>
+    </div>
+</div>
+
+<style>
+    .inject-pdf-viewer {
+        --bs-offcanvas-width: min(72vw, 1100px);
+    }
+
+    @media (max-width: 767.98px) {
+        .inject-pdf-viewer {
+            --bs-offcanvas-width: 100vw;
+        }
+    }
+</style>
+
 <script>
     const TAB_CONTAINER = document.getElementById("tab-container")
     const PANE_CONTAINER = document.getElementById("pane-container")
     const PLACEHOLDER_TAB = document.getElementById("tab--placeholder")
     const PLACEHOLDER_PANE = document.getElementById("pane--placeholder")
     const REFRESH_BTN = document.getElementById("refresh--btn")
+    const PDF_VIEWER = document.getElementById("inject-pdf-viewer")
+    const PDF_VIEWER_TITLE = document.getElementById("inject-pdf-viewer-title")
+    const PDF_FRAME = document.getElementById("inject-pdf-frame")
+    const PDF_DOWNLOAD = document.getElementById("inject-pdf-download")
 
     let prevData;
+
+    function injectFileURL(injectID, fileName) {
+        return `/injects/${encodeURIComponent(injectID)}/${encodeURIComponent(fileName)}`
+    }
+
+    function viewInjectPDF(injectID, fileName) {
+        const fileURL = injectFileURL(injectID, fileName)
+        PDF_VIEWER_TITLE.textContent = fileName
+        PDF_FRAME.src = `${fileURL}?inline=1`
+        PDF_DOWNLOAD.href = fileURL
+        PDF_DOWNLOAD.setAttribute("download", fileName)
+        bootstrap.Offcanvas.getOrCreateInstance(PDF_VIEWER).show()
+    }
+
+    PDF_VIEWER.addEventListener("hidden.bs.offcanvas", () => {
+        PDF_FRAME.removeAttribute("src")
+    })
 
     // Function to refresh injects without full page reload
     function refreshInjects() {
@@ -563,7 +611,7 @@
                     `
                     description.appendChild(descTemp)
                     
-                    if (inject.InjectFileNames != null && inject.InjectFileNames.length > 0) {
+                if (inject.InjectFileNames != null && inject.InjectFileNames.length > 0) {
                     let files = document.createElement("div")
                     files.className = "d-flex flex-column"
                     let header = document.createElement("h5")
@@ -573,11 +621,23 @@
                     files.appendChild(ul)
                     for (const file of inject.InjectFileNames) {
                         let li = document.createElement("li")
+                        li.className = "d-flex align-items-center gap-2 mb-2"
                         let a = document.createElement("a")
-                        a.href = `/injects/${inject.ID}/${file}`
+                        a.href = injectFileURL(inject.ID, file)
                         a.textContent = file
-                        a.target = "_blank"
                         li.appendChild(a)
+
+                        if (file.toLowerCase().endsWith(".pdf")) {
+                            a.dataset.pdfInjectId = inject.ID
+                            a.dataset.pdfFileName = file
+                            let viewButton = document.createElement("button")
+                            viewButton.type = "button"
+                            viewButton.className = "btn btn-sm btn-outline-primary"
+                            viewButton.innerHTML = `<i class="bi bi-eye me-1"></i>View`
+                            viewButton.dataset.pdfInjectId = inject.ID
+                            viewButton.dataset.pdfFileName = file
+                            li.appendChild(viewButton)
+                        }
                         ul.appendChild(li)
                     }
                     description.appendChild(files)
@@ -592,6 +652,13 @@
                 // Replace placeholder in innerHTML
                 tab.innerHTML = tab.innerHTML.replaceAll("placeholder", inject.ID)
                 pane.innerHTML = pane.innerHTML.replaceAll("placeholder", inject.ID)
+
+                pane.querySelectorAll("[data-pdf-file-name]").forEach((viewerTrigger) => {
+                    viewerTrigger.addEventListener("click", (event) => {
+                        event.preventDefault()
+                        viewInjectPDF(viewerTrigger.dataset.pdfInjectId, viewerTrigger.dataset.pdfFileName)
+                    })
+                })
 
                 tabs.push(tab)
                 panes.push(pane)
