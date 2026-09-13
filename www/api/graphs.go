@@ -13,12 +13,12 @@ const (
 	Down
 )
 
-func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
-	if !CheckCompetitionStarted(w, r) {
+func (a *API) GetServiceStatus(w http.ResponseWriter, r *http.Request) {
+	if !a.CheckCompetitionStarted(w, r) {
 		return
 	}
 
-	round, err := db.GetLastRound()
+	round, err := a.eng.DB.GetLastRound()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving last round", err)
 		return
@@ -34,7 +34,7 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 		uniqueServices = append(uniqueServices, service)
 	}
 
-	teams, err := db.GetTeams()
+	teams, err := a.eng.DB.GetTeams()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving teams", err)
 		return
@@ -78,7 +78,7 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 		series = append(series, s)
 	}
 
-	if shouldScrub(r) {
+	if a.shouldScrub(r) {
 		for i := range series {
 			series[i].Name = "Team"
 		}
@@ -88,12 +88,12 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, data)
 }
 
-func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
-	if !CheckCompetitionStarted(w, r) {
+func (a *API) GetScoreStatus(w http.ResponseWriter, r *http.Request) {
+	if !a.CheckCompetitionStarted(w, r) {
 		return
 	}
 
-	scores, err := db.GetServiceCheckSumByRound()
+	scores, err := a.eng.DB.GetServiceCheckSumByRound()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving scores", err)
 		return
@@ -110,7 +110,7 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 
 	series := make([]Series, 0, len(scores))
 
-	teams, err := db.GetTeams()
+	teams, err := a.eng.DB.GetTeams()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving teams", err)
 		return
@@ -133,7 +133,7 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if shouldScrub(r) {
+	if a.shouldScrub(r) {
 		for i := range series {
 			series[i].Name = "Team"
 		}
@@ -154,20 +154,20 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, data)
 }
 
-func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
-	if !CheckCompetitionStarted(w, r) {
+func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
+	if !a.CheckCompetitionStarted(w, r) {
 		return
 	}
 
-	teams, err := db.GetTeams()
+	teams, err := a.eng.DB.GetTeams()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving teams", err)
 		return
 	}
 	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })
 
-	eng.RLockUptime()
-	uptime := eng.GetUptimePerService()
+	a.eng.RLockUptime()
+	uptime := a.eng.GetUptimePerService()
 
 	// TODO: make db unique function or get from config
 	uniqueServicesMap := make(map[string]bool)
@@ -207,9 +207,9 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 		s.Data = points
 		series = append(series, s)
 	}
-	eng.RUnlockUptime()
+	a.eng.RUnlockUptime()
 
-	if shouldScrub(r) {
+	if a.shouldScrub(r) {
 		for i := range series {
 			series[i].Name = "Team"
 		}
@@ -219,7 +219,7 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, data)
 }
 
-func shouldScrub(r *http.Request) bool {
+func (a *API) shouldScrub(r *http.Request) bool {
 	if r.Context().Value("roles") != nil {
 		req_roles := r.Context().Value("roles").([]string)
 		if slices.Contains(req_roles, "admin") {
@@ -227,7 +227,7 @@ func shouldScrub(r *http.Request) bool {
 		}
 	}
 
-	if conf.UISettings.AllowNonAnonymizedGraphsForBlueTeam {
+	if a.conf.UISettings.AllowNonAnonymizedGraphsForBlueTeam {
 		return false
 	}
 	return true

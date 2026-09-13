@@ -14,7 +14,7 @@ import (
 	"github.com/dbaseqp/Quotient/engine/db"
 )
 
-func CreateSubmission(w http.ResponseWriter, r *http.Request) {
+func (a *API) CreateSubmission(w http.ResponseWriter, r *http.Request) {
 	temp, err := strconv.ParseUint(r.PathValue("id"), 10, 32)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid inject id"})
@@ -56,7 +56,7 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		SubmissionFileName: fileHeader.Filename,
 	}
 
-	injects, err := db.GetInjects()
+	injects, err := a.eng.DB.GetInjects()
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving the injects"})
 		return
@@ -75,7 +75,7 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	submission, err = db.CreateSubmission(submission)
+	submission, err = a.eng.DB.CreateSubmission(submission)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error creating the submission"})
 		return
@@ -105,7 +105,7 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Inject submitted successfully"})
 }
 
-func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
+func (a *API) DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 	temp, err := strconv.ParseUint(r.PathValue("id"), 10, 32)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid inject id"})
@@ -137,7 +137,7 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	submissions, err := db.GetSubmissionsForInject(injectID)
+	submissions, err := a.eng.DB.GetSubmissionsForInject(injectID)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving the submission"})
 		return
@@ -173,7 +173,7 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func DownloadAllSubmissions(w http.ResponseWriter, r *http.Request) {
+func (a *API) DownloadAllSubmissions(w http.ResponseWriter, r *http.Request) {
 	temp, err := strconv.ParseUint(r.PathValue("id"), 10, 32)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid inject id"})
@@ -181,12 +181,12 @@ func DownloadAllSubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 	injectID := uint(temp)
 
-	if _, err := db.GetInjectByID(injectID); err != nil {
+	if _, err := a.eng.DB.GetInjectByID(injectID); err != nil {
 		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Inject not found"})
 		return
 	}
 
-	submissions, err := db.GetSubmissionsForInject(injectID)
+	submissions, err := a.eng.DB.GetSubmissionsForInject(injectID)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving submissions"})
 		return

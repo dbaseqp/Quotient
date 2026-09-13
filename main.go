@@ -8,7 +8,6 @@ import (
 
 	"github.com/dbaseqp/Quotient/engine"
 	"github.com/dbaseqp/Quotient/engine/config"
-	"github.com/dbaseqp/Quotient/engine/db"
 	"github.com/dbaseqp/Quotient/www"
 )
 
@@ -45,11 +44,6 @@ func main() {
 
 	// Create engine which will validate and load the config
 	se := engine.NewEngine(&conf, configPath)
-	db.Connect(conf.RequiredSettings.DBConnectURL)
-
-	if err := db.AddTeams(&conf); err != nil {
-		log.Fatalln("Failed to add teams to DB:", err)
-	}
 
 	// start engine, restart if it stops
 	go func() {
@@ -59,6 +53,6 @@ func main() {
 	}()
 
 	// start web server
-	router := www.Router{Config: &conf, Engine: se}
+	router := www.NewRouter(&conf, se)
 	router.Start()
 }

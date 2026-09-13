@@ -23,7 +23,7 @@ func safeOpenInDir(baseDir, relativePath string) (*os.File, error) {
 }
 
 func (se *ScoringEngine) EnsureCredentialsSeeded() error {
-	teams, err := db.GetTeams()
+	teams, err := se.DB.GetTeams()
 	if err != nil {
 		return fmt.Errorf("failed to get teams: %v", err)
 	}
@@ -31,7 +31,7 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 	se.setTeamCredentialLocks(teams)
 
 	// Check if credentials are already seeded in DB
-	seeded, err := db.IsCredentialsSeeded()
+	seeded, err := se.DB.IsCredentialsSeeded()
 	if err != nil {
 		return fmt.Errorf("failed to check if credentials are seeded: %v", err)
 	}
@@ -56,14 +56,14 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 				return fmt.Errorf("failed to read credlist file %s: %v", credlistPath, err)
 			}
 
-			if err := db.SeedOriginalCredentials(credlistPath, records); err != nil {
+			if err := se.DB.SeedOriginalCredentials(credlistPath, records); err != nil {
 				return fmt.Errorf("failed to seed original credentials for %s: %v", credlistPath, err)
 			}
 		}
 
 		// Seed team credentials from originals
 		for _, team := range teams {
-			if err := db.SeedTeamCredentials(team.ID); err != nil {
+			if err := se.DB.SeedTeamCredentials(team.ID); err != nil {
 				return fmt.Errorf("failed to seed credentials for team %d: %v", team.ID, err)
 			}
 		}
@@ -72,13 +72,13 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 		slog.Info("Credentials already seeded in database")
 		// Check for new teams that need seeding
 		for _, team := range teams {
-			creds, err := db.GetAllTeamCredentials(team.ID)
+			creds, err := se.DB.GetAllTeamCredentials(team.ID)
 			if err != nil {
 				return fmt.Errorf("failed to get credentials for team %d: %v", team.ID, err)
 			}
 			if len(creds) == 0 {
 				slog.Info("Seeding credentials for new team", "team_id", team.ID)
-				if err := db.SeedTeamCredentials(team.ID); err != nil {
+				if err := se.DB.SeedTeamCredentials(team.ID); err != nil {
 					return fmt.Errorf("failed to seed credentials for team %d: %v", team.ID, err)
 				}
 			}
@@ -87,7 +87,7 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 		// Check for new credlists that need seeding
 		for _, configCredlist := range se.Config.CredlistSettings.Credlist {
 			credlistPath := configCredlist.CredlistPath
-			origCreds, err := db.GetOriginalCredentials(credlistPath)
+			origCreds, err := se.DB.GetOriginalCredentials(credlistPath)
 			if err != nil {
 				return fmt.Errorf("failed to check original credentials for %s: %v", credlistPath, err)
 			}
@@ -107,13 +107,13 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 					return fmt.Errorf("failed to read credlist file %s: %v", credlistPath, err)
 				}
 
-				if err := db.SeedOriginalCredentials(credlistPath, records); err != nil {
+				if err := se.DB.SeedOriginalCredentials(credlistPath, records); err != nil {
 					return fmt.Errorf("failed to seed original credentials for %s: %v", credlistPath, err)
 				}
 
 				// Seed to all teams
 				for _, team := range teams {
-					if err := db.SeedTeamCredentials(team.ID); err != nil {
+					if err := se.DB.SeedTeamCredentials(team.ID); err != nil {
 						return fmt.Errorf("failed to seed credentials for team %d: %v", team.ID, err)
 					}
 				}
@@ -180,7 +180,7 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 	changedBy := fmt.Sprintf("team%d", teamID)
 
 	for i, username := range usernames {
-		err := db.UpdateCredential(teamID, credlistName, username, passwords[i], changedBy)
+		err := se.DB.UpdateCredential(teamID, credlistName, username, passwords[i], changedBy)
 		if err != nil {
 			if err.Error() == "credential not found" {
 				skippedUsernames = append(skippedUsernames, username)
@@ -209,7 +209,7 @@ func (se *ScoringEngine) GetCredlists() (any, error) {
 		a.Usernames = []string{}
 
 		// Get usernames from original credentials in DB
-		origCreds, err := db.GetOriginalCredentials(credlist.CredlistPath)
+		origCreds, err := se.DB.GetOriginalCredentials(credlist.CredlistPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get original credentials for %s: %v", credlist.CredlistPath, err)
 		}
@@ -242,15 +242,15 @@ func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string, chan
 	mu.Lock()
 	defer mu.Unlock()
 
-	return db.ResetTeamCredlist(teamID, credlistName, changedBy)
+	return se.DB.ResetTeamCredlist(teamID, credlistName, changedBy)
 }
 
 // GetTeamCredentials returns credentials for admin viewing
 func (se *ScoringEngine) GetTeamCredentials(teamID uint, credlistName string) ([]db.CredentialSchema, error) {
-	return db.GetTeamCredentials(teamID, credlistName)
+	return se.DB.GetTeamCredentials(teamID, credlistName)
 }
 
 // GetPCRHistory returns PCR history for admin viewing
 func (se *ScoringEngine) GetPCRHistory(teamID uint, credlistName string, username string) ([]db.PCRHistorySchema, error) {
-	return db.GetPCRHistory(teamID, credlistName, username)
+	return se.DB.GetPCRHistory(teamID, credlistName, username)
 }

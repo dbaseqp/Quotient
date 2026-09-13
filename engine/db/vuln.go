@@ -16,9 +16,9 @@ type VulnSchema struct {
 	// Vectors     []VectorSchema `gorm:"foreignKey:VulnID"`
 }
 
-func GetVulns() ([]VulnSchema, error) {
+func (d *DB) GetVulns() ([]VulnSchema, error) {
 	var vulns []VulnSchema
-	result := db.Table("vuln_schemas").Find(&vulns)
+	result := d.db.Table("vuln_schemas").Find(&vulns)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return vulns, nil
@@ -29,8 +29,8 @@ func GetVulns() ([]VulnSchema, error) {
 	return vulns, nil
 }
 
-func CreateVuln(vuln VulnSchema) (VulnSchema, error) {
-	result := db.Table("vuln_schemas").Create(&vuln)
+func (d *DB) CreateVuln(vuln VulnSchema) (VulnSchema, error) {
+	result := d.db.Table("vuln_schemas").Create(&vuln)
 	if result.Error != nil {
 		return VulnSchema{}, result.Error
 	}

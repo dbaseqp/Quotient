@@ -31,17 +31,17 @@ func (check *ServiceCheckSchema) BeforeCreate(tx *gorm.DB) (err error) {
 	return nil
 }
 
-func CreateRound(round RoundSchema) (RoundSchema, error) {
-	result := db.Table("round_schemas").Create(&round)
+func (d *DB) CreateRound(round RoundSchema) (RoundSchema, error) {
+	result := d.db.Table("round_schemas").Create(&round)
 	if result.Error != nil {
 		return RoundSchema{}, result.Error
 	}
 	return round, nil
 }
 
-func GetLastRound() (RoundSchema, error) {
+func (d *DB) GetLastRound() (RoundSchema, error) {
 	var round RoundSchema
-	result := db.Table("round_schemas").Preload("Checks").Order("id desc").First(&round)
+	result := d.db.Table("round_schemas").Preload("Checks").Order("id desc").First(&round)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return round, nil
@@ -51,7 +51,7 @@ func GetLastRound() (RoundSchema, error) {
 	return round, nil
 }
 
-func RefreshScoresMaterializedView() error {
+func (d *DB) RefreshScoresMaterializedView() error {
 	// Use concurrent refresh to avoid blocking reads
-	return db.Exec("REFRESH MATERIALIZED VIEW CONCURRENTLY cumulative_scores").Error
+	return d.db.Exec("REFRESH MATERIALIZED VIEW CONCURRENTLY cumulative_scores").Error
 }

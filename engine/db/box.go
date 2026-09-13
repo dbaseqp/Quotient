@@ -13,9 +13,9 @@ type BoxSchema struct {
 	Vectors  []VectorSchema `gorm:"foreignKey:BoxID"`
 }
 
-func GetBoxes() ([]BoxSchema, error) {
+func (d *DB) GetBoxes() ([]BoxSchema, error) {
 	var boxes []BoxSchema
-	result := db.Table("box_schemas").Preload("Vectors").Find(&boxes)
+	result := d.db.Table("box_schemas").Preload("Vectors").Find(&boxes)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return boxes, nil
@@ -26,16 +26,16 @@ func GetBoxes() ([]BoxSchema, error) {
 	return boxes, nil
 }
 
-func CreateBox(box BoxSchema) (BoxSchema, error) {
-	result := db.Table("box_schemas").Create(&box)
+func (d *DB) CreateBox(box BoxSchema) (BoxSchema, error) {
+	result := d.db.Table("box_schemas").Create(&box)
 	if result.Error != nil {
 		return BoxSchema{}, result.Error
 	}
 	return box, nil
 }
 
-func UpdateBox(box BoxSchema) (BoxSchema, error) {
-	result := db.Table("box_schemas").Save(&box)
+func (d *DB) UpdateBox(box BoxSchema) (BoxSchema, error) {
+	result := d.db.Table("box_schemas").Save(&box)
 	if result.Error != nil {
 		return BoxSchema{}, result.Error
 	}

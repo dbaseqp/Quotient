@@ -31,9 +31,9 @@ type AttackSchema struct {
 	DataAccessDatabase            bool
 }
 
-func GetAttacks() ([]AttackSchema, error) {
+func (d *DB) GetAttacks() ([]AttackSchema, error) {
 	var attacks []AttackSchema
-	result := db.Table("attack_schemas").Find(&attacks)
+	result := d.db.Table("attack_schemas").Find(&attacks)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return attacks, nil
@@ -44,16 +44,16 @@ func GetAttacks() ([]AttackSchema, error) {
 	return attacks, nil
 }
 
-func CreateAttack(attack AttackSchema) (AttackSchema, error) {
-	result := db.Table("attack_schemas").Create(&attack)
+func (d *DB) CreateAttack(attack AttackSchema) (AttackSchema, error) {
+	result := d.db.Table("attack_schemas").Create(&attack)
 	if result.Error != nil {
 		return AttackSchema{}, result.Error
 	}
 	return attack, nil
 }
 
-func UpdateAttack(attack AttackSchema) (AttackSchema, error) {
-	result := db.Table("attack_schemas").Save(&attack)
+func (d *DB) UpdateAttack(attack AttackSchema) (AttackSchema, error) {
+	result := d.db.Table("attack_schemas").Save(&attack)
 	if result.Error != nil {
 		return AttackSchema{}, result.Error
 	}

@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/dbaseqp/Quotient/engine/config"
-	"github.com/dbaseqp/Quotient/engine/db"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
 
 	"github.com/go-ldap/ldap/v3"
 )
@@ -78,7 +79,7 @@ func requireOwnTeam(w http.ResponseWriter, r *http.Request, teamID uint, bypassR
 
 // resolveIdentity turns an authenticated username and auth source into roles
 // and a team.
-func resolveIdentity(username string, authSource string) (Identity, error) {
+func (a *API) resolveIdentity(username string, authSource string) (Identity, error) {
 	id := Identity{Username: username}
 
 	// teamFor carries what this auth source needs to pick the team: the OIDC
@@ -87,14 +88,14 @@ func resolveIdentity(username string, authSource string) (Identity, error) {
 
 	switch authSource {
 	case "oidc":
-		userInfo, exists := GetOIDCUserInfo(username)
+		userInfo, exists := a.GetOIDCUserInfo(username)
 		if !exists {
 			return Identity{}, errors.New("OIDC session expired - please login again")
 		}
 		id.Roles = userInfo.Roles
 		groups := userInfo.Groups
 		teamFor = func(teams []db.TeamSchema) (db.TeamSchema, error) {
-			team := mapOIDCUserToTeam(teams, groups)
+			team := a.mapOIDCUserToTeam(teams, groups)
 			if team == nil {
 				return db.TeamSchema{}, fmt.Errorf("no team matched groups %v", groups)
 			}
@@ -102,7 +103,7 @@ func resolveIdentity(username string, authSource string) (Identity, error) {
 		}
 
 	case "local":
-		roles := localRoles(username)
+		roles := a.localRoles(username)
 		if len(roles) == 0 {
 			return Identity{}, errors.New("local user has no roles")
 		}
@@ -111,7 +112,7 @@ func resolveIdentity(username string, authSource string) (Identity, error) {
 		teamFor = teamNamed(username)
 
 	case "ldap":
-		roles, err := ldapRoles(username)
+		roles, err := a.ldapRoles(username)
 		if err != nil {
 			return Identity{}, err
 		}
@@ -129,7 +130,7 @@ func resolveIdentity(username string, authSource string) (Identity, error) {
 		return id, nil
 	}
 
-	teams, err := db.GetTeams()
+	teams, err := a.eng.DB.GetTeams()
 	if err != nil {
 		return Identity{}, fmt.Errorf("failed to list teams while resolving %q: %w", username, err)
 	}
@@ -178,9 +179,9 @@ func teamOrdinal(name string) (uint64, bool) {
 
 // isTeamGroup reports whether a group is covered by an OIDCTeamGroups pattern,
 // by the same rule that grants the team role in mapGroupsToRoles.
-func isTeamGroup(group string) bool {
+func (a *API) isTeamGroup(group string) bool {
 	one := []string{group}
-	return slices.ContainsFunc(conf.OIDCSettings.OIDCTeamGroups, func(pattern string) bool {
+	return slices.ContainsFunc(a.conf.OIDCSettings.OIDCTeamGroups, func(pattern string) bool {
 		return matchesGroup(one, pattern)
 	})
 }
@@ -188,11 +189,11 @@ func isTeamGroup(group string) bool {
 // mapOIDCUserToTeam resolves an OIDC user's team from their group memberships;
 // see "How OIDC users are placed on a team" in README.md for the two passes.
 // Returns nil when nothing matches, which every caller must handle.
-func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchema {
+func (a *API) mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchema {
 	// Pass 1: the group is named after the team. The first group that names a
 	// team wins; this pass does not look for a second.
 	for _, group := range userGroups {
-		if !isTeamGroup(group) {
+		if !a.isTeamGroup(group) {
 			continue
 		}
 		for i := range teams {
@@ -206,7 +207,7 @@ func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchem
 	// than one team resolves to nil rather than a guess.
 	var groupOrdinals []uint64
 	for _, group := range userGroups {
-		if !isTeamGroup(group) {
+		if !a.isTeamGroup(group) {
 			continue
 		}
 		if ordinal, ok := teamOrdinal(group); ok {
@@ -227,7 +228,7 @@ func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchem
 		return &matched[0]
 	case 0:
 		slog.Warn("no team matched any of the user's groups",
-			"groups", userGroups, "team_groups", conf.OIDCSettings.OIDCTeamGroups)
+			"groups", userGroups, "team_groups", a.conf.OIDCSettings.OIDCTeamGroups)
 	default:
 		names := make([]string, 0, len(matched))
 		for _, t := range matched {
@@ -240,24 +241,24 @@ func mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.TeamSchem
 	return nil
 }
 
-func localRoles(username string) []string {
+func (a *API) localRoles(username string) []string {
 	roles := make([]string, 0)
-	for _, admin := range conf.Admin {
+	for _, admin := range a.conf.Admin {
 		if username == admin.Name {
 			roles = append(roles, "admin")
 		}
 	}
-	for _, red := range conf.Red {
+	for _, red := range a.conf.Red {
 		if username == red.Name {
 			roles = append(roles, "red")
 		}
 	}
-	for _, team := range conf.Team {
+	for _, team := range a.conf.Team {
 		if username == team.Name {
 			roles = append(roles, "team")
 		}
 	}
-	for _, inject := range conf.Inject {
+	for _, inject := range a.conf.Inject {
 		if username == inject.Name {
 			roles = append(roles, "inject")
 		}
@@ -266,12 +267,12 @@ func localRoles(username string) []string {
 }
 
 // ldapRoles reads the roles of an LDAP account from its group memberships.
-func ldapRoles(username string) ([]string, error) {
-	if conf.LdapSettings == (config.LdapAuthConfig{}) {
+func (a *API) ldapRoles(username string) ([]string, error) {
+	if a.conf.LdapSettings == (config.LdapAuthConfig{}) {
 		return nil, errors.New("LDAP session but LDAP is not configured")
 	}
 
-	conn, err := ldap.DialURL(conf.LdapSettings.LdapConnectUrl)
+	conn, err := ldap.DialURL(a.conf.LdapSettings.LdapConnectUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -279,14 +280,14 @@ func ldapRoles(username string) ([]string, error) {
 	defer conn.Close()
 
 	// bind using the given username and password and searchbase from config
-	err = conn.Bind(conf.LdapSettings.LdapBindDn, conf.LdapSettings.LdapBindPassword)
+	err = conn.Bind(a.conf.LdapSettings.LdapBindDn, a.conf.LdapSettings.LdapBindPassword)
 	if err != nil {
 		return nil, err
 	}
 
 	// query for the user's roles
 	searchRequest := ldap.NewSearchRequest(
-		conf.LdapSettings.LdapSearchBaseDn,
+		a.conf.LdapSettings.LdapSearchBaseDn,
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", ldap.EscapeFilter(username)),
 		[]string{"memberOf"},
@@ -301,19 +302,19 @@ func ldapRoles(username string) ([]string, error) {
 	roles := make([]string, 0)
 	for _, entry := range sr.Entries {
 		for _, memberOf := range entry.GetAttributeValues("memberOf") {
-			if memberOf == conf.LdapSettings.LdapAdminGroupDn {
+			if memberOf == a.conf.LdapSettings.LdapAdminGroupDn {
 				roles = append(roles, "admin")
 			}
 
-			if memberOf == conf.LdapSettings.LdapRedGroupDn {
+			if memberOf == a.conf.LdapSettings.LdapRedGroupDn {
 				roles = append(roles, "red")
 			}
 
-			if memberOf == conf.LdapSettings.LdapTeamGroupDn {
+			if memberOf == a.conf.LdapSettings.LdapTeamGroupDn {
 				roles = append(roles, "team")
 			}
 
-			if memberOf == conf.LdapSettings.LdapInjectGroupDn {
+			if memberOf == a.conf.LdapSettings.LdapInjectGroupDn {
 				roles = append(roles, "inject")
 			}
 		}

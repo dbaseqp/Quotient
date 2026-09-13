@@ -20,9 +20,9 @@ type ServiceCheckSchema struct {
 	Debug       string // informational
 }
 
-func GetServiceCheckSumByTeam() (map[uint]any, error) {
+func (d *DB) GetServiceCheckSumByTeam() (map[uint]any, error) {
 	result := make(map[uint]any)
-	rows, err := db.Model(ServiceCheckSchema{}).Select("team_id, sum(points) as total").Group("team_id").Having("result = ?", true).Rows()
+	rows, err := d.db.Model(ServiceCheckSchema{}).Select("team_id, sum(points) as total").Group("team_id").Having("result = ?", true).Rows()
 
 	if err != nil {
 		return nil, err
@@ -43,10 +43,10 @@ func GetServiceCheckSumByTeam() (map[uint]any, error) {
 	return result, nil
 }
 
-func GetServiceCheckSumByRound() ([]map[uint]int, error) {
+func (d *DB) GetServiceCheckSumByRound() ([]map[uint]int, error) {
 	var last RoundSchema
 
-	if r := db.Model(RoundSchema{}).Last(&last); r.Error != nil {
+	if r := d.db.Model(RoundSchema{}).Last(&last); r.Error != nil {
 		if errors.Is(r.Error, gorm.ErrRecordNotFound) {
 			return []map[uint]int{}, nil
 		}
@@ -57,7 +57,7 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 	result := make([]map[uint]int, last.ID)
 
 	// Query from materialized view instead of running window function each time
-	rows, err := db.Raw(`
+	rows, err := d.db.Raw(`
 		SELECT round_id, team_id, cumulative_points
 		FROM cumulative_scores
 		ORDER BY team_id, round_id
@@ -91,7 +91,7 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 		result[roundidx][team] = points
 	}
 
-	rows, err = db.Table("sla_schemas").Select("round_id, team_id, sum(penalty) as penalty").Group("round_id, team_id").Rows()
+	rows, err = d.db.Table("sla_schemas").Select("round_id, team_id, sum(penalty) as penalty").Group("round_id, team_id").Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -130,9 +130,9 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 }
 
 // GetServiceAllChecksByTeam returns all checks for a service, which is one per round
-func GetServiceAllChecksByTeam(teamID uint, serviceID string) ([]ServiceCheckSchema, error) {
+func (d *DB) GetServiceAllChecksByTeam(teamID uint, serviceID string) ([]ServiceCheckSchema, error) {
 	var checks []ServiceCheckSchema
-	result := db.Table("service_check_schemas").Preload("Round").Where("team_id = ? AND service_name = ?", teamID, serviceID).Order("round_id desc").Find(&checks)
+	result := d.db.Table("service_check_schemas").Preload("Round").Where("team_id = ? AND service_name = ?", teamID, serviceID).Order("round_id desc").Find(&checks)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return checks, nil
@@ -147,8 +147,8 @@ type Uptime struct {
 	TotalChecks  int
 }
 
-func LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
-	rows, err := db.Raw(`
+func (d *DB) LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
+	rows, err := d.db.Raw(`
 		SELECT team_id, service_name, 
 			   SUM(CASE WHEN result = true THEN 1 ELSE 0 END) as passed_checks, 
 			   COUNT(*) as total_checks 
@@ -191,14 +191,14 @@ type ServiceScoreData struct {
 	TotalPenalty int
 }
 
-func GetServiceScores() ([]ServiceScoreData, error) {
+func (d *DB) GetServiceScores() ([]ServiceScoreData, error) {
 	var results []ServiceScoreData
 
 	// Create a map to store intermediate results keyed by team_id and service_name
 	scoreMap := make(map[uint]map[string]*ServiceScoreData)
 
 	// First get the total points per service per team
-	pointsRows, err := db.Raw(`
+	pointsRows, err := d.db.Raw(`
 		SELECT team_id, service_name, SUM(CASE WHEN result = true THEN points ELSE 0 END) as total_points
 		FROM service_check_schemas
 		GROUP BY team_id, service_name
@@ -230,7 +230,7 @@ func GetServiceScores() ([]ServiceScoreData, error) {
 	}
 
 	// Then get the total penalties and violation counts per service per team from SLA
-	slaRows, err := db.Raw(`
+	slaRows, err := d.db.Raw(`
 		SELECT team_id, service_name, COUNT(*) as violations, SUM(penalty) as total_penalty
 		FROM sla_schemas
 		GROUP BY team_id, service_name
@@ -282,8 +282,8 @@ func GetServiceScores() ([]ServiceScoreData, error) {
 	return results, nil
 }
 
-func LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) error {
-	rows, err := db.Table("service_check_schemas").Select("team_id, service_name, result").Rows()
+func (d *DB) LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) error {
+	rows, err := d.db.Table("service_check_schemas").Select("team_id, service_name, result").Rows()
 	if err != nil {
 		return err
 	}

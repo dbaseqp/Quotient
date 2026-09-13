@@ -3,8 +3,6 @@ package integration
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,58 +15,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testTeamCounter provides unique team IDs across test runs
-var testTeamCounter atomic.Uint64
-
-func init() {
-	testTeamCounter.Store(uint64(time.Now().UnixNano() % 1_000_000))
-}
-
-// createTestTeam creates a team with a unique ID
-func createTestTeam(t *testing.T, name string, identifier string) db.TeamSchema {
-	t.Helper()
-	teamID := uint(testTeamCounter.Add(1))
-	team := db.TeamSchema{
-		ID:         teamID,
-		Name:       fmt.Sprintf("%s-%d", name, teamID),
-		Identifier: identifier,
-		Active:     true,
-	}
-	_, err := db.CreateTeam(team)
-	require.NoError(t, err)
-	return team
-}
-
-func startContainers(t *testing.T) *testutil.RedisContainer {
-	redis := testutil.StartRedis(t)
-	pg := testutil.StartPostgres(t)
-	db.Connect(pg.ConnectionString())
-
-	t.Cleanup(func() {
-		pg.Close()
-		require.NoError(t, redis.Close())
-	})
-
-	return redis
-}
-
 // TestFullEngineWorkflow tests the complete engine workflow with real databases
 func TestFullEngineWorkflow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping full integration test in short mode")
 	}
 
-	redisContainer := startContainers(t)
+	redisContainer, pg := testutil.StartContainers(t)
 
 	ctx := context.Background()
 
 	t.Run("complete round workflow", func(t *testing.T) {
 		// Clear Redis and reset DB scores (clears rounds, checks, SLAs)
 		redisContainer.Client.FlushDB(ctx)
-		require.NoError(t, db.ResetScores())
+		require.NoError(t, pg.DB.ResetScores())
 
 		roundID := uint(1)
-		team := createTestTeam(t, "Test Team", "01")
+		team := pg.CreateTestTeam(t, "Test Team", "01")
 
 		// Step 1: Enqueue tasks (simulating engine creating tasks)
 		task := engine.Task{
@@ -149,11 +112,11 @@ func TestFullEngineWorkflow(t *testing.T) {
 		}
 
 		// Save to database
-		_, err = db.CreateRound(round)
+		_, err = pg.DB.CreateRound(round)
 		require.NoError(t, err, "should save round to database")
 
 		// Step 6: Verify data in database
-		savedRound, err := db.GetLastRound()
+		savedRound, err := pg.DB.GetLastRound()
 		require.NoError(t, err)
 		require.NotNil(t, savedRound)
 
@@ -173,7 +136,7 @@ func TestFullEngineWorkflow(t *testing.T) {
 		redisContainer.Client.FlushDB(ctx)
 
 		roundID := uint(2)
-		team := createTestTeam(t, "Team Sanitize", "01")
+		team := pg.CreateTestTeam(t, "Team Sanitize", "01")
 
 		// Create result with malicious content
 		result := checks.Result{
@@ -205,11 +168,11 @@ func TestFullEngineWorkflow(t *testing.T) {
 		}
 
 		// Save to database
-		_, err := db.CreateRound(round)
+		_, err := pg.DB.CreateRound(round)
 		require.NoError(t, err, "should save round even with malicious content")
 
 		// Verify sanitization worked
-		savedRound, err := db.GetLastRound()
+		savedRound, err := pg.DB.GetLastRound()
 		require.NoError(t, err)
 
 		if len(savedRound.Checks) > 0 {
@@ -231,7 +194,7 @@ func TestFullEngineWorkflow(t *testing.T) {
 		redisContainer.Client.FlushDB(ctx)
 
 		roundID := uint(3)
-		team := createTestTeam(t, "Team SLA", "01")
+		team := pg.CreateTestTeam(t, "Team SLA", "01")
 		serviceName := "critical-service"
 
 		// Simulate 3 consecutive failures (should trigger SLA)
@@ -263,12 +226,12 @@ func TestFullEngineWorkflow(t *testing.T) {
 				Checks:    []db.ServiceCheckSchema{dbResult},
 			}
 
-			_, err := db.CreateRound(round)
+			_, err := pg.DB.CreateRound(round)
 			require.NoError(t, err)
 		}
 
 		// Verify all rounds were saved
-		savedRound, err := db.GetLastRound()
+		savedRound, err := pg.DB.GetLastRound()
 		require.NoError(t, err)
 		assert.Equal(t, roundID+2, savedRound.ID)
 	})

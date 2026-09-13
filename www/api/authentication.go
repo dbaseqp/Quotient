@@ -28,13 +28,13 @@ var (
 const COOKIENAME = "quotient"
 
 // cookieSecure returns whether cookies should use the Secure flag (HTTPS only)
-func cookieSecure() bool {
+func (a *API) cookieSecure() bool {
 	// If OIDC is enabled and using HTTPS callback, enforce secure cookies
-	if conf.OIDCSettings.OIDCEnabled && strings.HasPrefix(conf.OIDCSettings.OIDCRedirectURL, "https://") {
+	if a.conf.OIDCSettings.OIDCEnabled && strings.HasPrefix(a.conf.OIDCSettings.OIDCRedirectURL, "https://") {
 		return true
 	}
 	// Otherwise, use secure cookies only if SSL is configured
-	return conf.SslSettings != (config.SslConfig{})
+	return a.conf.SslSettings != (config.SslConfig{})
 }
 
 func init() {
@@ -84,7 +84,7 @@ func init() {
 	CookieEncoder = securecookie.New(hashKey, blockKey)
 }
 
-func Login(w http.ResponseWriter, r *http.Request) {
+func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 	type Form struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -101,7 +101,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check credentials
-	auth, err := auth(form.Username, form.Password)
+	auth, err := a.auth(form.Username, form.Password)
 	if err != nil {
 		WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "Incorrect username/password"})
 		slog.Info("Failed logon", "username", form.Username)
@@ -120,7 +120,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		Value:    cookie,
 		MaxAge:   int((time.Hour * 24).Seconds()),
 		HttpOnly: true,
-		Secure:   cookieSecure(),
+		Secure:   a.cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 	})
@@ -128,13 +128,13 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Successful login", "username", form.Username)
 }
 
-func Logout(w http.ResponseWriter, r *http.Request) {
+func (a *API) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     COOKIENAME,
 		Value:    "",
 		MaxAge:   0,
 		HttpOnly: true,
-		Secure:   cookieSecure(),
+		Secure:   a.cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 	})
@@ -145,7 +145,7 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 // when the request carries no usable session, or when the identity cannot be
 // resolved, in which case it also clears the cookie. Refreshes the cookie on
 // success.
-func Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
+func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
 	token, err := r.Cookie(COOKIENAME)
 	if err != nil {
 		if err != http.ErrNoCookie {
@@ -172,7 +172,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
 		authSource = source
 	}
 
-	id, err := resolveIdentity(username, authSource)
+	id, err := a.resolveIdentity(username, authSource)
 	if err != nil {
 		slog.Error(err.Error())
 		http.SetCookie(w, &http.Cookie{
@@ -180,7 +180,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
 			Value:    "",
 			MaxAge:   -1,
 			HttpOnly: true,
-			Secure:   cookieSecure(),
+			Secure:   a.cookieSecure(),
 			SameSite: http.SameSiteLaxMode,
 			Path:     "/",
 		})
@@ -193,7 +193,7 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
 		Value:    token.Value,
 		MaxAge:   int((time.Hour * 24).Seconds()),
 		HttpOnly: true,
-		Secure:   cookieSecure(),
+		Secure:   a.cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 	})
@@ -201,23 +201,23 @@ func Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
 	return id, true
 }
 
-func auth(username string, password string) (map[string]any, error) {
-	for _, admin := range conf.Admin {
+func (a *API) auth(username string, password string) (map[string]any, error) {
+	for _, admin := range a.conf.Admin {
 		if username == admin.Name && password == admin.Pw {
 			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
-	for _, team := range conf.Team {
+	for _, team := range a.conf.Team {
 		if username == team.Name && password == team.Pw {
 			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
-	for _, red := range conf.Red {
+	for _, red := range a.conf.Red {
 		if username == red.Name && password == red.Pw {
 			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
-	for _, inject := range conf.Inject {
+	for _, inject := range a.conf.Inject {
 		if username == inject.Name && password == inject.Pw {
 			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
@@ -225,8 +225,8 @@ func auth(username string, password string) (map[string]any, error) {
 
 	// auth from other sources
 	// if ldap configs are present, try to auth against ldap
-	if conf.LdapSettings != (config.LdapAuthConfig{}) {
-		conn, err := ldap.DialURL(conf.LdapSettings.LdapConnectUrl)
+	if a.conf.LdapSettings != (config.LdapAuthConfig{}) {
+		conn, err := ldap.DialURL(a.conf.LdapSettings.LdapConnectUrl)
 		if err != nil {
 			return nil, err
 		}
@@ -234,13 +234,13 @@ func auth(username string, password string) (map[string]any, error) {
 		defer conn.Close()
 
 		// bind using the given username and password and searchbase from config
-		err = conn.Bind(conf.LdapSettings.LdapBindDn, conf.LdapSettings.LdapBindPassword)
+		err = conn.Bind(a.conf.LdapSettings.LdapBindDn, a.conf.LdapSettings.LdapBindPassword)
 		if err != nil {
 			return nil, err
 		}
 
 		searchRequest := ldap.NewSearchRequest(
-			conf.LdapSettings.LdapSearchBaseDn,
+			a.conf.LdapSettings.LdapSearchBaseDn,
 			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", ldap.EscapeFilter(username)),
 			[]string{"dn"},
@@ -265,7 +265,7 @@ func auth(username string, password string) (map[string]any, error) {
 
 		// query for the user's roles
 		roleSearchRequest := ldap.NewSearchRequest(
-			conf.LdapSettings.LdapSearchBaseDn,
+			a.conf.LdapSettings.LdapSearchBaseDn,
 			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", ldap.EscapeFilter(username)),
 			[]string{"memberOf"},
@@ -280,14 +280,14 @@ func auth(username string, password string) (map[string]any, error) {
 		hasAuthorizedRole := false
 		for _, entry := range sr.Entries {
 			for _, memberOf := range entry.GetAttributeValues("memberOf") {
-				if memberOf == conf.LdapSettings.LdapAdminGroupDn ||
-					memberOf == conf.LdapSettings.LdapRedGroupDn ||
-					memberOf == conf.LdapSettings.LdapTeamGroupDn {
+				if memberOf == a.conf.LdapSettings.LdapAdminGroupDn ||
+					memberOf == a.conf.LdapSettings.LdapRedGroupDn ||
+					memberOf == a.conf.LdapSettings.LdapTeamGroupDn {
 					hasAuthorizedRole = true
 					break
 				}
 
-				if memberOf == conf.LdapSettings.LdapInjectGroupDn {
+				if memberOf == a.conf.LdapSettings.LdapInjectGroupDn {
 					return map[string]any{"username": username, "authSource": "ldap"}, nil
 				}
 			}

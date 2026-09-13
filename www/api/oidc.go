@@ -19,15 +19,15 @@ import (
 	"golang.org/x/oauth2"
 )
 
-var (
+type oidcState struct {
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
 	oidcVerifier *oidc.IDTokenVerifier
 
 	// Session storage for OIDC state and PKCE
-	oidcSessions   = make(map[string]*oidcSession)
+	oidcSessions   map[string]*oidcSession
 	oidcSessionsMu sync.RWMutex
-)
+}
 
 type oidcSession struct {
 	State        string
@@ -64,52 +64,56 @@ type IDTokenClaims struct {
 }
 
 // InitOIDC initializes the OIDC provider and OAuth2 configuration
-func InitOIDC() error {
-
-	if !conf.OIDCSettings.OIDCEnabled {
+func (a *API) InitOIDC() error {
+	if !a.conf.OIDCSettings.OIDCEnabled {
 		return nil
 	}
 
 	ctx := context.Background()
 
 	// Initialize OIDC provider
-	provider, err := oidc.NewProvider(ctx, conf.OIDCSettings.OIDCIssuerURL)
+	provider, err := oidc.NewProvider(ctx, a.conf.OIDCSettings.OIDCIssuerURL)
 	if err != nil {
 		return fmt.Errorf("failed to initialize OIDC provider: %w", err)
 	}
-	oidcProvider = provider
 
 	// Configure OAuth2
-	oauth2Config = &oauth2.Config{
-		ClientID:     conf.OIDCSettings.OIDCClientID,
-		ClientSecret: conf.OIDCSettings.OIDCClientSecret,
-		RedirectURL:  conf.OIDCSettings.OIDCRedirectURL,
+	oauth2Config := &oauth2.Config{
+		ClientID:     a.conf.OIDCSettings.OIDCClientID,
+		ClientSecret: a.conf.OIDCSettings.OIDCClientSecret,
+		RedirectURL:  a.conf.OIDCSettings.OIDCRedirectURL,
 		Endpoint:     provider.Endpoint(),
-		Scopes:       conf.OIDCSettings.OIDCScopes,
+		Scopes:       a.conf.OIDCSettings.OIDCScopes,
 	}
 
 	// Initialize ID token verifier with more options
-	oidcVerifier = provider.Verifier(&oidc.Config{
-		ClientID:          conf.OIDCSettings.OIDCClientID,
+	oidcVerifier := provider.Verifier(&oidc.Config{
+		ClientID:          a.conf.OIDCSettings.OIDCClientID,
 		SkipClientIDCheck: false,
 		SkipExpiryCheck:   false,
 		SkipIssuerCheck:   false,
 	})
 
+	a.oidc = &oidcState{
+		oidcProvider: provider,
+		oauth2Config: oauth2Config,
+		oidcVerifier: oidcVerifier,
+		oidcSessions: make(map[string]*oidcSession),
+	}
+
 	slog.Info("OIDC provider initialized successfully",
-		"issuer", conf.OIDCSettings.OIDCIssuerURL,
-		"client_id", conf.OIDCSettings.OIDCClientID)
+		"issuer", a.conf.OIDCSettings.OIDCIssuerURL,
+		"client_id", a.conf.OIDCSettings.OIDCClientID)
 
 	// Clean up old sessions periodically
-	go cleanupOIDCSessions()
+	go a.oidc.cleanupOIDCSessions()
 
 	return nil
 }
 
 // OIDCLoginHandler initiates the OIDC authentication flow
-func OIDCLoginHandler(w http.ResponseWriter, r *http.Request) {
-
-	if !conf.OIDCSettings.OIDCEnabled {
+func (a *API) OIDCLoginHandler(w http.ResponseWriter, r *http.Request) {
+	if !a.conf.OIDCSettings.OIDCEnabled {
 		http.Error(w, "OIDC authentication is not enabled", http.StatusNotFound)
 		return
 	}
@@ -154,13 +158,13 @@ func OIDCLoginHandler(w http.ResponseWriter, r *http.Request) {
 		CodeVerifier: codeVerifier,
 		CreatedAt:    time.Now(),
 	}
-	oidcSessionsMu.Lock()
-	oidcSessions[state] = session
-	oidcSessionsMu.Unlock()
+	a.oidc.oidcSessionsMu.Lock()
+	a.oidc.oidcSessions[state] = session
+	a.oidc.oidcSessionsMu.Unlock()
 
 	// Generate authorization URL
-	authURL := oauth2Config.AuthCodeURL(state, authURLOpts...)
-	slog.Info("OIDC login initiated", "redirect_uri", oauth2Config.RedirectURL, "auth_url", authURL)
+	authURL := a.oidc.oauth2Config.AuthCodeURL(state, authURLOpts...)
+	slog.Info("OIDC login initiated", "redirect_uri", a.oidc.oauth2Config.RedirectURL, "auth_url", authURL)
 
 	// Set CSRF cookie
 	http.SetCookie(w, &http.Cookie{
@@ -168,7 +172,7 @@ func OIDCLoginHandler(w http.ResponseWriter, r *http.Request) {
 		Value:    state,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cookieSecure(),
+		Secure:   a.cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   600, // 10 minutes
 	})
@@ -178,10 +182,10 @@ func OIDCLoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // OIDCCallbackHandler handles the OIDC provider callback
-func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
+func (a *API) OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	if !conf.OIDCSettings.OIDCEnabled {
+	if !a.conf.OIDCSettings.OIDCEnabled {
 		http.Error(w, "OIDC authentication is not enabled", http.StatusNotFound)
 		return
 	}
@@ -209,21 +213,21 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   cookieSecure(),
+		Secure:   a.cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 	})
 
 	// Retrieve session
-	oidcSessionsMu.Lock()
-	session, exists := oidcSessions[state]
+	a.oidc.oidcSessionsMu.Lock()
+	session, exists := a.oidc.oidcSessions[state]
 	if !exists {
-		oidcSessionsMu.Unlock()
+		a.oidc.oidcSessionsMu.Unlock()
 		slog.Error("Session not found for state", "state", state)
 		http.Error(w, "Invalid authentication session", http.StatusBadRequest)
 		return
 	}
-	delete(oidcSessions, state)
-	oidcSessionsMu.Unlock()
+	delete(a.oidc.oidcSessions, state)
+	a.oidc.oidcSessionsMu.Unlock()
 
 	// Check for errors from provider
 	if errCode := r.URL.Query().Get("error"); errCode != "" {
@@ -242,7 +246,7 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Exchange code for tokens with PKCE verifier
-	oauth2Token, err := oauth2Config.Exchange(ctx, code,
+	oauth2Token, err := a.oidc.oauth2Config.Exchange(ctx, code,
 		oauth2.SetAuthURLParam("code_verifier", session.CodeVerifier),
 	)
 	if err != nil {
@@ -260,7 +264,7 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify ID token
-	idToken, err := oidcVerifier.Verify(ctx, rawIDToken)
+	idToken, err := a.oidc.oidcVerifier.Verify(ctx, rawIDToken)
 	if err != nil {
 		slog.Error("Failed to verify ID token", "error", err)
 		http.Error(w, "Failed to verify authentication", http.StatusInternalServerError)
@@ -283,7 +287,7 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract user info from claims
-	username, groups, roles := extractUserInfoFromClaims(&claims)
+	username, groups, roles := a.extractUserInfoFromClaims(&claims)
 
 	if username == "" {
 		slog.Error("No username found in claims")
@@ -297,7 +301,7 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use role-based session expiration instead of access token expiry
-	expirySeconds := getRefreshTokenExpiry(roles)
+	expirySeconds := a.getRefreshTokenExpiry(roles)
 	expiresAt := time.Now().Add(time.Duration(expirySeconds) * time.Second)
 
 	// Store refresh token if available
@@ -306,7 +310,7 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		refreshToken = oauth2Token.RefreshToken
 	}
 
-	storeOIDCUserInfo(username, groups, roles, expiresAt, refreshToken)
+	a.storeOIDCUserInfo(username, groups, roles, expiresAt, refreshToken)
 
 	// Create session cookie with auth source
 	cookieData := map[string]interface{}{
@@ -321,7 +325,7 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cookieMaxAge := getRefreshTokenExpiry(roles)
+	cookieMaxAge := a.getRefreshTokenExpiry(roles)
 
 	// Set session cookie
 	http.SetCookie(w, &http.Cookie{
@@ -329,7 +333,7 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		Value:    encodedCookie,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cookieSecure(),
+		Secure:   a.cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   cookieMaxAge,
 	})
@@ -346,7 +350,7 @@ func OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // OIDCLogoutHandler handles OIDC logout
-func OIDCLogoutHandler(w http.ResponseWriter, r *http.Request) {
+func (a *API) OIDCLogoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Clear session cookie
 	http.SetCookie(w, &http.Cookie{
@@ -355,18 +359,18 @@ func OIDCLogoutHandler(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   cookieSecure(),
+		Secure:   a.cookieSecure(),
 		SameSite: http.SameSiteStrictMode,
 	})
 
 	// Check if provider supports end session endpoint
 	var endSessionURL string
-	if conf.OIDCSettings.OIDCEnabled && oidcProvider != nil {
+	if a.conf.OIDCSettings.OIDCEnabled && a.oidc.oidcProvider != nil {
 		// Try to get end session endpoint from provider metadata
 		var claims struct {
 			EndSessionEndpoint string `json:"end_session_endpoint"`
 		}
-		if err := oidcProvider.Claims(&claims); err == nil && claims.EndSessionEndpoint != "" {
+		if err := a.oidc.oidcProvider.Claims(&claims); err == nil && claims.EndSessionEndpoint != "" {
 			endSessionURL = claims.EndSessionEndpoint
 		}
 	}
@@ -380,11 +384,11 @@ func OIDCLogoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func mapGroupsToRoles(groups []string) []string {
+func (a *API) mapGroupsToRoles(groups []string) []string {
 	var roles []string
 
 	// Check admin groups
-	for _, adminGroup := range conf.OIDCSettings.OIDCAdminGroups {
+	for _, adminGroup := range a.conf.OIDCSettings.OIDCAdminGroups {
 		if matchesGroup(groups, adminGroup) {
 			roles = append(roles, "admin")
 			break
@@ -392,7 +396,7 @@ func mapGroupsToRoles(groups []string) []string {
 	}
 
 	// Check inject groups
-	for _, injectGroup := range conf.OIDCSettings.OIDCInjectGroups {
+	for _, injectGroup := range a.conf.OIDCSettings.OIDCInjectGroups {
 		if matchesGroup(groups, injectGroup) {
 			roles = append(roles, "inject")
 			break
@@ -400,7 +404,7 @@ func mapGroupsToRoles(groups []string) []string {
 	}
 
 	// Check red groups
-	for _, redGroup := range conf.OIDCSettings.OIDCRedGroups {
+	for _, redGroup := range a.conf.OIDCSettings.OIDCRedGroups {
 		if matchesGroup(groups, redGroup) {
 			roles = append(roles, "red")
 			break
@@ -408,7 +412,7 @@ func mapGroupsToRoles(groups []string) []string {
 	}
 
 	// Check team groups
-	for _, teamGroup := range conf.OIDCSettings.OIDCTeamGroups {
+	for _, teamGroup := range a.conf.OIDCSettings.OIDCTeamGroups {
 		if matchesGroup(groups, teamGroup) {
 			roles = append(roles, "team")
 			break
@@ -434,32 +438,32 @@ func matchesGroup(userGroups []string, configGroup string) bool {
 	return slices.Contains(userGroups, configGroup)
 }
 
-func getRefreshTokenExpiry(roles []string) int {
+func (a *API) getRefreshTokenExpiry(roles []string) int {
 	defaultExpiry := 86400 // 24 hours in seconds
 
 	if slices.Contains(roles, "admin") {
-		expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryAdmin
+		expiry := a.conf.OIDCSettings.OIDCRefreshTokenExpiryAdmin
 		if expiry == 0 {
 			return defaultExpiry
 		}
 		return expiry
 	}
 	if slices.Contains(roles, "red") {
-		expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryRed
+		expiry := a.conf.OIDCSettings.OIDCRefreshTokenExpiryRed
 		if expiry == 0 {
 			return defaultExpiry
 		}
 		return expiry
 	}
 	if slices.Contains(roles, "inject") {
-		expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryInject
+		expiry := a.conf.OIDCSettings.OIDCRefreshTokenExpiryInject
 		if expiry == 0 {
 			return defaultExpiry
 		}
 		return expiry
 	}
 	// Default for team users
-	expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryTeam
+	expiry := a.conf.OIDCSettings.OIDCRefreshTokenExpiryTeam
 	if expiry == 0 {
 		return defaultExpiry
 	}
@@ -475,7 +479,7 @@ type OidcUserInfo struct {
 	RefreshToken string
 }
 
-func storeOIDCUserInfo(username string, groups []string, roles []string, expiresAt time.Time, refreshToken string) {
+func (a *API) storeOIDCUserInfo(username string, groups []string, roles []string, expiresAt time.Time, refreshToken string) {
 	userInfo := &OidcUserInfo{
 		Username:     username,
 		Groups:       groups,
@@ -496,8 +500,8 @@ func storeOIDCUserInfo(username string, groups []string, roles []string, expires
 	key := fmt.Sprintf("oidc:session:%s", username)
 	ttl := time.Until(expiresAt)
 
-	if eng != nil && eng.RedisClient != nil {
-		err = eng.RedisClient.Set(ctx, key, data, ttl).Err()
+	if a.eng != nil && a.eng.RedisClient != nil {
+		err = a.eng.RedisClient.Set(ctx, key, data, ttl).Err()
 		if err != nil {
 			slog.Error("Failed to store OIDC session in Redis", "username", username, "error", err)
 			return
@@ -508,9 +512,9 @@ func storeOIDCUserInfo(username string, groups []string, roles []string, expires
 	}
 }
 
-func GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
+func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
 	// Try to get from Redis
-	if eng == nil || eng.RedisClient == nil {
+	if a.eng == nil || a.eng.RedisClient == nil {
 		slog.Warn("Redis client not available, cannot retrieve OIDC session", "username", username)
 		return nil, false
 	}
@@ -519,7 +523,7 @@ func GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
 	key := fmt.Sprintf("oidc:session:%s", username)
 
 	// Attempt to retrieve from Redis
-	data, err := eng.RedisClient.Get(ctx, key).Result()
+	data, err := a.eng.RedisClient.Get(ctx, key).Result()
 	if err != nil {
 		if err.Error() == "redis: nil" {
 			slog.Debug("OIDC user not found in Redis", "username", username)
@@ -537,19 +541,19 @@ func GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
 	if err := json.Unmarshal([]byte(data), &info); err != nil {
 		slog.Error("Failed to unmarshal OIDC user info", "username", username, "error", err)
 		// Delete corrupted data
-		eng.RedisClient.Del(ctx, key)
+		a.eng.RedisClient.Del(ctx, key)
 		return nil, false
 	}
 
 	// Check if session has expired (Redis TTL should handle this, but double-check)
 	if time.Now().After(info.ExpiresAt) {
 		slog.Info("OIDC session expired", "username", username, "expired_at", info.ExpiresAt.Format(time.RFC3339))
-		eng.RedisClient.Del(ctx, key)
+		a.eng.RedisClient.Del(ctx, key)
 
 		// Try to refresh using refresh token if available
 		if info.RefreshToken != "" {
-			if refreshed := tryRefreshOIDCSession(username, &info); refreshed {
-				return GetOIDCUserInfo(username) // Recursive call to get refreshed session
+			if refreshed := a.tryRefreshOIDCSession(username, &info); refreshed {
+				return a.GetOIDCUserInfo(username) // Recursive call to get refreshed session
 			}
 		}
 
@@ -560,8 +564,8 @@ func GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
 }
 
 // tryRefreshOIDCSession attempts to refresh an OIDC session using the refresh token
-func tryRefreshOIDCSession(username string, oldInfo *OidcUserInfo) bool {
-	if oauth2Config == nil || oldInfo.RefreshToken == "" {
+func (a *API) tryRefreshOIDCSession(username string, oldInfo *OidcUserInfo) bool {
+	if a.oidc == nil || oldInfo.RefreshToken == "" {
 		return false
 	}
 
@@ -573,7 +577,7 @@ func tryRefreshOIDCSession(username string, oldInfo *OidcUserInfo) bool {
 	}
 
 	// Use the token source to get a fresh token
-	tokenSource := oauth2Config.TokenSource(ctx, token)
+	tokenSource := a.oidc.oauth2Config.TokenSource(ctx, token)
 	newToken, err := tokenSource.Token()
 	if err != nil {
 		slog.Warn("Failed to refresh OIDC token", "username", username, "error", err)
@@ -587,7 +591,7 @@ func tryRefreshOIDCSession(username string, oldInfo *OidcUserInfo) bool {
 		return false
 	}
 
-	idToken, err := oidcVerifier.Verify(ctx, rawIDToken)
+	idToken, err := a.oidc.oidcVerifier.Verify(ctx, rawIDToken)
 	if err != nil {
 		slog.Warn("Failed to verify refreshed ID token", "username", username, "error", err)
 		return false
@@ -601,14 +605,14 @@ func tryRefreshOIDCSession(username string, oldInfo *OidcUserInfo) bool {
 	}
 
 	// Extract user info from new claims
-	newUsername, groups, roles := extractUserInfoFromClaims(&claims)
+	newUsername, groups, roles := a.extractUserInfoFromClaims(&claims)
 	if newUsername != username {
 		slog.Error("Username mismatch after refresh", "expected", username, "got", newUsername)
 		return false
 	}
 
 	// Calculate new expiration
-	expirySeconds := getRefreshTokenExpiry(roles)
+	expirySeconds := a.getRefreshTokenExpiry(roles)
 	expiresAt := time.Now().Add(time.Duration(expirySeconds) * time.Second)
 
 	// Store the refreshed session
@@ -617,14 +621,14 @@ func tryRefreshOIDCSession(username string, oldInfo *OidcUserInfo) bool {
 		newRefreshToken = oldInfo.RefreshToken // Reuse old refresh token if new one not provided
 	}
 
-	storeOIDCUserInfo(username, groups, roles, expiresAt, newRefreshToken)
+	a.storeOIDCUserInfo(username, groups, roles, expiresAt, newRefreshToken)
 	slog.Info("Successfully refreshed OIDC session", "username", username, "new_expiry", expiresAt.Format(time.RFC3339))
 
 	return true
 }
 
 // extractUserInfoFromClaims extracts username, groups, and roles from OIDC claims
-func extractUserInfoFromClaims(claims *IDTokenClaims) (username string, groups []string, roles []string) {
+func (a *API) extractUserInfoFromClaims(claims *IDTokenClaims) (username string, groups []string, roles []string) {
 	// Extract username
 	username = claims.PreferredUsername
 	if username == "" {
@@ -635,7 +639,7 @@ func extractUserInfoFromClaims(claims *IDTokenClaims) (username string, groups [
 	}
 
 	// Extract groups based on configured claim
-	groupClaim := conf.OIDCSettings.OIDCGroupClaim
+	groupClaim := a.conf.OIDCSettings.OIDCGroupClaim
 	if groupClaim == "" {
 		groupClaim = "groups"
 	}
@@ -654,21 +658,21 @@ func extractUserInfoFromClaims(claims *IDTokenClaims) (username string, groups [
 	}
 
 	// Map groups to roles
-	roles = mapGroupsToRoles(groups)
+	roles = a.mapGroupsToRoles(groups)
 
 	return username, groups, roles
 }
 
 // FetchUserInfoFromProvider fetches user info from the OIDC provider using an access token
-func FetchUserInfoFromProvider(accessToken string) (*OidcUserInfo, error) {
-	if oidcProvider == nil {
-		return nil, errors.New("OIDC provider not initialized")
+func (a *API) FetchUserInfoFromProvider(accessToken string) (*OidcUserInfo, error) {
+	if a.oidc == nil {
+		return nil, errors.New("OIDC state not initialized")
 	}
 
 	ctx := context.Background()
 
 	// Call the UserInfo endpoint
-	userInfo, err := oidcProvider.UserInfo(ctx, oauth2.StaticTokenSource(&oauth2.Token{
+	userInfo, err := a.oidc.oidcProvider.UserInfo(ctx, oauth2.StaticTokenSource(&oauth2.Token{
 		AccessToken: accessToken,
 	}))
 	if err != nil {
@@ -682,12 +686,12 @@ func FetchUserInfoFromProvider(accessToken string) (*OidcUserInfo, error) {
 	}
 
 	// Extract user info using common function
-	username, groups, roles := extractUserInfoFromClaims(&claims)
+	username, groups, roles := a.extractUserInfoFromClaims(&claims)
 
 	// Store in cache for future use with default expiration
-	expirySeconds := getRefreshTokenExpiry(roles)
+	expirySeconds := a.getRefreshTokenExpiry(roles)
 	expiresAt := time.Now().Add(time.Duration(expirySeconds) * time.Second)
-	storeOIDCUserInfo(username, groups, roles, expiresAt, "")
+	a.storeOIDCUserInfo(username, groups, roles, expiresAt, "")
 
 	return &OidcUserInfo{
 		Username:  username,
@@ -698,11 +702,15 @@ func FetchUserInfoFromProvider(accessToken string) (*OidcUserInfo, error) {
 }
 
 // ValidateOIDCToken validates an OIDC token (used for API authentication)
-func ValidateOIDCToken(token string) (map[string]interface{}, error) {
+func (a *API) ValidateOIDCToken(token string) (map[string]interface{}, error) {
+	if a.oidc == nil {
+		return nil, errors.New("OIDC state not initialized")
+	}
+
 	ctx := context.Background()
 
 	// Verify the token
-	idToken, err := oidcVerifier.Verify(ctx, token)
+	idToken, err := a.oidc.oidcVerifier.Verify(ctx, token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify token: %w", err)
 	}
@@ -731,7 +739,7 @@ func ValidateOIDCToken(token string) (map[string]interface{}, error) {
 
 	// Extract groups using same logic as callback
 	var groups []string
-	groupClaim := conf.OIDCSettings.OIDCGroupClaim
+	groupClaim := a.conf.OIDCSettings.OIDCGroupClaim
 	if groupClaim == "" {
 		groupClaim = "groups"
 	}
@@ -749,7 +757,7 @@ func ValidateOIDCToken(token string) (map[string]interface{}, error) {
 		groups = []string{}
 	}
 
-	roles := mapGroupsToRoles(groups)
+	roles := a.mapGroupsToRoles(groups)
 	if len(roles) == 0 {
 		return nil, errors.New("user has no authorized roles")
 	}
@@ -787,18 +795,18 @@ func generateRandomString(length int) (string, error) {
 }
 
 // cleanupOIDCSessions removes expired OIDC sessions
-func cleanupOIDCSessions() {
+func (o *oidcState) cleanupOIDCSessions() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		now := time.Now()
-		oidcSessionsMu.Lock()
-		for state, session := range oidcSessions {
+		o.oidcSessionsMu.Lock()
+		for state, session := range o.oidcSessions {
 			if now.Sub(session.CreatedAt) > 10*time.Minute {
-				delete(oidcSessions, state)
+				delete(o.oidcSessions, state)
 			}
 		}
-		oidcSessionsMu.Unlock()
+		o.oidcSessionsMu.Unlock()
 	}
 }

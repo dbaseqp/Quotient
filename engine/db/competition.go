@@ -13,9 +13,9 @@ type CompetitionStateSchema struct {
 	StartedAt *time.Time
 }
 
-func GetCompetitionStarted() bool {
+func (d *DB) GetCompetitionStarted() bool {
 	var state CompetitionStateSchema
-	result := db.First(&state)
+	result := d.db.First(&state)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return false
@@ -25,8 +25,8 @@ func GetCompetitionStarted() bool {
 	return state.Started
 }
 
-func SetCompetitionStarted(started bool) error {
-	return db.Transaction(func(tx *gorm.DB) error {
+func (d *DB) SetCompetitionStarted(started bool) error {
+	return d.db.Transaction(func(tx *gorm.DB) error {
 		var state CompetitionStateSchema
 		result := tx.First(&state)
 		if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -55,9 +55,9 @@ func SetCompetitionStarted(started bool) error {
 	})
 }
 
-func GetCompetitionStart() (*time.Time, error) {
+func (d *DB) GetCompetitionStart() (*time.Time, error) {
 	var state CompetitionStateSchema
-	result := db.First(&state)
+	result := d.db.First(&state)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return nil, nil
