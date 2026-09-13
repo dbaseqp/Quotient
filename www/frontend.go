@@ -73,11 +73,11 @@ func (router *Router) HomePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (router *Router) LoginPage(w http.ResponseWriter, r *http.Request) {
-	if username, roles := api.Authenticate(w, r); username != "" {
+	if identity, ok := api.Authenticate(w, r); ok {
 		var home string
-		if slices.Contains(roles, "admin") || slices.Contains(roles, "inject") {
+		if slices.Contains(identity.Roles, "admin") || slices.Contains(identity.Roles, "inject") {
 			home = "/announcements"
-		} else if slices.Contains(roles, "red") {
+		} else if slices.Contains(identity.Roles, "red") {
 			home = "/graphs"
 		} else {
 			home = "/announcements"

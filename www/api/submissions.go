@@ -8,7 +8,6 @@ import (
 	"math"
 	"net/http"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"time"
 
@@ -22,10 +21,11 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	injectID := uint(temp)
-	username := r.Context().Value("username").(string)
-	team, err := db.GetTeamByUsername(username)
-	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving team ID"})
+	teamID, hasTeam := CallerTeamID(r.Context())
+	if !hasTeam {
+		// A submission needs a team to attribute it to. Without one the
+		// insert fails on the team_id foreign key and surfaces as a 500.
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Your account is not associated with a team"})
 		return
 	}
 
@@ -50,7 +50,7 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	submission := db.SubmissionSchema{
-		TeamID:             team.ID,
+		TeamID:             teamID,
 		InjectID:           injectID,
 		SubmissionTime:     time.Now(),
 		SubmissionFileName: fileHeader.Filename,
@@ -81,7 +81,7 @@ func CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subDir := fmt.Sprintf("%d/%d/%d", injectID, team.ID, submission.Version)
+	subDir := fmt.Sprintf("%d/%d/%d", injectID, teamID, submission.Version)
 	err = SafeMkdirAll("submissions", subDir, 0750)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error creating directories"})
@@ -133,16 +133,7 @@ func DownloadSubmissionFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username := r.Context().Value("username").(string)
-	team, err := db.GetTeamByUsername(username)
-	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving team ID"})
-		return
-	}
-
-	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") && !slices.Contains(req_roles, "inject") && team.ID != teamID {
-		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
+	if !requireOwnTeam(w, r, teamID, "admin", "inject") {
 		return
 	}
 

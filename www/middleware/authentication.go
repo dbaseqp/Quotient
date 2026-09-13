@@ -19,9 +19,9 @@ import (
 func Authentication(roles ...string) Middleware {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			username, user_roles := api.Authenticate(w, r)
+			identity, ok := api.Authenticate(w, r)
 
-			if username == "" {
+			if !ok {
 				if slices.Contains(roles, "anonymous") {
 					next(w, r)
 					return
@@ -35,13 +35,16 @@ func Authentication(roles ...string) Middleware {
 			}
 
 			// need to refactor for multi-roles
-			for _, user_role := range user_roles {
+			for _, user_role := range identity.Roles {
 				if slices.Contains(roles, user_role) {
-					// TODO: use custom type to fix staticcheck instead
+					// Identity is authoritative. The string keys repeat it
+					// for handlers that still read them; drop both once
+					// every handler uses api.IdentityFrom.
+					ctx := api.WithIdentity(r.Context(), identity)
 					// nolint:staticcheck
-					ctx := context.WithValue(r.Context(), "username", username)
+					ctx = context.WithValue(ctx, "username", identity.Username)
 					// nolint:staticcheck
-					ctx = context.WithValue(ctx, "roles", user_roles)
+					ctx = context.WithValue(ctx, "roles", identity.Roles)
 					next(w, r.WithContext(ctx))
 					return
 				}
