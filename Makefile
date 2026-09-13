@@ -11,10 +11,10 @@ test-integration: test-deps-start
 	@$(MAKE) test-deps-stop
 
 test-deps-start:
-	docker compose up redis db --wait -d
+	docker compose up test-redis test-db --wait -d
 
 test-deps-stop:
-	docker compose down
+	docker compose down test-redis test-db
 
 test-coverage:
 	go test -race -p 1 -coverprofile=coverage.out ./...

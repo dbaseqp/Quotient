@@ -32,7 +32,7 @@ func startRedis(t *testing.T) *RedisContainer {
 	t.Helper()
 
 	host := cmp.Or(os.Getenv("REDIS_HOST"), "localhost")
-	port := cmp.Or(os.Getenv("REDIS_PORT"), "6379")
+	port := cmp.Or(os.Getenv("REDIS_PORT"), "6380")
 	password := cmp.Or(os.Getenv("REDIS_PASSWORD"), "redis_password")
 
 	client := redis.NewClient(&redis.Options{
