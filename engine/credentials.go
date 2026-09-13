@@ -16,6 +16,7 @@ func safeOpenInDir(baseDir, relativePath string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open root directory: %w", err)
 	}
+	// nolint:errcheck
 	defer root.Close()
 	return root.Open(relativePath)
 }

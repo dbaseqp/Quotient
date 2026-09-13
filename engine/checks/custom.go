@@ -39,13 +39,13 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 
 		// Replace command input keywords
 		formedCommand := c.Command
-		formedCommand = strings.Replace(formedCommand, "ROUND", strconv.FormatUint(uint64(roundID), 10), -1)
-		formedCommand = strings.Replace(formedCommand, "TARGET", c.Target, -1) // is there a case where u need IP and FQDN?
-		formedCommand = strings.Replace(formedCommand, "TEAMIDENTIFIER", teamIdentifier, -1)
+		formedCommand = strings.ReplaceAll(formedCommand, "ROUND", strconv.FormatUint(uint64(roundID), 10))
+		formedCommand = strings.ReplaceAll(formedCommand, "TARGET", c.Target) // is there a case where u need IP and FQDN?
+		formedCommand = strings.ReplaceAll(formedCommand, "TEAMIDENTIFIER", teamIdentifier)
 
 		// We shell escape username and password, who knows what format they are
-		formedCommand = strings.Replace(formedCommand, "USERNAME", shellescape.Quote(username), -1)
-		formedCommand = strings.Replace(formedCommand, "PASSWORD", shellescape.Quote(password), -1)
+		formedCommand = strings.ReplaceAll(formedCommand, "USERNAME", shellescape.Quote(username))
+		formedCommand = strings.ReplaceAll(formedCommand, "PASSWORD", shellescape.Quote(password))
 		slog.Debug("CUSTOM CHECK COMMAND", "command", formedCommand)
 		checkResult.Debug = formedCommand
 
@@ -151,7 +151,7 @@ func (c *Custom) Verify(box string, ip string, points int, timeout int, slapenal
 	if c.ServiceType == "" {
 		c.ServiceType = "Custom"
 	}
-	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
+	if err := c.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}
 	if c.Display == "" {

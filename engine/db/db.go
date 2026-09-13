@@ -110,6 +110,7 @@ func AddTeams(conf *config.ConfigSettings) error {
 		if err != nil {
 			return err
 		}
+		// nolint:errcheck
 		defer conn.Close()
 
 		err = conn.Bind(conf.LdapSettings.LdapBindDn, conf.LdapSettings.LdapBindPassword)

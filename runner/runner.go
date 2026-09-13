@@ -55,6 +55,7 @@ func runApp(err error) int {
 
 	go func() {
 		events := rdb.Subscribe(context.Background(), "events")
+		// nolint:errcheck
 		defer events.Close()
 		eventsChannel := events.Channel()
 

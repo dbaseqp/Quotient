@@ -39,29 +39,33 @@ func createTestTeam(t *testing.T, name string, identifier string) db.TeamSchema 
 	return team
 }
 
+func startContainers(t *testing.T) *testutil.RedisContainer {
+	redis := testutil.StartRedis(t)
+	pg := testutil.StartPostgres(t)
+	db.Connect(pg.ConnectionString())
+
+	t.Cleanup(func() {
+		pg.Close()
+		require.NoError(t, redis.Close())
+	})
+
+	return redis
+}
+
 // TestFullEngineWorkflow tests the complete engine workflow with real databases
 func TestFullEngineWorkflow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping full integration test in short mode")
 	}
 
-	// Start Redis
-	redisContainer := testutil.StartRedis(t)
-	defer redisContainer.Close()
-
-	// Start PostgreSQL
-	pgContainer := testutil.StartPostgres(t)
-	defer pgContainer.Close()
-
-	// Initialize database connection for db package
-	db.Connect(pgContainer.ConnectionString())
+	redisContainer := startContainers(t)
 
 	ctx := context.Background()
 
 	t.Run("complete round workflow", func(t *testing.T) {
 		// Clear Redis and reset DB scores (clears rounds, checks, SLAs)
 		redisContainer.Client.FlushDB(ctx)
-		db.ResetScores()
+		require.NoError(t, db.ResetScores())
 
 		roundID := uint(1)
 		team := createTestTeam(t, "Test Team", "01")
@@ -312,7 +316,7 @@ func TestFullEngineWorkflow(t *testing.T) {
 			require.NoError(t, err)
 
 			var result checks.Result
-			json.Unmarshal([]byte(data[1]), &result)
+			require.NoError(t, json.Unmarshal([]byte(data[1]), &result))
 			collected = append(collected, result)
 		}
 

@@ -69,6 +69,7 @@ func (c Imap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 				response <- checkResult
 				return
 			}
+			// nolint:errcheck
 			defer cl.Logout()
 
 			// List mailboxes
@@ -97,7 +98,7 @@ func (c *Imap) Verify(box string, ip string, points int, timeout int, slapenalty
 	if c.ServiceType == "" {
 		c.ServiceType = "Imap"
 	}
-	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
+	if err := c.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}
 	if c.Port == 0 {

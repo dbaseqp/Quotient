@@ -37,7 +37,10 @@ func Authentication(roles ...string) Middleware {
 			// need to refactor for multi-roles
 			for _, user_role := range user_roles {
 				if slices.Contains(roles, user_role) {
+					// TODO: use custom type to fix staticcheck instead
+					// nolint:staticcheck
 					ctx := context.WithValue(r.Context(), "username", username)
+					// nolint:staticcheck
 					ctx = context.WithValue(ctx, "roles", user_roles)
 					next(w, r.WithContext(ctx))
 					return

@@ -94,6 +94,7 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "File not found"})
 		return
 	}
+	// nolint:errcheck
 	defer file.Close()
 
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
@@ -162,6 +163,7 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to open file"})
 			return
 		}
+		// nolint:errcheck
 		defer file.Close()
 
 		dst, err := SafeCreate(uploadDir, fileHeader.Filename)
@@ -169,6 +171,7 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create file on disk"})
 			return
 		}
+		// nolint:errcheck
 		defer dst.Close()
 
 		if _, err := io.Copy(dst, file); err != nil {

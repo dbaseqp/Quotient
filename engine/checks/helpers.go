@@ -48,21 +48,15 @@ func GetFile(fileName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open scoredfiles directory: %w", err)
 	}
-	defer func() {
-		if err := root.Close(); err != nil {
-			// Non-fatal, just log if available
-		}
-	}()
+	// nolint:errcheck
+	defer root.Close()
 
 	file, err := root.Open(fileName)
 	if err != nil {
 		return "", err
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			// Non-fatal, just log if available
-		}
-	}()
+	// nolint:errcheck
+	defer file.Close()
 
 	fileContent, err := io.ReadAll(file)
 	if err != nil {

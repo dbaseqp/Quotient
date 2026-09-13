@@ -119,6 +119,7 @@ func (se *ScoringEngine) Start() {
 	})
 
 	events := rdb.Subscribe(context.Background(), "events")
+	// nolint:errcheck
 	defer events.Close()
 	eventsChannel := events.Channel()
 
@@ -186,6 +187,7 @@ func waitForReset() {
 	})
 
 	events := rdb.Subscribe(context.Background(), "events")
+	// nolint:errcheck
 	defer events.Close()
 	eventsChannel := events.Channel()
 
@@ -362,6 +364,7 @@ func (se *ScoringEngine) rvb() error {
 	})
 
 	events := rdb.Subscribe(context.Background(), "events")
+	// nolint:errcheck
 	defer events.Close()
 	eventsChannel := events.Channel()
 	//

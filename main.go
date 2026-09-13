@@ -35,8 +35,7 @@ func main() {
 		log.Fatalf("Invalid log level: %s", opts.logger.level)
 	}
 	// use config to setup engine
-	var handler slog.Handler
-	handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 
