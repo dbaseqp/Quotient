@@ -71,6 +71,7 @@ func ImportInjects(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to open import bundle"})
 		return
 	}
+	// nolint:errcheck
 	defer bundle.Close()
 
 	archive, err := zip.NewReader(bundle, fileHeader.Size)
@@ -231,7 +232,7 @@ func prepareInjectImport(archive *zip.Reader, anchor time.Time, existingTitles m
 	for i, definition := range manifest.Inject {
 		entry, err := prepareInjectDefinition(definition, anchor, archiveFiles, titles)
 		if err != nil {
-			return nil, fmt.Errorf("Inject %d: %w", i+1, err)
+			return nil, fmt.Errorf("inject %d: %w", i+1, err)
 		}
 		titles[entry.Schema.Title] = struct{}{}
 		prepared = append(prepared, entry)
@@ -242,7 +243,7 @@ func prepareInjectImport(archive *zip.Reader, anchor time.Time, existingTitles m
 func prepareInjectDefinition(definition injectImportDefinition, anchor time.Time, archiveFiles map[string][]byte, titles map[string]struct{}) (preparedInject, error) {
 	definition.Title = strings.TrimSpace(definition.Title)
 	if definition.Title == "" {
-		return preparedInject{}, errors.New("Title is required")
+		return preparedInject{}, errors.New("title is required")
 	}
 	if _, exists := titles[definition.Title]; exists {
 		return preparedInject{}, fmt.Errorf("inject title %q already exists or is duplicated", definition.Title)
@@ -332,8 +333,9 @@ func readZipFile(file *zip.File, limit uint64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// nolint:errcheck
 	defer reader.Close()
-	contents, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
+	contents, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1)) // #nosec G115 -- overflow is extremely unlikely
 	if err != nil {
 		return nil, err
 	}
