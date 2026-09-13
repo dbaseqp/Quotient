@@ -5,6 +5,8 @@ services:
     restart: always
     env_file:
       - .env
+    ports:
+      - "127.0.0.1:5432:5432"
     networks:
       - quotient_network
     volumes:
