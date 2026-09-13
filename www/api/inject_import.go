@@ -335,7 +335,7 @@ func readZipFile(file *zip.File, limit uint64) ([]byte, error) {
 	}
 	// nolint:errcheck
 	defer reader.Close()
-	contents, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
+	contents, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1)) // #nosec G115 -- overflow is extremely unlikely
 	if err != nil {
 		return nil, err
 	}
