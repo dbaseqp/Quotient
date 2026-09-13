@@ -6,10 +6,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"quotient/engine/checks"
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/dbaseqp/Quotient/engine/checks"
 
 	"github.com/BurntSushi/toml"
 )

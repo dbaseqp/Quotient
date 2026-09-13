@@ -3,16 +3,34 @@ package integration
 import (
 	"context"
 	"encoding/json"
-	"quotient/engine"
-	"quotient/engine/checks"
-	"quotient/tests/testutil"
 	"testing"
 	"time"
+
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/checks"
+	"github.com/dbaseqp/Quotient/tests/testutil"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func startRedis(t *testing.T) *testutil.RedisContainer {
+	redis := testutil.StartRedis(t)
+	t.Cleanup(func() {
+		require.NoError(t, redis.Close())
+	})
+	return redis
+}
+
+func getPubSub(t *testing.T, ctx context.Context, redis *testutil.RedisContainer) *redis.PubSub {
+	pubsub := redis.Client.Subscribe(ctx, "events")
+	t.Cleanup(func() {
+		require.NoError(t, pubsub.Close())
+	})
+
+	return pubsub
+}
 
 // TestEngineRedisTaskEnqueue tests that the engine correctly enqueues tasks to Redis
 func TestEngineRedisTaskEnqueue(t *testing.T) {
@@ -20,8 +38,7 @@ func TestEngineRedisTaskEnqueue(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := testutil.StartRedis(t)
-	defer redisContainer.Close()
+	redisContainer := startRedis(t)
 
 	ctx := context.Background()
 
@@ -142,8 +159,7 @@ func TestEngineRedisResultCollection(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := testutil.StartRedis(t)
-	defer redisContainer.Close()
+	redisContainer := startRedis(t)
 
 	ctx := context.Background()
 
@@ -205,7 +221,7 @@ func TestEngineRedisResultCollection(t *testing.T) {
 			require.NoError(t, err)
 
 			var result checks.Result
-			json.Unmarshal([]byte(val[1]), &result)
+			require.NoError(t, json.Unmarshal([]byte(val[1]), &result))
 			collectedResults = append(collectedResults, result)
 		}
 
@@ -239,10 +255,10 @@ func TestEngineRedisResultCollection(t *testing.T) {
 
 		// Push results from different rounds
 		results := []checks.Result{
-			{TeamID: 1, ServiceName: "web01-web", RoundID: currentRound - 1, Status: true, Points: 5},   // Old round
-			{TeamID: 1, ServiceName: "web01-ssh", RoundID: currentRound, Status: true, Points: 5},       // Current round
-			{TeamID: 2, ServiceName: "web01-web", RoundID: currentRound + 1, Status: true, Points: 5},   // Future round
-			{TeamID: 2, ServiceName: "web01-dns", RoundID: currentRound, Status: true, Points: 5},       // Current round
+			{TeamID: 1, ServiceName: "web01-web", RoundID: currentRound - 1, Status: true, Points: 5}, // Old round
+			{TeamID: 1, ServiceName: "web01-ssh", RoundID: currentRound, Status: true, Points: 5},     // Current round
+			{TeamID: 2, ServiceName: "web01-web", RoundID: currentRound + 1, Status: true, Points: 5}, // Future round
+			{TeamID: 2, ServiceName: "web01-dns", RoundID: currentRound, Status: true, Points: 5},     // Current round
 		}
 
 		for _, result := range results {
@@ -257,7 +273,7 @@ func TestEngineRedisResultCollection(t *testing.T) {
 			require.NoError(t, err)
 
 			var result checks.Result
-			json.Unmarshal([]byte(val[1]), &result)
+			require.NoError(t, json.Unmarshal([]byte(val[1]), &result))
 
 			// Only keep results from current round (simulating engine behavior)
 			if result.RoundID == currentRound {
@@ -279,15 +295,13 @@ func TestEngineRedisPubSub(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := testutil.StartRedis(t)
-	defer redisContainer.Close()
+	redisContainer := startRedis(t)
 
 	ctx := context.Background()
 
 	t.Run("publish and receive events", func(t *testing.T) {
 		// Subscribe to events channel
-		pubsub := redisContainer.Client.Subscribe(ctx, "events")
-		defer pubsub.Close()
+		pubsub := getPubSub(t, ctx, redisContainer)
 
 		// Wait for subscription confirmation
 		_, err := pubsub.Receive(ctx)
@@ -329,14 +343,14 @@ func TestEngineRedisPubSub(t *testing.T) {
 
 	t.Run("multiple subscribers", func(t *testing.T) {
 		// Create multiple subscribers
-		pubsub1 := redisContainer.Client.Subscribe(ctx, "events")
-		defer pubsub1.Close()
-		pubsub2 := redisContainer.Client.Subscribe(ctx, "events")
-		defer pubsub2.Close()
+		pubsub1 := getPubSub(t, ctx, redisContainer)
+		pubsub2 := getPubSub(t, ctx, redisContainer)
 
 		// Wait for subscriptions
-		pubsub1.Receive(ctx)
-		pubsub2.Receive(ctx)
+		_, err := pubsub1.Receive(ctx)
+		require.NoError(t, err)
+		_, err = pubsub2.Receive(ctx)
+		require.NoError(t, err)
 
 		ch1 := pubsub1.Channel()
 		ch2 := pubsub2.Channel()
@@ -376,8 +390,7 @@ func TestEngineRedisRoundWorkflow(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := testutil.StartRedis(t)
-	defer redisContainer.Close()
+	redisContainer := startRedis(t)
 
 	ctx := context.Background()
 
@@ -414,7 +427,7 @@ func TestEngineRedisRoundWorkflow(t *testing.T) {
 			require.NoError(t, err)
 
 			var task engine.Task
-			json.Unmarshal([]byte(taskVal), &task)
+			require.NoError(t, json.Unmarshal([]byte(taskVal), &task))
 
 			// Create result
 			result := checks.Result{
@@ -446,7 +459,7 @@ func TestEngineRedisRoundWorkflow(t *testing.T) {
 			require.NoError(t, err)
 
 			var result checks.Result
-			json.Unmarshal([]byte(val[1]), &result)
+			require.NoError(t, json.Unmarshal([]byte(val[1]), &result))
 			collectedResults = append(collectedResults, result)
 		}
 

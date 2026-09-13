@@ -2,11 +2,13 @@ package engine
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
-	"quotient/engine/db"
 	"sync"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 // safeOpenInDir opens a file within the given base directory safely using os.Root.
@@ -15,6 +17,7 @@ func safeOpenInDir(baseDir, relativePath string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open root directory: %w", err)
 	}
+	// nolint:errcheck
 	defer root.Close()
 	return root.Open(relativePath)
 }
@@ -25,10 +28,7 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 		return fmt.Errorf("failed to get teams: %v", err)
 	}
 
-	// Initialize mutex map
-	for _, team := range teams {
-		se.CredentialsMutex[team.ID] = &sync.Mutex{}
-	}
+	se.setTeamCredentialLocks(teams)
 
 	// Check if credentials are already seeded in DB
 	seeded, err := db.IsCredentialsSeeded()
@@ -124,6 +124,31 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 	return nil
 }
 
+// errNoCredentialLock reports that no credential lock exists for a team.
+var errNoCredentialLock = errors.New("no credential lock for team")
+
+// setTeamCredentialLocks gives every team a credential lock.
+func (se *ScoringEngine) setTeamCredentialLocks(teams []db.TeamSchema) {
+	se.credentialsMu.Lock()
+	defer se.credentialsMu.Unlock()
+	for _, team := range teams {
+		if _, ok := se.credentialsMutex[team.ID]; !ok {
+			se.credentialsMutex[team.ID] = &sync.Mutex{}
+		}
+	}
+}
+
+// teamCredentialLock returns the per-team credential lock.
+func (se *ScoringEngine) teamCredentialLock(teamID uint) (*sync.Mutex, error) {
+	se.credentialsMu.RLock()
+	mu, ok := se.credentialsMutex[teamID]
+	se.credentialsMu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("%w: %d", errNoCredentialLock, teamID)
+	}
+	return mu, nil
+}
+
 func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string) (int, []string, error) {
 	// Validate credlist name
 	validCredlist := false
@@ -137,8 +162,12 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 		return 0, nil, fmt.Errorf("invalid credlist name")
 	}
 
-	se.CredentialsMutex[teamID].Lock()
-	defer se.CredentialsMutex[teamID].Unlock()
+	mu, err := se.teamCredentialLock(teamID)
+	if err != nil {
+		return 0, nil, err
+	}
+	mu.Lock()
+	defer mu.Unlock()
 
 	slog.Debug("updating credentials", "teamID", teamID, "credlistName", credlistName)
 
@@ -206,8 +235,12 @@ func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string, chan
 		return fmt.Errorf("invalid credlist name")
 	}
 
-	se.CredentialsMutex[teamID].Lock()
-	defer se.CredentialsMutex[teamID].Unlock()
+	mu, err := se.teamCredentialLock(teamID)
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
 
 	return db.ResetTeamCredlist(teamID, credlistName, changedBy)
 }

@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"quotient/engine"
-	"quotient/engine/checks"
-	"quotient/engine/db"
-	"quotient/tests/testutil"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/checks"
+	"github.com/dbaseqp/Quotient/engine/db"
+	"github.com/dbaseqp/Quotient/tests/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,29 +39,33 @@ func createTestTeam(t *testing.T, name string, identifier string) db.TeamSchema 
 	return team
 }
 
+func startContainers(t *testing.T) *testutil.RedisContainer {
+	redis := testutil.StartRedis(t)
+	pg := testutil.StartPostgres(t)
+	db.Connect(pg.ConnectionString())
+
+	t.Cleanup(func() {
+		pg.Close()
+		require.NoError(t, redis.Close())
+	})
+
+	return redis
+}
+
 // TestFullEngineWorkflow tests the complete engine workflow with real databases
 func TestFullEngineWorkflow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping full integration test in short mode")
 	}
 
-	// Start Redis
-	redisContainer := testutil.StartRedis(t)
-	defer redisContainer.Close()
-
-	// Start PostgreSQL
-	pgContainer := testutil.StartPostgres(t)
-	defer pgContainer.Close()
-
-	// Initialize database connection for db package
-	db.Connect(pgContainer.ConnectionString())
+	redisContainer := startContainers(t)
 
 	ctx := context.Background()
 
 	t.Run("complete round workflow", func(t *testing.T) {
 		// Clear Redis and reset DB scores (clears rounds, checks, SLAs)
 		redisContainer.Client.FlushDB(ctx)
-		db.ResetScores()
+		require.NoError(t, db.ResetScores())
 
 		roundID := uint(1)
 		team := createTestTeam(t, "Test Team", "01")
@@ -173,13 +178,13 @@ func TestFullEngineWorkflow(t *testing.T) {
 		// Create result with malicious content
 		result := checks.Result{
 			TeamID:      team.ID,
-			ServiceName: "web\x00-malicious",  // Null byte
+			ServiceName: "web\x00-malicious", // Null byte
 			ServiceType: "Web",
 			RoundID:     roundID,
 			Status:      false,
 			Points:      0,
-			Error:       "SQL'; DROP TABLE users\x00--",  // SQL injection attempt with null byte
-			Debug:       "<script>alert('xss')</script>\x00",  // XSS attempt with null byte
+			Error:       "SQL'; DROP TABLE users\x00--",      // SQL injection attempt with null byte
+			Debug:       "<script>alert('xss')</script>\x00", // XSS attempt with null byte
 		}
 
 		// Process with sanitization
@@ -236,7 +241,7 @@ func TestFullEngineWorkflow(t *testing.T) {
 				ServiceName: serviceName,
 				ServiceType: "Web",
 				RoundID:     roundID + uint(i),
-				Status:      false,  // Failed
+				Status:      false, // Failed
 				Points:      0,
 				Error:       "Service unavailable",
 			}
@@ -311,7 +316,7 @@ func TestFullEngineWorkflow(t *testing.T) {
 			require.NoError(t, err)
 
 			var result checks.Result
-			json.Unmarshal([]byte(data[1]), &result)
+			require.NoError(t, json.Unmarshal([]byte(data[1]), &result))
 			collected = append(collected, result)
 		}
 

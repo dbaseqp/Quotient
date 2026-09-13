@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"quotient/engine"
-	"quotient/engine/config"
-	"quotient/engine/db"
+
 	"strings"
+
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 var (
@@ -39,6 +41,12 @@ func WriteJSON(w http.ResponseWriter, status int, data any) {
 	}
 }
 
+// WriteInternalError logs err and sends only msg to the client.
+func WriteInternalError(w http.ResponseWriter, r *http.Request, msg string, err error) {
+	slog.Error(msg, "request_id", r.Context().Value("request_id"), "error", err.Error())
+	WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": msg})
+}
+
 // SafeOpen opens a file within the given base directory safely.
 // It prevents directory traversal attacks using os.Root.
 func SafeOpen(baseDir, relativePath string) (*os.File, error) {
@@ -46,6 +54,7 @@ func SafeOpen(baseDir, relativePath string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open root directory: %w", err)
 	}
+	// nolint:errcheck
 	defer root.Close()
 	return root.Open(relativePath)
 }
@@ -56,6 +65,7 @@ func SafeCreate(baseDir, relativePath string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open root directory: %w", err)
 	}
+	// nolint:errcheck
 	defer root.Close()
 	return root.Create(relativePath)
 }
@@ -67,6 +77,7 @@ func SafeMkdirAll(baseDir, relativePath string, perm os.FileMode) error {
 	if err != nil {
 		return err
 	}
+	// nolint:errcheck
 	defer root.Close()
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(relativePath)), "/")
 	for i := range parts {

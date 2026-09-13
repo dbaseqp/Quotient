@@ -8,9 +8,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"quotient/engine/db"
 	"slices"
 	"time"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 
 	"gorm.io/gorm"
 )
@@ -18,7 +19,7 @@ import (
 func GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 	data, err := db.GetAnnouncements()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving announcements", err)
 		return
 	}
 
@@ -61,7 +62,7 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 			WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Announcement not found"})
 			return
 		}
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving announcements", err)
 		return
 	}
 
@@ -93,6 +94,7 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "File not found"})
 		return
 	}
+	// nolint:errcheck
 	defer file.Close()
 
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
@@ -144,7 +146,7 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Announcement with the same title already exists"})
 			return
 		}
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error creating the announcement", err)
 		return
 	}
 
@@ -161,6 +163,7 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to open file"})
 			return
 		}
+		// nolint:errcheck
 		defer file.Close()
 
 		dst, err := SafeCreate(uploadDir, fileHeader.Filename)
@@ -168,6 +171,7 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create file on disk"})
 			return
 		}
+		// nolint:errcheck
 		defer dst.Close()
 
 		if _, err := io.Copy(dst, file); err != nil {
@@ -192,7 +196,7 @@ func DeleteAnnouncement(w http.ResponseWriter, r *http.Request) {
 
 	announcements, err := db.GetAnnouncements()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving announcements", err)
 		return
 	}
 
@@ -210,7 +214,7 @@ func DeleteAnnouncement(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := db.DeleteAnnouncement(announcement); err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error deleting the announcement", err)
 		return
 	}
 

@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
 	"log/slog"
 	"net/http"
-	"quotient/engine/config"
-	"quotient/engine/db"
 	"regexp"
 	"slices"
 	"strconv"
@@ -275,6 +275,7 @@ func ldapRoles(username string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// nolint:errcheck
 	defer conn.Close()
 
 	// bind using the given username and password and searchbase from config

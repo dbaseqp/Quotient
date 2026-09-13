@@ -51,10 +51,10 @@ func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 		defer func() {
-		if err := db.Close(); err != nil {
-			slog.Error("failed to close sql database", "error", err)
-		}
-	}()
+			if err := db.Close(); err != nil {
+				slog.Error("failed to close sql database", "error", err)
+			}
+		}()
 
 		// Check DB connection
 		err = db.PingContext(context.TODO())
@@ -83,10 +83,10 @@ func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 		defer func() {
-		if err := rows.Close(); err != nil {
-			slog.Error("failed to close sql rows", "error", err)
-		}
-	}()
+			if err := rows.Close(); err != nil {
+				slog.Error("failed to close sql rows", "error", err)
+			}
+		}()
 
 		// If no output to check, return success
 		if q.Output == "" {
@@ -164,7 +164,7 @@ func (c *Sql) Verify(box string, ip string, points int, timeout int, slapenalty 
 	if c.ServiceType == "" {
 		c.ServiceType = "Sql"
 	}
-	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
+	if err := c.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}
 	if c.Display == "" {

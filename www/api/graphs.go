@@ -2,8 +2,9 @@ package api
 
 import (
 	"net/http"
-	"quotient/engine/db"
 	"slices"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 const (
@@ -19,7 +20,7 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 
 	round, err := db.GetLastRound()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving last round", err)
 		return
 	}
 
@@ -35,7 +36,7 @@ func GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 
 	teams, err := db.GetTeams()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving teams", err)
 		return
 	}
 
@@ -94,7 +95,7 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 
 	scores, err := db.GetServiceCheckSumByRound()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving scores", err)
 		return
 	}
 
@@ -111,7 +112,7 @@ func GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 
 	teams, err := db.GetTeams()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving teams", err)
 		return
 	}
 
@@ -160,7 +161,7 @@ func GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 
 	teams, err := db.GetTeams()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving teams", err)
 		return
 	}
 	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })

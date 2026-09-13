@@ -8,9 +8,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"quotient/engine/db"
 	"slices"
 	"time"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 
 	"gorm.io/gorm"
 )
@@ -18,7 +19,7 @@ import (
 func GetInjects(w http.ResponseWriter, r *http.Request) {
 	data, err := db.GetInjects()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving injects", err)
 		return
 	}
 
@@ -37,7 +38,7 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 	for i, inject := range data {
 		data[i].Submissions, err = db.GetSubmissionsForInject(inject.ID)
 		if err != nil {
-			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			WriteInternalError(w, r, "Error retrieving submissions", err)
 			return
 		}
 		if !slices.Contains(req_roles, "admin") && !slices.Contains(req_roles, "inject") {
@@ -72,7 +73,7 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 
 	injects, err := db.GetInjects()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving injects", err)
 		return
 	}
 
@@ -103,6 +104,7 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "File not found"})
 		return
 	}
+	// nolint:errcheck
 	defer file.Close()
 
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
@@ -180,7 +182,7 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Inject with the same title already exists"})
 			return
 		}
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error creating the inject", err)
 		return
 	}
 
@@ -197,6 +199,7 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to open file"})
 			return
 		}
+		// nolint:errcheck
 		defer file.Close()
 
 		dst, err := SafeCreate(uploadDir, fileHeader.Filename)
@@ -204,6 +207,7 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create file on disk"})
 			return
 		}
+		// nolint:errcheck
 		defer dst.Close()
 
 		if _, err := io.Copy(dst, file); err != nil {
@@ -230,7 +234,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 
 	injects, err := db.GetInjects()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving injects", err)
 		return
 	}
 
@@ -329,6 +333,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to open file"})
 				return
 			}
+			// nolint:errcheck
 			defer file.Close()
 
 			dst, err := SafeCreate(uploadDir, fileHeader.Filename)
@@ -336,6 +341,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 				WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create file on disk"})
 				return
 			}
+			// nolint:errcheck
 			defer dst.Close()
 
 			if _, err := io.Copy(dst, file); err != nil {
@@ -346,7 +352,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := db.UpdateInject(inject); err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error updating the inject", err)
 		return
 	}
 
@@ -362,7 +368,7 @@ func DeleteInject(w http.ResponseWriter, r *http.Request) {
 
 	injects, err := db.GetInjects()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error retrieving injects", err)
 		return
 	}
 
@@ -380,7 +386,7 @@ func DeleteInject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := db.DeleteInject(inject); err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		WriteInternalError(w, r, "Error deleting the inject", err)
 		return
 	}
 
