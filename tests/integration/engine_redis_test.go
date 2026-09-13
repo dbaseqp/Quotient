@@ -22,6 +22,15 @@ func startRedis(t *testing.T) *testutil.RedisContainer {
 	return redis
 }
 
+func getPubSub(t *testing.T, ctx context.Context, redis *testutil.RedisContainer) *redis.PubSub {
+	pubsub := redis.Client.Subscribe(ctx, "events")
+	t.Cleanup(func() {
+		require.NoError(t, pubsub.Close())
+	})
+
+	return pubsub
+}
+
 // TestEngineRedisTaskEnqueue tests that the engine correctly enqueues tasks to Redis
 func TestEngineRedisTaskEnqueue(t *testing.T) {
 	if testing.Short() {
@@ -291,8 +300,7 @@ func TestEngineRedisPubSub(t *testing.T) {
 
 	t.Run("publish and receive events", func(t *testing.T) {
 		// Subscribe to events channel
-		pubsub := redisContainer.Client.Subscribe(ctx, "events")
-		defer require.NoError(t, pubsub.Close())
+		pubsub := getPubSub(t, ctx, redisContainer)
 
 		// Wait for subscription confirmation
 		_, err := pubsub.Receive(ctx)
@@ -334,10 +342,8 @@ func TestEngineRedisPubSub(t *testing.T) {
 
 	t.Run("multiple subscribers", func(t *testing.T) {
 		// Create multiple subscribers
-		pubsub1 := redisContainer.Client.Subscribe(ctx, "events")
-		defer require.NoError(t, pubsub1.Close())
-		pubsub2 := redisContainer.Client.Subscribe(ctx, "events")
-		defer require.NoError(t, pubsub2.Close())
+		pubsub1 := getPubSub(t, ctx, redisContainer)
+		pubsub2 := getPubSub(t, ctx, redisContainer)
 
 		// Wait for subscriptions
 		_, err := pubsub1.Receive(ctx)
