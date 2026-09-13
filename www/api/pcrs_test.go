@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/config"
 
 	"github.com/stretchr/testify/assert"
 )

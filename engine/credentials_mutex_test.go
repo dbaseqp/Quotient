@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"quotient/engine/config"
-	"quotient/engine/db"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 // A team ID with no entry in credentialsMutex must report an error rather than
