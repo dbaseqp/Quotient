@@ -1,15 +1,15 @@
 {{ define "page" }}
-<div class="d-flex w-100 h-100">
+<div class="inject-layout d-flex w-100 h-100">
     <div class="nav-pills d-flex flex-column h-100 overflow-y-scroll justify-content-start align-items-center bg-body-secondary"
         role="tablist" id="tab-container">
-        <button class="btn btn-warning rounded-0 w-100 d-none" onclick="refreshInjects()" id="refresh--btn">
+        <button class="btn btn-warning rounded-2 w-100 mb-2 d-none" onclick="refreshInjects()" id="refresh--btn">
             Refresh
         </button>
         {{ if or (contains .roles "admin") (contains .roles "inject") }}
-        <button class="btn btn-primary rounded-0 w-100" data-bs-toggle="modal" data-bs-target="#create__form">
+        <button class="btn btn-primary rounded-2 w-100 mb-2" data-bs-toggle="modal" data-bs-target="#create__form">
             Create Inject
         </button>
-        <button class="btn btn-outline-primary rounded-0 w-100" data-bs-toggle="modal"
+        <button class="btn btn-outline-primary rounded-2 w-100 mb-3" data-bs-toggle="modal"
             data-bs-target="#import__form">
             Import Injects
         </button>
@@ -437,7 +437,7 @@
             };
         </script>
         {{ end }}
-        <button class="active nav-link w-100 text-start bg-body rounded-0 border placeholder-glow" id="tab--placeholder"
+        <button class="inject-tab active nav-link w-100 text-start bg-body rounded-3 border placeholder-glow" id="tab--placeholder"
             data-bs-toggle="pill" data-bs-target="#pane--placeholder" type="button" role="tab"
             aria-controls="pane--placeholder" aria-selected="true">
             <div class="container-fluid">
@@ -447,18 +447,15 @@
                             <span class="text-nowrap overflow-hidden text-truncate">
                                 <span id="tab__title--placeholder" class="placeholder placeholder-xs col-12"></span>
                             </span>
-                            <span class="text-nowrap overflow-hidden text-truncate">
-                                <span id="tab__subject--placeholder" class="placeholder placeholder-xs col-12"></span>
-                            </span>
                         </div>
                     </div>
                     <div class="col-2">
                         <span id="tab__status--placeholder" class="d-flex justify-content-center"></span>
                     </div>
                 </div>
-                <div class="row justify-content-center align-items-center text-center">
-                    <span id="tab__time--placeholder" style="font-size: 10px;"
-                        class="placeholder placeholder-xs col-4 mb-1"></span>
+                <div class="inject-tab-meta d-flex justify-content-between align-items-center gap-2 pt-2">
+                    <span id="tab__time--placeholder" class="inject-tab-time placeholder placeholder-xs col-4"></span>
+                    <span id="tab__countdown--placeholder" class="placeholder placeholder-xs col-3"></span>
                 </div>
             </div>
         </button>
@@ -591,13 +588,79 @@
         --bs-offcanvas-width: min(72vw, 1100px);
     }
 
+    .inject-countdown-badge {
+        font-size: .7rem;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    .inject-countdown-detail {
+        vertical-align: middle;
+    }
+
+    .inject-layout #tab-container {
+        flex: 0 0 clamp(260px, 24vw, 300px);
+        min-width: 260px;
+        max-width: 300px;
+        padding: .75rem;
+    }
+
+    .inject-layout .inject-tab {
+        margin-bottom: .5rem;
+        padding: .85rem;
+        box-shadow: var(--bs-box-shadow-sm);
+        transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+
+    .inject-layout .inject-tab:hover {
+        border-color: var(--bs-primary-border-subtle) !important;
+        transform: translateY(-1px);
+    }
+
+    .inject-layout .inject-tab.active {
+        border-color: var(--bs-primary-border-subtle) !important;
+        box-shadow: inset 4px 0 0 var(--bs-primary), var(--bs-box-shadow-sm);
+    }
+
+    .inject-tab-time {
+        color: var(--bs-secondary-color);
+        font-size: .7rem;
+        white-space: nowrap;
+    }
+
     @media (max-width: 767.98px) {
         .inject-pdf-viewer {
             --bs-offcanvas-width: 100vw;
         }
+
+        .inject-layout #tab-container {
+            flex-basis: 210px;
+            min-width: 210px;
+            max-width: 210px;
+            padding: .5rem;
+        }
+
+        .inject-layout .inject-tab {
+            padding: .7rem;
+        }
+
+        .inject-tab-time {
+            display: none;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .inject-layout .inject-tab {
+            transition: none;
+        }
+
+        .inject-layout .inject-tab:hover {
+            transform: none;
+        }
     }
 </style>
 
+<script src="/static/assets/inject-countdown.js"></script>
 <script>
     const TAB_CONTAINER = document.getElementById("tab-container")
     const PANE_CONTAINER = document.getElementById("pane-container")
@@ -680,14 +743,15 @@
 
 
                 let title = tab.querySelector("#tab__title--placeholder")
-                let a = tab.querySelector("#tab__subject--placeholder")
                 let time = tab.querySelector("#tab__time--placeholder")
                 let status = tab.querySelector("#tab__status--placeholder")
 
                 title.className = ""
-                a.className = ""
                 time.className = ""
-                if (inject.Submissions && inject.Submissions.length > 0) {
+                if (inject.OpenTime > new Date()) {
+                    status.innerHTML = `<i class="bi bi-clock text-body-secondary" data-bs-toggle="tooltip"
+                        data-bs-title="Scheduled"></i>`
+                } else if (inject.Submissions && inject.Submissions.length > 0) {
                     status.innerHTML = `<i class="bi bi-check2-circle text-success-emphasis" data-bs-toggle="tooltip"
                         data-bs-title="Submitted"></i>`
 
@@ -724,8 +788,13 @@
                         data-bs-title="Open for submissions"></i>`
                 }
                 title.textContent = inject.Title
-                a.textContent = inject.Title
-                time.textContent = inject.OpenTime.toLocaleString()
+                time.className = "inject-tab-time"
+                time.textContent = inject.OpenTime.toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                })
 
                 let from = pane.querySelector("#pane__from--placeholder")
                 let subject = pane.querySelector("#pane__subject--placeholder")
@@ -746,8 +815,9 @@
                 descTemp.appendChild(descPara)
 
                 descTemp.innerHTML += `
-                <h5>Inject Details</h5>
+                <h5>Inject Details <span id="pane__countdown--${inject.ID}" class="inject-countdown-detail"></span></h5>
                 <ul>
+                    <li><p><strong>Release Time:</strong> <span id="pane__open--${inject.ID}">${inject.OpenTime.toLocaleString()}</span></p></li>
                     <li><p><strong>Due Time:</strong> <span id="pane__due--${inject.ID}">${inject.DueTime.toLocaleString()}</span></p></li>
                     <li><p><strong>Close Time:</strong> <span id="pane__close--${inject.ID}">${inject.CloseTime.toLocaleString()}</span></p></li>
                     </ul>
@@ -795,6 +865,9 @@
                 // Replace placeholder in innerHTML
                 tab.innerHTML = tab.innerHTML.replaceAll("placeholder", inject.ID)
                 pane.innerHTML = pane.innerHTML.replaceAll("placeholder", inject.ID)
+
+                InjectCountdown.bind(tab.querySelector(`#tab__countdown--${inject.ID}`), inject)
+                InjectCountdown.bind(pane.querySelector(`#pane__countdown--${inject.ID}`), inject)
 
                 pane.querySelectorAll("[data-pdf-file-name]").forEach((viewerTrigger) => {
                     viewerTrigger.addEventListener("click", (event) => {
