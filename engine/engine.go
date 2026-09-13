@@ -10,12 +10,14 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 	"unicode/utf8"
 
 	"github.com/dbaseqp/Quotient/engine/checks"
 	"github.com/dbaseqp/Quotient/engine/config"
 	"github.com/dbaseqp/Quotient/engine/db"
+	"github.com/dbaseqp/Quotient/tests/testutil"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -640,5 +642,36 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 		}(currentRound)
 	} else {
 		slog.Debug("refresh already in progress, skipping refresh spawn", "round", currentRound)
+	}
+}
+
+// newTestEngine creates a minimal engine for testing
+func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, slaThreshold int) *ScoringEngine {
+	t.Helper()
+
+	conf := &config.ConfigSettings{
+		RequiredSettings: config.RequiredConfig{
+			EventName:    "Test Event",
+			EventType:    "rvb",
+			DBConnectURL: "test", // Already connected via db.Connect
+			BindAddress:  "127.0.0.1",
+		},
+		MiscSettings: config.MiscConfig{
+			Delay:        5,
+			Jitter:       1, // Must be non-zero to avoid rand.Intn(0) panic
+			Timeout:      3,
+			Points:       10,
+			SlaThreshold: slaThreshold,
+			SlaPenalty:   30,
+		},
+	}
+
+	return &ScoringEngine{
+		Config:           conf,
+		credentialsMutex: make(map[uint]*sync.Mutex),
+		UptimePerService: make(map[uint]map[string]db.Uptime),
+		SlaPerService:    make(map[uint]map[string]int),
+		RedisClient:      redis.Client,
+		CurrentRound:     1,
 	}
 }

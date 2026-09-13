@@ -14,7 +14,6 @@ import (
 
 	"github.com/dbaseqp/Quotient/engine"
 	"github.com/dbaseqp/Quotient/engine/config"
-	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 type API struct {
@@ -25,12 +24,6 @@ type API struct {
 
 func NewAPI(c *config.ConfigSettings, e *engine.ScoringEngine) *API {
 	return &API{conf: c, eng: e, oidc: nil}
-}
-
-// only initializes the database
-// TODO: flesh this out more when tests need more components (like config and more engine parts)
-func NewMockAPI(db *db.DB) *API {
-	return &API{conf: nil, eng: &engine.ScoringEngine{DB: db}, oidc: nil}
 }
 
 // WriteJSON writes a JSON response with the given status code.

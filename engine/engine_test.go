@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"encoding/json"
-	"sync"
 	"testing"
 	"time"
 
@@ -15,37 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// newTestEngine creates a minimal engine for testing
-func newTestEngine(t *testing.T, redis *testutil.RedisContainer, slaThreshold int) *ScoringEngine {
-	t.Helper()
-
-	conf := &config.ConfigSettings{
-		RequiredSettings: config.RequiredConfig{
-			EventName:    "Test Event",
-			EventType:    "rvb",
-			DBConnectURL: "test", // Already connected via db.Connect
-			BindAddress:  "127.0.0.1",
-		},
-		MiscSettings: config.MiscConfig{
-			Delay:        5,
-			Jitter:       1, // Must be non-zero to avoid rand.Intn(0) panic
-			Timeout:      3,
-			Points:       10,
-			SlaThreshold: slaThreshold,
-			SlaPenalty:   30,
-		},
-	}
-
-	return &ScoringEngine{
-		Config:           conf,
-		credentialsMutex: make(map[uint]*sync.Mutex),
-		UptimePerService: make(map[uint]map[string]db.Uptime),
-		SlaPerService:    make(map[uint]map[string]int),
-		RedisClient:      redis.Client,
-		CurrentRound:     1,
-	}
-}
 
 func TestProcessCollectedResults_SavesRound(t *testing.T) {
 	if testing.Short() {
@@ -60,7 +28,7 @@ func TestProcessCollectedResults_SavesRound(t *testing.T) {
 
 	team := pg.CreateTestTeam(t, "Team", "01")
 
-	engine := newTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, 3)
 	engine.CurrentRound = 1
 	engine.CurrentRoundStartTime = time.Now()
 
@@ -108,7 +76,7 @@ func TestProcessCollectedResults_TracksUptime(t *testing.T) {
 
 	team := pg.CreateTestTeam(t, "Team", "01")
 
-	engine := newTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, 3)
 	engine.CurrentRoundStartTime = time.Now()
 
 	// Round 1: pass
@@ -148,7 +116,7 @@ func TestProcessCollectedResults_TriggersSLA(t *testing.T) {
 	team := pg.CreateTestTeam(t, "Team SLA", "01")
 
 	// SLA threshold of 3 consecutive failures
-	engine := newTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, 3)
 	engine.CurrentRoundStartTime = time.Now()
 
 	// Fail 3 times in a row - should trigger SLA
@@ -181,7 +149,7 @@ func TestProcessCollectedResults_SLAResetsOnPass(t *testing.T) {
 
 	team := pg.CreateTestTeam(t, "Team SLA Reset", "01")
 
-	engine := newTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, 3)
 	engine.CurrentRoundStartTime = time.Now()
 
 	// Fail twice
@@ -236,7 +204,7 @@ func TestProcessCollectedResults_MultipleTeamsIndependent(t *testing.T) {
 	team1 := pg.CreateTestTeam(t, "Team Multi 1", "01")
 	team2 := pg.CreateTestTeam(t, "Team Multi 2", "02")
 
-	engine := newTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, 3)
 	engine.CurrentRoundStartTime = time.Now()
 
 	// Team 1 fails, Team 2 passes - over 3 rounds
@@ -311,7 +279,7 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 	team2 := pg.CreateTestTeam(t, "Team Rvb 2", "02")
 
 	// Create engine with mock runner
-	engine := newTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, 3)
 	engine.CurrentRound = 1
 
 	// Add a mock service to the config
@@ -415,7 +383,7 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 
 	team := pg.CreateTestTeam(t, "Team Multi Svc", "01")
 
-	engine := newTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, 3)
 	engine.CurrentRound = 1
 
 	// Add multiple services

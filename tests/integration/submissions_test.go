@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dbaseqp/Quotient/engine"
 	"github.com/dbaseqp/Quotient/engine/db"
 	"github.com/dbaseqp/Quotient/tests/testutil"
 	"github.com/dbaseqp/Quotient/www/api"
@@ -34,8 +35,9 @@ func TestDownloadAllSubmissions(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	_, pg := testutil.StartContainers(t)
-	api := api.NewMockAPI(pg.DB)
+	redis, pg := testutil.StartContainers(t)
+	eng := engine.NewTestEngine(t, redis, 3)
+	api := api.NewAPI(eng.Config, eng)
 
 	// Use temp dir for submission files
 	chDirToTempForTest(t)
@@ -115,8 +117,9 @@ func TestDownloadAllSubmissions_MultipleTeamsSameFilename(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	_, pg := testutil.StartContainers(t)
-	api := api.NewMockAPI(pg.DB)
+	redis, pg := testutil.StartContainers(t)
+	eng := engine.NewTestEngine(t, redis, 3)
+	api := api.NewAPI(eng.Config, eng)
 
 	// Use temp dir for submission files
 	chDirToTempForTest(t)
