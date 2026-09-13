@@ -31,6 +31,12 @@
   SlaThreshold = 5
   SlaPenalty = 25
 
+[InjectSettings]
+  # Planned local start used to preview imported inject schedules. When an admin
+  # starts the competition, the actual start is persisted and becomes the anchor.
+  CompetitionStartTime = "2027-03-19 08:00"
+  CompetitionTimezone = "America/Los_Angeles"
+
 [CredlistSettings]
   [[CredlistSettings.Credlist]]
     CredlistName = "LinuxUsers"

@@ -17,6 +17,9 @@ type InjectSchema struct {
 	CloseTime       time.Time
 	InjectFileNames pq.StringArray     `gorm:"type:text[]"`
 	Submissions     []SubmissionSchema `gorm:"foreignKey:InjectID"`
+	OpenOffset      *int64             `json:"-"`
+	DueOffset       *int64             `json:"-"`
+	CloseOffset     *int64             `json:"-"`
 }
 
 // CreateInject creates a new inject in the database using the provided schema
@@ -26,6 +29,50 @@ func CreateInject(inject InjectSchema) (InjectSchema, error) {
 		return InjectSchema{}, result.Error
 	}
 	return inject, nil
+}
+
+func CreateInjectBatch(injects []InjectSchema) ([]InjectSchema, error) {
+	err := db.Transaction(func(tx *gorm.DB) error {
+		return tx.Table("inject_schemas").Create(&injects).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return injects, nil
+}
+
+func DeleteInjectBatch(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("submission_schemas").Where("inject_id IN ?", ids).Delete(&SubmissionSchema{}).Error; err != nil {
+			return err
+		}
+		return tx.Table("inject_schemas").Where("id IN ?", ids).Delete(&InjectSchema{}).Error
+	})
+}
+
+func RecalculateImportedInjectTimes(start time.Time) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		return recalculateImportedInjectTimes(tx, start)
+	})
+}
+
+func recalculateImportedInjectTimes(tx *gorm.DB, start time.Time) error {
+	var injects []InjectSchema
+	if err := tx.Table("inject_schemas").Where("open_offset IS NOT NULL").Find(&injects).Error; err != nil {
+		return err
+	}
+	for i := range injects {
+		injects[i].OpenTime = start.Add(time.Duration(*injects[i].OpenOffset) * time.Second)
+		injects[i].DueTime = start.Add(time.Duration(*injects[i].DueOffset) * time.Second)
+		injects[i].CloseTime = start.Add(time.Duration(*injects[i].CloseOffset) * time.Second)
+		if err := tx.Table("inject_schemas").Save(&injects[i]).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // GetInjects retrieves all injects from the database

@@ -68,6 +68,8 @@ After starting the engine:
 
 ## Configuration
 
+Inject schedules can be imported from a TOML manifest with times relative to the persisted competition start. See [Importing Injects](docs/inject-import.md).
+
 1. How to Create Configuration File
 2. Configuration Sections
 
@@ -640,4 +642,3 @@ This project is licensed under the GNU General Public License v3.0 - see the LIC
 ## Contact
 
 For support or questions, please open a GitHub issue.
-

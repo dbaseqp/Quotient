@@ -1,0 +1,17 @@
+
+
+[[Inject]]
+Title = "Test Executive Briefing"
+Description = "Read the attached briefing and submit a short response."
+OpenAfter = "5m"
+DueAfter = "35m"
+CloseAfter = "45m"
+Files = ["executive-briefing.txt"]
+
+[[Inject]]
+Title = "Test Incident Update"
+Description = "Provide an updated incident status using the attached instructions."
+OpenAfter = "1h"
+DueAfter = "1h30m"
+# CloseAfter is optional and defaults to DueAfter.
+Files = ["incident-update.txt"]

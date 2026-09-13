@@ -146,6 +146,7 @@ func (router *Router) Start() {
 	mux.HandleFunc("DELETE /api/announcements/{id}", INJECTAUTH(api.DeleteAnnouncement))
 
 	mux.HandleFunc("POST /api/injects/create", INJECTAUTH(api.CreateInject))
+	mux.HandleFunc("POST /api/injects/import", INJECTAUTH(api.ImportInjects))
 	mux.HandleFunc("POST /api/injects/{id}", INJECTAUTH(api.UpdateInject))
 	mux.HandleFunc("DELETE /api/injects/{id}", INJECTAUTH(api.DeleteInject))
 	mux.HandleFunc("GET /api/injects/{id}/submissions/download", INJECTAUTH(api.DownloadAllSubmissions))
