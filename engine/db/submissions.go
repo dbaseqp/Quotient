@@ -16,9 +16,9 @@ type SubmissionSchema struct {
 	Team               TeamSchema `gorm:"foreignKey:TeamID"`
 }
 
-func GetSubmissionsForInject(injectID uint) ([]SubmissionSchema, error) {
+func (d *DB) GetSubmissionsForInject(injectID uint) ([]SubmissionSchema, error) {
 	var submissions []SubmissionSchema
-	result := db.Table("submission_schemas").Preload("Team", func(db *gorm.DB) *gorm.DB {
+	result := d.db.Table("submission_schemas").Preload("Team", func(db *gorm.DB) *gorm.DB {
 		return db.Select("id", "name") // only select the id and name fields from the team
 	}).Where("inject_id = ?", injectID).Find(&submissions)
 	if result.Error != nil {
@@ -47,8 +47,8 @@ func (submission *SubmissionSchema) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func CreateSubmission(submission SubmissionSchema) (SubmissionSchema, error) {
-	result := db.Create(&submission)
+func (d *DB) CreateSubmission(submission SubmissionSchema) (SubmissionSchema, error) {
+	result := d.db.Create(&submission)
 	if result.Error != nil {
 		return SubmissionSchema{}, result.Error
 	}

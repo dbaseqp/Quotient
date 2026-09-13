@@ -15,14 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func startRedis(t *testing.T) *testutil.RedisContainer {
-	redis := testutil.StartRedis(t)
-	t.Cleanup(func() {
-		require.NoError(t, redis.Close())
-	})
-	return redis
-}
-
 func getPubSub(t *testing.T, ctx context.Context, redis *testutil.RedisContainer) *redis.PubSub {
 	pubsub := redis.Client.Subscribe(ctx, "events")
 	t.Cleanup(func() {
@@ -38,7 +30,7 @@ func TestEngineRedisTaskEnqueue(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := startRedis(t)
+	redisContainer, _ := testutil.StartContainers(t)
 
 	ctx := context.Background()
 
@@ -159,7 +151,7 @@ func TestEngineRedisResultCollection(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := startRedis(t)
+	redisContainer, _ := testutil.StartContainers(t)
 
 	ctx := context.Background()
 
@@ -295,7 +287,7 @@ func TestEngineRedisPubSub(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := startRedis(t)
+	redisContainer, _ := testutil.StartContainers(t)
 
 	ctx := context.Background()
 
@@ -390,7 +382,7 @@ func TestEngineRedisRoundWorkflow(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := startRedis(t)
+	redisContainer, _ := testutil.StartContainers(t)
 
 	ctx := context.Background()
 

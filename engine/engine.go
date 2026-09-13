@@ -35,6 +35,7 @@ type ScoringEngine struct {
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
+	DB                    *db.DB
 
 	// Concurrency control for materialized view refresh
 	Refreshing atomic.Bool
@@ -61,6 +62,12 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 		panic(fmt.Sprintf("Failed to connect to Redis: %v", err))
 	}
 
+	d := db.Connect(conf.RequiredSettings.DBConnectURL)
+
+	if err := d.AddTeams(conf); err != nil {
+		panic(fmt.Sprintf("Failed to add teams to DB: %v", err))
+	}
+
 	se := &ScoringEngine{
 		Config:           conf,
 		credentialsMutex: make(map[uint]*sync.Mutex),
@@ -68,6 +75,7 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 		SlaPerService:    make(map[uint]map[string]int),
 		RedisClient:      rdb,
 		configPath:       configPath,
+		DB:               d,
 	}
 
 	// Start watching config file for changes
@@ -79,19 +87,19 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 }
 
 func (se *ScoringEngine) Start() {
-	if t, err := db.GetLastRound(); err != nil {
+	if t, err := se.DB.GetLastRound(); err != nil {
 		slog.Error("failed to get last round", "error", err)
 	} else {
 		se.CurrentRound = uint(t.ID) + 1
 	}
 
 	se.uptimeMu.Lock()
-	if err := db.LoadUptimes(&se.UptimePerService); err != nil {
+	if err := se.DB.LoadUptimes(&se.UptimePerService); err != nil {
 		slog.Error("failed to load uptimes", "error", err)
 	}
 	se.uptimeMu.Unlock()
 
-	if err := db.LoadSLAs(&se.SlaPerService, se.Config.MiscSettings.SlaThreshold); err != nil {
+	if err := se.DB.LoadSLAs(&se.SlaPerService, se.Config.MiscSettings.SlaThreshold); err != nil {
 		slog.Error("failed to load SLAs", "error", err)
 	}
 
@@ -309,7 +317,7 @@ func (se *ScoringEngine) ResetScores() error {
 	slog.Info("Resetting scores and clearing Redis queues")
 
 	// Reset the database
-	if err := db.ResetScores(); err != nil {
+	if err := se.DB.ResetScores(); err != nil {
 		slog.Error("failed to reset scores", "error", err)
 		return fmt.Errorf("failed to reset scores: %v", err)
 	}
@@ -373,7 +381,7 @@ func (se *ScoringEngine) rvb() error {
 	//
 
 	// do rvb stuff
-	teams, err := db.GetTeams()
+	teams, err := se.DB.GetTeams()
 	if err != nil {
 		slog.Error("failed to get teams:", "error", err)
 		return err
@@ -410,7 +418,7 @@ func (se *ScoringEngine) rvb() error {
 			if !r.Runnable() {
 				continue
 			}
-			enabled, err := db.IsTeamServiceEnabled(team.ID, r.GetName())
+			enabled, err := se.DB.IsTeamServiceEnabled(team.ID, r.GetName())
 			if err != nil {
 				slog.Error("failed to check service state", "team", team.ID, "service", r.GetName(), "error", err)
 				continue
@@ -439,7 +447,7 @@ func (se *ScoringEngine) rvb() error {
 			// Populate credentials if check needs them
 			if credlists := r.GetCredlists(); len(credlists) > 0 {
 				for _, credlistName := range credlists {
-					creds, err := db.GetTeamCredentials(team.ID, credlistName)
+					creds, err := se.DB.GetTeamCredentials(team.ID, credlistName)
 					if err != nil {
 						slog.Error("failed to get credentials for task", "team", team.ID, "credlist", credlistName, "error", err)
 						continue
@@ -572,7 +580,7 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 		StartTime: se.CurrentRoundStartTime,
 		Checks:    dbResults,
 	}
-	if _, err := db.CreateRound(round); err != nil {
+	if _, err := se.DB.CreateRound(round); err != nil {
 		slog.Error("failed to create round:", "round", se.CurrentRound, "error", err)
 		return
 	}
@@ -610,7 +618,7 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 					RoundID:     uint(se.CurrentRound),
 					Penalty:     se.Config.MiscSettings.SlaPenalty,
 				}
-				if _, err := db.CreateSLA(sla); err != nil {
+				if _, err := se.DB.CreateSLA(sla); err != nil {
 					slog.Error("failed to create SLA", "team", result.TeamID, "service", result.ServiceName, "error", err)
 				}
 				se.SlaPerService[result.TeamID][result.ServiceName] = 0
@@ -626,7 +634,7 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 	if se.Refreshing.CompareAndSwap(false, true) {
 		go func(round uint) {
 			defer se.Refreshing.Store(false)
-			if err := db.RefreshScoresMaterializedView(); err != nil {
+			if err := se.DB.RefreshScoresMaterializedView(); err != nil {
 				slog.Error("failed to refresh materialized view", "round", round, "error", err)
 			}
 		}(currentRound)

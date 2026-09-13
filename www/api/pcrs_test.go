@@ -10,17 +10,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func withEasyPCR(t *testing.T, enabled bool) {
+func withEasyPCR(t *testing.T, enabled bool) *API {
 	t.Helper()
-	previous := conf
-	t.Cleanup(func() { conf = previous })
-	conf = &config.ConfigSettings{MiscSettings: config.MiscConfig{EasyPCR: enabled}}
+	return &API{conf: &config.ConfigSettings{MiscSettings: config.MiscConfig{EasyPCR: enabled}}}
 }
 
 // allowPCRForTeam admits an admin for any team and a team user only for their
 // own, and says which refusal applies.
 func TestAllowPCRForTeam(t *testing.T) {
-	withEasyPCR(t, true)
+	a := withEasyPCR(t, true)
 
 	onTeam1 := Identity{Username: "hola", Roles: []string{"team"}, TeamID: 1, HasTeam: true}
 	noTeam := Identity{Username: "injectmgr"}
@@ -41,7 +39,7 @@ func TestAllowPCRForTeam(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			got := allowPCRForTeam(w, requestAs(tc.roles, tc.identity), tc.teamID, "PCR not allowed")
+			got := a.allowPCRForTeam(w, requestAs(tc.roles, tc.identity), tc.teamID, "PCR not allowed")
 			assert.Equal(t, tc.allowed, got)
 			if tc.allowed {
 				return
@@ -54,12 +52,12 @@ func TestAllowPCRForTeam(t *testing.T) {
 
 // EasyPCR off refuses a team user with the caller-supplied message.
 func TestAllowPCRForTeamEasyPCRDisabled(t *testing.T) {
-	withEasyPCR(t, false)
+	a := withEasyPCR(t, false)
 
 	onTeam1 := Identity{Username: "hola", Roles: []string{"team"}, TeamID: 1, HasTeam: true}
 	w := httptest.NewRecorder()
 
-	assert.False(t, allowPCRForTeam(w, requestAs([]string{"team"}, onTeam1), 1, "PCR reset not allowed"))
+	assert.False(t, a.allowPCRForTeam(w, requestAs([]string{"team"}, onTeam1), 1, "PCR reset not allowed"))
 	assert.Equal(t, http.StatusForbidden, w.Code)
 	assert.JSONEq(t, `{"error":"PCR reset not allowed"}`, w.Body.String())
 }

@@ -21,16 +21,14 @@ func teamList(names ...string) []db.TeamSchema {
 	return teams
 }
 
-func withOIDCConfig(t *testing.T, teamGroups []string) {
+func withOIDCConfig(t *testing.T, teamGroups []string) *API {
 	t.Helper()
-	previous := conf
-	t.Cleanup(func() { conf = previous })
-	conf = &config.ConfigSettings{
+	return &API{conf: &config.ConfigSettings{
 		OIDCSettings: config.OIDCAuthConfig{
 			OIDCEnabled:    true,
 			OIDCTeamGroups: teamGroups,
 		},
-	}
+	}}
 }
 
 func TestTeamOrdinal(t *testing.T) {
@@ -63,10 +61,10 @@ func TestTeamOrdinal(t *testing.T) {
 }
 
 func TestMapOIDCUserToTeamPaddedOrdinal(t *testing.T) {
-	withOIDCConfig(t, []string{"quotient-blue-*"})
+	a := withOIDCConfig(t, []string{"quotient-blue-*"})
 	teams := teamList("team01", "team02", "team03", "team04", "team05")
 
-	team := mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05"})
+	team := a.mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05"})
 	require.NotNil(t, team)
 	assert.Equal(t, "team05", team.Name)
 	assert.Equal(t, uint(5), team.ID)
@@ -74,75 +72,75 @@ func TestMapOIDCUserToTeamPaddedOrdinal(t *testing.T) {
 
 func TestMapOIDCUserToTeamUnpaddedTeamNames(t *testing.T) {
 	// event.conf.example names teams "team1", "team2" - unpadded.
-	withOIDCConfig(t, []string{"quotient-blue-*"})
+	a := withOIDCConfig(t, []string{"quotient-blue-*"})
 	teams := teamList("team1", "team2", "team3", "team4", "team5")
 
-	team := mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05"})
+	team := a.mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05"})
 	require.NotNil(t, team)
 	assert.Equal(t, "team5", team.Name)
 }
 
 func TestMapOIDCUserToTeamSingleDigitGroup(t *testing.T) {
-	withOIDCConfig(t, []string{"quotient-blue-*"})
+	a := withOIDCConfig(t, []string{"quotient-blue-*"})
 	teams := teamList("team01", "team05")
 
-	team := mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-5"})
+	team := a.mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-5"})
 	require.NotNil(t, team)
 	assert.Equal(t, "team05", team.Name)
 }
 
 // A name ending in a letter carries no ordinal, so only pass 1 can match it.
 func TestMapOIDCUserToTeamIgnoresLetterSuffixedNames(t *testing.T) {
-	withOIDCConfig(t, []string{"quotient-blue-*"})
+	a := withOIDCConfig(t, []string{"quotient-blue-*"})
 	teams := teamList("team05a", "team05b")
 
-	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05b"}))
-	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05"}))
+	assert.Nil(t, a.mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05b"}))
+	assert.Nil(t, a.mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05"}))
 }
 
 func TestMapOIDCUserToTeamExactNameMatch(t *testing.T) {
-	withOIDCConfig(t, []string{"BlueAlpha", "BlueBravo"})
+	a := withOIDCConfig(t, []string{"BlueAlpha", "BlueBravo"})
 	teams := teamList("BlueAlpha", "BlueBravo")
 
 	// The group must match a configured pattern as the role mapper matches it,
 	// but the team Name comparison itself ignores case.
-	team := mapOIDCUserToTeam(teams, []string{"BlueBravo"})
+	team := a.mapOIDCUserToTeam(teams, []string{"BlueBravo"})
 	require.NotNil(t, team)
 	assert.Equal(t, "BlueBravo", team.Name)
 
-	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"bluebravo"}))
+	assert.Nil(t, a.mapOIDCUserToTeam(teams, []string{"bluebravo"}))
 }
 
 func TestMapOIDCUserToTeamRefusesAmbiguousMatch(t *testing.T) {
 	// "team5" and "team05" both reduce to ordinal 5, so nothing resolves.
-	withOIDCConfig(t, []string{"quotient-blue-*"})
+	a := withOIDCConfig(t, []string{"quotient-blue-*"})
 	teams := teamList("team5", "team05")
 
-	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05"}))
+	assert.Nil(t, a.mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-05"}))
 }
 
 func TestMapOIDCUserToTeamIgnoresNonTeamGroups(t *testing.T) {
-	withOIDCConfig(t, []string{"quotient-blue-*"})
+	a := withOIDCConfig(t, []string{"quotient-blue-*"})
 	teams := teamList("team01", "team05")
 
 	// A group outside the configured patterns must not assign a team, even
 	// though it ends in digits.
-	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"vpn-users-05", "some-other-group"}))
+	assert.Nil(t, a.mapOIDCUserToTeam(teams, []string{"vpn-users-05", "some-other-group"}))
 }
 
 func TestMapOIDCUserToTeamNoMatch(t *testing.T) {
-	withOIDCConfig(t, []string{"quotient-blue-*"})
+	a := withOIDCConfig(t, []string{"quotient-blue-*"})
 	teams := teamList("team01", "team02")
 
-	assert.Nil(t, mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-99"}))
-	assert.Nil(t, mapOIDCUserToTeam(teams, nil))
+	assert.Nil(t, a.mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-99"}))
+	assert.Nil(t, a.mapOIDCUserToTeam(teams, nil))
 }
 
 func TestMapOIDCUserToTeamHyphenBeforeSingleDigit(t *testing.T) {
-	withOIDCConfig(t, []string{"quotient-blue-*"})
+	a := withOIDCConfig(t, []string{"quotient-blue-*"})
 	teams := teamList("team05")
 
-	team := mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-5"})
+	team := a.mapOIDCUserToTeam(teams, []string{"quotient-blue-Team-5"})
 	require.NotNil(t, team)
 	assert.Equal(t, "team05", team.Name)
 }

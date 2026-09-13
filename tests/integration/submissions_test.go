@@ -34,15 +34,14 @@ func TestDownloadAllSubmissions(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	pgContainer := testutil.StartPostgres(t)
-	defer pgContainer.Close()
-	db.Connect(pgContainer.ConnectionString())
+	_, pg := testutil.StartContainers(t)
+	api := api.NewMockAPI(pg.DB)
 
 	// Use temp dir for submission files
 	chDirToTempForTest(t)
 
 	// Setup: team, inject, submissions
-	team, err := db.CreateTeam(db.TeamSchema{
+	team, err := pg.DB.CreateTeam(db.TeamSchema{
 		Name:       fmt.Sprintf("Team-%d", time.Now().UnixNano()),
 		Identifier: "01",
 		Active:     true,
@@ -50,7 +49,7 @@ func TestDownloadAllSubmissions(t *testing.T) {
 	require.NoError(t, err, "failed to create team")
 	t.Logf("Created team ID: %d", team.ID)
 
-	inject, err := db.CreateInject(db.InjectSchema{
+	inject, err := pg.DB.CreateInject(db.InjectSchema{
 		Title:     fmt.Sprintf("Test Inject-%d", time.Now().UnixNano()),
 		OpenTime:  time.Now().Add(-1 * time.Hour),
 		DueTime:   time.Now().Add(1 * time.Hour),
@@ -69,7 +68,7 @@ func TestDownloadAllSubmissions(t *testing.T) {
 		err = os.WriteFile(filepath.Join(dir, filename), []byte(fmt.Sprintf("content %d", v)), 0644)
 		require.NoError(t, err, "failed to write file")
 
-		sub, err := db.CreateSubmission(db.SubmissionSchema{
+		sub, err := pg.DB.CreateSubmission(db.SubmissionSchema{
 			TeamID:             team.ID,
 			InjectID:           inject.ID,
 			SubmissionTime:     time.Now(),
@@ -80,7 +79,7 @@ func TestDownloadAllSubmissions(t *testing.T) {
 	}
 
 	// Verify submissions exist
-	subs, err := db.GetSubmissionsForInject(inject.ID)
+	subs, err := pg.DB.GetSubmissionsForInject(inject.ID)
 	require.NoError(t, err)
 	t.Logf("Found %d submissions for inject %d", len(subs), inject.ID)
 
@@ -116,15 +115,14 @@ func TestDownloadAllSubmissions_MultipleTeamsSameFilename(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	pgContainer := testutil.StartPostgres(t)
-	defer pgContainer.Close()
-	db.Connect(pgContainer.ConnectionString())
+	_, pg := testutil.StartContainers(t)
+	api := api.NewMockAPI(pg.DB)
 
 	// Use temp dir for submission files
 	chDirToTempForTest(t)
 
 	// Create inject
-	inject, err := db.CreateInject(db.InjectSchema{
+	inject, err := pg.DB.CreateInject(db.InjectSchema{
 		Title:     fmt.Sprintf("Multi-Team Inject-%d", time.Now().UnixNano()),
 		OpenTime:  time.Now().Add(-1 * time.Hour),
 		DueTime:   time.Now().Add(1 * time.Hour),
@@ -137,7 +135,7 @@ func TestDownloadAllSubmissions_MultipleTeamsSameFilename(t *testing.T) {
 	numTeams := 3
 	teams := make([]db.TeamSchema, numTeams)
 	for i := 0; i < numTeams; i++ {
-		team, err := db.CreateTeam(db.TeamSchema{
+		team, err := pg.DB.CreateTeam(db.TeamSchema{
 			Name:       fmt.Sprintf("Team%d-%d", i+1, time.Now().UnixNano()),
 			Identifier: fmt.Sprintf("%02d", i+1),
 			Active:     true,
@@ -155,7 +153,7 @@ func TestDownloadAllSubmissions_MultipleTeamsSameFilename(t *testing.T) {
 		err = os.WriteFile(filepath.Join(dir, "report.pdf"), []byte(content), 0644)
 		require.NoError(t, err)
 
-		_, err = db.CreateSubmission(db.SubmissionSchema{
+		_, err = pg.DB.CreateSubmission(db.SubmissionSchema{
 			TeamID:             team.ID,
 			InjectID:           inject.ID,
 			SubmissionTime:     time.Now(),

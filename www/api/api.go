@@ -17,17 +17,20 @@ import (
 	"github.com/dbaseqp/Quotient/engine/db"
 )
 
-var (
+type API struct {
 	conf *config.ConfigSettings
 	eng  *engine.ScoringEngine
-)
-
-func SetConfig(c *config.ConfigSettings) {
-	conf = c
+	oidc *oidcState
 }
 
-func SetEngine(e *engine.ScoringEngine) {
-	eng = e
+func NewAPI(c *config.ConfigSettings, e *engine.ScoringEngine) *API {
+	return &API{conf: c, eng: e, oidc: nil}
+}
+
+// only initializes the database
+// TODO: flesh this out more when tests need more components (like config and more engine parts)
+func NewMockAPI(db *db.DB) *API {
+	return &API{conf: nil, eng: &engine.ScoringEngine{DB: db}, oidc: nil}
 }
 
 // WriteJSON writes a JSON response with the given status code.
@@ -91,7 +94,7 @@ func SafeMkdirAll(baseDir, relativePath string, perm os.FileMode) error {
 
 // CheckCompetitionStarted returns false and writes error response if competition hasn't started
 // Admins always have access regardless of competition start time
-func CheckCompetitionStarted(w http.ResponseWriter, r *http.Request) bool {
+func (a *API) CheckCompetitionStarted(w http.ResponseWriter, r *http.Request) bool {
 	roles := r.Context().Value("roles")
 	if roles != nil {
 		roleList := roles.([]string)
@@ -102,7 +105,7 @@ func CheckCompetitionStarted(w http.ResponseWriter, r *http.Request) bool {
 		}
 	}
 
-	if !db.GetCompetitionStarted() {
+	if !a.eng.DB.GetCompetitionStarted() {
 		WriteJSON(w, http.StatusForbidden, map[string]string{"error": "Competition has not started"})
 		return false
 	}

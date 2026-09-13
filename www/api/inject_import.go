@@ -52,7 +52,7 @@ type injectImportPreview struct {
 	Files     []string  `json:"files"`
 }
 
-func ImportInjects(w http.ResponseWriter, r *http.Request) {
+func (a *API) ImportInjects(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxInjectBundleSize)
 	if err := r.ParseMultipartForm(maxInjectBundleSize); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "The import bundle is invalid or exceeds 100 MB"})
@@ -80,13 +80,13 @@ func ImportInjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	anchor, anchorSource, err := injectScheduleAnchor()
+	anchor, anchorSource, err := a.injectScheduleAnchor()
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
 
-	existing, err := db.GetInjects()
+	existing, err := a.eng.DB.GetInjects()
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to check existing injects"})
 		return
@@ -122,7 +122,7 @@ func ImportInjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := createImportedInjects(prepared)
+	created, err := a.createImportedInjects(prepared)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			WriteJSON(w, http.StatusConflict, map[string]any{"error": "An inject title already exists"})
@@ -134,13 +134,13 @@ func ImportInjects(w http.ResponseWriter, r *http.Request) {
 
 	// If the first competition start raced with this import, ensure the newly
 	// created rows use the persisted actual start rather than the planned one.
-	latestStart, err := db.GetCompetitionStart()
+	latestStart, err := a.eng.DB.GetCompetitionStart()
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Injects were imported, but the competition start could not be verified"})
 		return
 	}
 	if latestStart != nil && !latestStart.Equal(anchor) {
-		if err := db.RecalculateImportedInjectTimes(*latestStart); err != nil {
+		if err := a.eng.DB.RecalculateImportedInjectTimes(*latestStart); err != nil {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Injects were imported, but their schedule could not be updated to the actual start"})
 			return
 		}
@@ -161,8 +161,8 @@ func ImportInjects(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func injectScheduleAnchor() (time.Time, string, error) {
-	actualStart, err := db.GetCompetitionStart()
+func (a *API) injectScheduleAnchor() (time.Time, string, error) {
+	actualStart, err := a.eng.DB.GetCompetitionStart()
 	if err != nil {
 		return time.Time{}, "", fmt.Errorf("failed to read competition start: %w", err)
 	}
@@ -170,7 +170,7 @@ func injectScheduleAnchor() (time.Time, string, error) {
 		return *actualStart, "actual", nil
 	}
 
-	plannedStart, err := conf.CompetitionStart()
+	plannedStart, err := a.conf.CompetitionStart()
 	if err != nil {
 		return time.Time{}, "", err
 	}
@@ -345,12 +345,12 @@ func readZipFile(file *zip.File, limit uint64) ([]byte, error) {
 	return contents, nil
 }
 
-func createImportedInjects(prepared []preparedInject) ([]db.InjectSchema, error) {
+func (a *API) createImportedInjects(prepared []preparedInject) ([]db.InjectSchema, error) {
 	schemas := make([]db.InjectSchema, len(prepared))
 	for i := range prepared {
 		schemas[i] = prepared[i].Schema
 	}
-	created, err := db.CreateInjectBatch(schemas)
+	created, err := a.eng.DB.CreateInjectBatch(schemas)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +361,7 @@ func createImportedInjects(prepared []preparedInject) ([]db.InjectSchema, error)
 		for _, dir := range createdDirs {
 			_ = os.RemoveAll(dir)
 		}
-		_ = db.DeleteInjectBatch(createdIDs)
+		_ = a.eng.DB.DeleteInjectBatch(createdIDs)
 	}
 
 	for i, inject := range created {

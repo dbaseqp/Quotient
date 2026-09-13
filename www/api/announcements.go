@@ -16,8 +16,8 @@ import (
 	"gorm.io/gorm"
 )
 
-func GetAnnouncements(w http.ResponseWriter, r *http.Request) {
-	data, err := db.GetAnnouncements()
+func (a *API) GetAnnouncements(w http.ResponseWriter, r *http.Request) {
+	data, err := a.eng.DB.GetAnnouncements()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving announcements", err)
 		return
@@ -26,7 +26,7 @@ func GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 	// if not admin filter out announcements that are not open yet
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
-		if slices.Contains(req_roles, "red") && !conf.UISettings.ShowAnnouncementsForRedTeam {
+		if slices.Contains(req_roles, "red") && !a.conf.UISettings.ShowAnnouncementsForRedTeam {
 			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 			return
 		}
@@ -43,7 +43,7 @@ func GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, data)
 }
 
-func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
+func (a *API) DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 	announcementID := r.PathValue("id")
 	if announcementID == "" {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing announcement ID"})
@@ -56,7 +56,7 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	announcements, err := db.GetAnnouncements()
+	announcements, err := a.eng.DB.GetAnnouncements()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Announcement not found"})
@@ -77,7 +77,7 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 	// if not admin check if the announcement is open
 	req_roles := r.Context().Value("roles").([]string)
 	if !slices.Contains(req_roles, "admin") {
-		if slices.Contains(req_roles, "red") && !conf.UISettings.ShowAnnouncementsForRedTeam {
+		if slices.Contains(req_roles, "red") && !a.conf.UISettings.ShowAnnouncementsForRedTeam {
 			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 			return
 		}
@@ -106,7 +106,7 @@ func DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
+func (a *API) CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
@@ -141,7 +141,7 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 		AnnouncementFileNames: filenames,
 	}
 
-	if announcement, err = db.CreateAnnouncement(announcement); err != nil {
+	if announcement, err = a.eng.DB.CreateAnnouncement(announcement); err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Announcement with the same title already exists"})
 			return
@@ -183,18 +183,18 @@ func CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Announcement created successfully"})
 }
 
-func UpdateAnnouncement(w http.ResponseWriter, r *http.Request) {
+func (a *API) UpdateAnnouncement(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func DeleteAnnouncement(w http.ResponseWriter, r *http.Request) {
+func (a *API) DeleteAnnouncement(w http.ResponseWriter, r *http.Request) {
 	announcementID := r.PathValue("id")
 	if announcementID == "" {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing announcement ID"})
 		return
 	}
 
-	announcements, err := db.GetAnnouncements()
+	announcements, err := a.eng.DB.GetAnnouncements()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving announcements", err)
 		return
@@ -213,7 +213,7 @@ func DeleteAnnouncement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := db.DeleteAnnouncement(announcement); err != nil {
+	if err := a.eng.DB.DeleteAnnouncement(announcement); err != nil {
 		WriteInternalError(w, r, "Error deleting the announcement", err)
 		return
 	}

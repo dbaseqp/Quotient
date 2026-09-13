@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
-
-	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 var validIdentifierRegex = regexp.MustCompile(`^[0-9]{1,3}$`)
@@ -15,7 +13,7 @@ func isValidIdentifier(identifier string) bool {
 	return validIdentifierRegex.MatchString(identifier)
 }
 
-func PauseEngine(w http.ResponseWriter, r *http.Request) {
+func (a *API) PauseEngine(w http.ResponseWriter, r *http.Request) {
 	type Form struct {
 		Pause bool `json:"pause"`
 	}
@@ -26,11 +24,11 @@ func PauseEngine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Debug("pause engine requested", "wasEnginePausedWhenRequestIssued", eng.IsEnginePaused, "setPauseTo", form.Pause)
-	if eng.IsEnginePaused && !form.Pause {
-		eng.ResumeEngine()
-	} else if !eng.IsEnginePaused && form.Pause {
-		eng.PauseEngine()
+	slog.Debug("pause engine requested", "wasEnginePausedWhenRequestIssued", a.eng.IsEnginePaused, "setPauseTo", form.Pause)
+	if a.eng.IsEnginePaused && !form.Pause {
+		a.eng.ResumeEngine()
+	} else if !a.eng.IsEnginePaused && form.Pause {
+		a.eng.PauseEngine()
 	} else {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid engine state transition"})
 		return
@@ -39,9 +37,9 @@ func PauseEngine(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }
 
-func ResetScores(w http.ResponseWriter, r *http.Request) {
+func (a *API) ResetScores(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("reset scores requested")
-	if err := eng.ResetScores(); err != nil {
+	if err := a.eng.ResetScores(); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to reset scores"})
 		return
 	}
@@ -49,7 +47,7 @@ func ResetScores(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }
 
-func SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
+func (a *API) SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
 	type Form struct {
 		Started bool `json:"started"`
 	}
@@ -61,7 +59,7 @@ func SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("competition started toggle requested", "started", form.Started)
-	if err := db.SetCompetitionStarted(form.Started); err != nil {
+	if err := a.eng.DB.SetCompetitionStarted(form.Started); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update competition status"})
 		return
 	}
@@ -69,7 +67,7 @@ func SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }
 
-func ExportScores(w http.ResponseWriter, r *http.Request) {
+func (a *API) ExportScores(w http.ResponseWriter, r *http.Request) {
 	type ServiceScore struct {
 		ServiceName   string `json:"service_name"`
 		Points        int    `json:"service_points"`
@@ -87,7 +85,7 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 		TotalSLAViolations int            `json:"total_sla_violations"`
 	}
 
-	teams, err := db.GetTeams()
+	teams, err := a.eng.DB.GetTeams()
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve teams"})
 		return
@@ -102,7 +100,7 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	serviceData, err := db.GetServiceScores()
+	serviceData, err := a.eng.DB.GetServiceScores()
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve service scores"})
 		return
@@ -132,12 +130,12 @@ func ExportScores(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, data)
 }
 
-func ExportConfig(w http.ResponseWriter, r *http.Request) {
+func (a *API) ExportConfig(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func GetActiveTasks(w http.ResponseWriter, r *http.Request) {
-	tasks, err := eng.GetActiveTasks()
+func (a *API) GetActiveTasks(w http.ResponseWriter, r *http.Request) {
+	tasks, err := a.eng.GetActiveTasks()
 	if err != nil {
 		slog.Error("failed to get active tasks", "error", err)
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve active tasks"})
@@ -147,8 +145,8 @@ func GetActiveTasks(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, tasks)
 }
 
-func GetEngine(w http.ResponseWriter, r *http.Request) {
-	lastRound, err := db.GetLastRound()
+func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
+	lastRound, err := a.eng.DB.GetLastRound()
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve engine status"})
 		return
@@ -156,14 +154,14 @@ func GetEngine(w http.ResponseWriter, r *http.Request) {
 
 	WriteJSON(w, http.StatusOK, map[string]any{
 		"last_round":          lastRound,
-		"current_round_time":  eng.CurrentRoundStartTime,
-		"next_round_time":     eng.NextRoundStartTime,
-		"running":             !eng.IsEnginePaused,
-		"competition_started": db.GetCompetitionStarted(),
+		"current_round_time":  a.eng.CurrentRoundStartTime,
+		"next_round_time":     a.eng.NextRoundStartTime,
+		"running":             !a.eng.IsEnginePaused,
+		"competition_started": a.eng.DB.GetCompetitionStarted(),
 	})
 }
 
-func UpdateTeams(w http.ResponseWriter, r *http.Request) {
+func (a *API) UpdateTeams(w http.ResponseWriter, r *http.Request) {
 	type Form struct {
 		Teams []struct {
 			TeamID     uint   `json:"id"`
@@ -185,7 +183,7 @@ func UpdateTeams(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := db.UpdateTeam(uint(team.TeamID), team.Identifier, team.Active); err != nil {
+		if err := a.eng.DB.UpdateTeam(uint(team.TeamID), team.Identifier, team.Active); err != nil {
 			WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update team"})
 			return
 		}

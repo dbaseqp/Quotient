@@ -3,9 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,33 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// testTeamCounter provides unique team IDs across test runs
-var testTeamCounter atomic.Uint64
-
-func init() {
-	testTeamCounter.Store(uint64(time.Now().UnixNano() % 1_000_000))
-}
-
-// nextTeamID returns a unique team ID for testing
-func nextTeamID() uint {
-	return uint(testTeamCounter.Add(1))
-}
-
-// createTestTeam creates a team with a unique ID, or returns existing if name matches
-func createTestTeam(t *testing.T, name string, identifier string) db.TeamSchema {
-	t.Helper()
-	teamID := nextTeamID()
-	team := db.TeamSchema{
-		ID:         teamID,
-		Name:       fmt.Sprintf("%s-%d", name, teamID),
-		Identifier: identifier,
-		Active:     true,
-	}
-	_, err := db.CreateTeam(team)
-	require.NoError(t, err)
-	return team
-}
 
 // newTestEngine creates a minimal engine for testing
 func newTestEngine(t *testing.T, redis *testutil.RedisContainer, slaThreshold int) *ScoringEngine {
@@ -76,31 +47,18 @@ func newTestEngine(t *testing.T, redis *testutil.RedisContainer, slaThreshold in
 	}
 }
 
-func startContainers(t *testing.T) *testutil.RedisContainer {
-	redis := testutil.StartRedis(t)
-	pg := testutil.StartPostgres(t)
-	db.Connect(pg.ConnectionString())
-
-	t.Cleanup(func() {
-		pg.Close()
-		require.NoError(t, redis.Close())
-	})
-
-	return redis
-}
-
 func TestProcessCollectedResults_SavesRound(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := startContainers(t)
+	redis, pg := testutil.StartContainers(t)
 
 	// Clean slate
 	redis.Client.FlushDB(context.Background())
-	require.NoError(t, db.ResetScores())
+	require.NoError(t, pg.DB.ResetScores())
 
-	team := createTestTeam(t, "Team", "01")
+	team := pg.CreateTestTeam(t, "Team", "01")
 
 	engine := newTestEngine(t, redis, 3)
 	engine.CurrentRound = 1
@@ -121,7 +79,7 @@ func TestProcessCollectedResults_SavesRound(t *testing.T) {
 	engine.processCollectedResults(results)
 
 	// Verify round was saved
-	round, err := db.GetLastRound()
+	round, err := pg.DB.GetLastRound()
 	require.NoError(t, err)
 
 	// Find our check in the round (other tests may have created checks too)
@@ -143,12 +101,12 @@ func TestProcessCollectedResults_TracksUptime(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := startContainers(t)
+	redis, pg := testutil.StartContainers(t)
 
 	redis.Client.FlushDB(context.Background())
-	require.NoError(t, db.ResetScores())
+	require.NoError(t, pg.DB.ResetScores())
 
-	team := createTestTeam(t, "Team", "01")
+	team := pg.CreateTestTeam(t, "Team", "01")
 
 	engine := newTestEngine(t, redis, 3)
 	engine.CurrentRoundStartTime = time.Now()
@@ -182,12 +140,12 @@ func TestProcessCollectedResults_TriggersSLA(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := startContainers(t)
+	redis, pg := testutil.StartContainers(t)
 
 	redis.Client.FlushDB(context.Background())
-	require.NoError(t, db.ResetScores())
+	require.NoError(t, pg.DB.ResetScores())
 
-	team := createTestTeam(t, "Team SLA", "01")
+	team := pg.CreateTestTeam(t, "Team SLA", "01")
 
 	// SLA threshold of 3 consecutive failures
 	engine := newTestEngine(t, redis, 3)
@@ -206,7 +164,7 @@ func TestProcessCollectedResults_TriggersSLA(t *testing.T) {
 		"SLA counter should reset to 0 after SLA is triggered")
 
 	// Verify via team score which includes SLA penalties
-	_, slaCount, _, err := db.GetTeamScore(team.ID)
+	_, slaCount, _, err := pg.DB.GetTeamScore(team.ID)
 	require.NoError(t, err)
 	assert.Equal(t, 1, slaCount, "expected 1 SLA violation")
 }
@@ -216,12 +174,12 @@ func TestProcessCollectedResults_SLAResetsOnPass(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := startContainers(t)
+	redis, pg := testutil.StartContainers(t)
 
 	redis.Client.FlushDB(context.Background())
-	require.NoError(t, db.ResetScores())
+	require.NoError(t, pg.DB.ResetScores())
 
-	team := createTestTeam(t, "Team SLA Reset", "01")
+	team := pg.CreateTestTeam(t, "Team SLA Reset", "01")
 
 	engine := newTestEngine(t, redis, 3)
 	engine.CurrentRoundStartTime = time.Now()
@@ -260,7 +218,7 @@ func TestProcessCollectedResults_SLAResetsOnPass(t *testing.T) {
 		"SLA counter should be 2 after 2 consecutive failures")
 
 	// Verify no SLA via team score
-	_, slaCount, _, err := db.GetTeamScore(team.ID)
+	_, slaCount, _, err := pg.DB.GetTeamScore(team.ID)
 	require.NoError(t, err)
 	assert.Equal(t, 0, slaCount, "expected no SLA violations")
 }
@@ -270,13 +228,13 @@ func TestProcessCollectedResults_MultipleTeamsIndependent(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := startContainers(t)
+	redis, pg := testutil.StartContainers(t)
 
 	redis.Client.FlushDB(context.Background())
-	require.NoError(t, db.ResetScores())
+	require.NoError(t, pg.DB.ResetScores())
 
-	team1 := createTestTeam(t, "Team Multi 1", "01")
-	team2 := createTestTeam(t, "Team Multi 2", "02")
+	team1 := pg.CreateTestTeam(t, "Team Multi 1", "01")
+	team2 := pg.CreateTestTeam(t, "Team Multi 2", "02")
 
 	engine := newTestEngine(t, redis, 3)
 	engine.CurrentRoundStartTime = time.Now()
@@ -295,8 +253,8 @@ func TestProcessCollectedResults_MultipleTeamsIndependent(t *testing.T) {
 		"Team 1 SLA counter should reset after triggering")
 
 	// Verify via team scores
-	_, slaCount1, _, _ := db.GetTeamScore(team1.ID)
-	_, slaCount2, _, _ := db.GetTeamScore(team2.ID)
+	_, slaCount1, _, _ := pg.DB.GetTeamScore(team1.ID)
+	_, slaCount2, _, _ := pg.DB.GetTeamScore(team2.ID)
 	assert.Equal(t, 1, slaCount1, "Team 1 should have 1 SLA")
 	assert.Equal(t, 0, slaCount2, "Team 2 should have 0 SLAs")
 
@@ -343,14 +301,14 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 	// Set Redis address for rvb() internal connections
 	t.Setenv("REDIS_ADDR", "localhost:6379")
 
-	redis := startContainers(t)
+	redis, pg := testutil.StartContainers(t)
 
 	ctx := context.Background()
 	redis.Client.FlushDB(ctx)
-	require.NoError(t, db.ResetScores())
+	require.NoError(t, pg.DB.ResetScores())
 
-	team1 := createTestTeam(t, "Team Rvb 1", "01")
-	team2 := createTestTeam(t, "Team Rvb 2", "02")
+	team1 := pg.CreateTestTeam(t, "Team Rvb 1", "01")
+	team2 := pg.CreateTestTeam(t, "Team Rvb 2", "02")
 
 	// Create engine with mock runner
 	engine := newTestEngine(t, redis, 3)
@@ -420,7 +378,7 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify round was saved with results
-	round, err := db.GetLastRound()
+	round, err := pg.DB.GetLastRound()
 	require.NoError(t, err)
 	assert.Equal(t, uint(1), round.ID)
 
@@ -449,13 +407,13 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 
 	t.Setenv("REDIS_ADDR", "localhost:6379")
 
-	redis := startContainers(t)
+	redis, pg := testutil.StartContainers(t)
 
 	ctx := context.Background()
 	redis.Client.FlushDB(ctx)
-	require.NoError(t, db.ResetScores())
+	require.NoError(t, pg.DB.ResetScores())
 
-	team := createTestTeam(t, "Team Multi Svc", "01")
+	team := pg.CreateTestTeam(t, "Team Multi Svc", "01")
 
 	engine := newTestEngine(t, redis, 3)
 	engine.CurrentRound = 1
@@ -523,7 +481,7 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 
 	require.NoError(t, err)
 
-	round, err := db.GetLastRound()
+	round, err := pg.DB.GetLastRound()
 	require.NoError(t, err)
 
 	// Filter checks for our team only (other teams may exist from previous tests)

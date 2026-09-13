@@ -19,17 +19,17 @@ type TeamSchema struct {
 	SubmissionData    []SubmissionSchema       `gorm:"foreignKey:TeamID"` // get inject submissions who belong to this team
 }
 
-func CreateTeam(team TeamSchema) (TeamSchema, error) {
-	result := db.Table("team_schemas").Create(&team)
+func (d *DB) CreateTeam(team TeamSchema) (TeamSchema, error) {
+	result := d.db.Table("team_schemas").Create(&team)
 	if result.Error != nil {
 		return TeamSchema{}, result.Error
 	}
 	return team, nil
 }
 
-func GetTeams() ([]TeamSchema, error) {
+func (d *DB) GetTeams() ([]TeamSchema, error) {
 	var teams []TeamSchema
-	result := db.Table("team_schemas").Order("id").Find(&teams)
+	result := d.db.Table("team_schemas").Order("id").Find(&teams)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return teams, nil
@@ -40,12 +40,12 @@ func GetTeams() ([]TeamSchema, error) {
 	return teams, nil
 }
 
-func GetTeamSummary(teamID uint) ([]map[string]any, error) {
+func (d *DB) GetTeamSummary(teamID uint) ([]map[string]any, error) {
 	serviceSummaries := []map[string]any{}
 	namePerService := []string{}
 
 	// get services names
-	if result := db.Table("service_check_schemas").Select("DISTINCT(service_name)").Where("team_id = ?", teamID).Find(&namePerService); result.Error != nil {
+	if result := d.db.Table("service_check_schemas").Select("DISTINCT(service_name)").Where("team_id = ?", teamID).Find(&namePerService); result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return serviceSummaries, nil
 		} else {
@@ -60,7 +60,7 @@ func GetTeamSummary(teamID uint) ([]map[string]any, error) {
 
 		// get sla count for this service
 		var c int64
-		if result := db.Table("sla_schemas").Where("team_id = ? AND service_name = ?", teamID, name).Count(&c); result.Error != nil {
+		if result := d.db.Table("sla_schemas").Where("team_id = ? AND service_name = ?", teamID, name).Count(&c); result.Error != nil {
 			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 				continue
 			} else {
@@ -71,7 +71,7 @@ func GetTeamSummary(teamID uint) ([]map[string]any, error) {
 
 		// get last 10 rounds for service
 		var last10Rounds []RoundSchema
-		if result := db.Table("round_schemas").Preload("Checks", "team_id = ? AND service_name = ?", teamID, name).Order("id desc").Limit(10).Find(&last10Rounds); result.Error != nil {
+		if result := d.db.Table("round_schemas").Preload("Checks", "team_id = ? AND service_name = ?", teamID, name).Order("id desc").Limit(10).Find(&last10Rounds); result.Error != nil {
 			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 				return serviceSummaries, nil
 			} else {
@@ -94,18 +94,18 @@ func GetTeamSummary(teamID uint) ([]map[string]any, error) {
 	return serviceSummaries, nil
 }
 
-func UpdateTeam(teamID uint, identifier string, active bool) error {
-	result := db.Table("team_schemas").Where("id = ?", teamID).Updates(map[string]any{"identifier": identifier, "active": active})
+func (d *DB) UpdateTeam(teamID uint, identifier string, active bool) error {
+	result := d.db.Table("team_schemas").Where("id = ?", teamID).Updates(map[string]any{"identifier": identifier, "active": active})
 	if result.Error != nil {
 		return result.Error
 	}
 	return nil
 }
 
-func GetTeamScore(teamID uint) (int, int, int, error) {
+func (d *DB) GetTeamScore(teamID uint) (int, int, int, error) {
 	// get service points
 	servicePoints := 0
-	rows, err := db.Raw("SELECT COALESCE(SUM(points), 0) FROM service_check_schemas WHERE team_id = ? and result = 't'", teamID).Rows()
+	rows, err := d.db.Raw("SELECT COALESCE(SUM(points), 0) FROM service_check_schemas WHERE team_id = ? and result = 't'", teamID).Rows()
 	if err != nil {
 		return 0, 0, 0, err
 	}
@@ -123,7 +123,7 @@ func GetTeamScore(teamID uint) (int, int, int, error) {
 
 	// get sla violations
 	var slas []SLASchema
-	if result := db.Table("sla_schemas").Where("team_id = ?", teamID).Find(&slas); result.Error != nil {
+	if result := d.db.Table("sla_schemas").Where("team_id = ?", teamID).Find(&slas); result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return servicePoints, 0, servicePoints, nil
 		} else {

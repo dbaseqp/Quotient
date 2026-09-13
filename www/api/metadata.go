@@ -16,18 +16,18 @@ type MetadataResponse struct {
 	Boxes []BoxMetadata `json:"boxes"`
 }
 
-func GetMetadata(w http.ResponseWriter, r *http.Request) {
-	if !CheckCompetitionStarted(w, r) {
+func (a *API) GetMetadata(w http.ResponseWriter, r *http.Request) {
+	if !a.CheckCompetitionStarted(w, r) {
 		return
 	}
 
-	WriteJSON(w, http.StatusOK, buildMetadata())
+	WriteJSON(w, http.StatusOK, a.buildMetadata())
 }
 
-func buildMetadata() MetadataResponse {
+func (a *API) buildMetadata() MetadataResponse {
 	var metadata MetadataResponse
 
-	for _, box := range conf.Box {
+	for _, box := range a.conf.Box {
 		boxMeta := BoxMetadata{
 			Name:     box.Name,
 			IP:       box.IP,

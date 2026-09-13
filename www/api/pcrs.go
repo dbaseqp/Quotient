@@ -2,21 +2,22 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/dbaseqp/Quotient/engine/db"
 	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
-func GetCredlists(w http.ResponseWriter, r *http.Request) {
+func (a *API) GetCredlists(w http.ResponseWriter, r *http.Request) {
 	req_roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(req_roles, "admin") && !conf.MiscSettings.EasyPCR {
+	if !slices.Contains(req_roles, "admin") && !a.conf.MiscSettings.EasyPCR {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR self service not allowed"})
 		return
 	}
 
-	credlists, err := eng.GetCredlists()
+	credlists, err := a.eng.GetCredlists()
 	if err != nil {
 		WriteInternalError(w, r, "Error getting credlists", err)
 		return
@@ -25,7 +26,7 @@ func GetCredlists(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, credlists)
 }
 
-func GetPcrs(w http.ResponseWriter, r *http.Request) {
+func (a *API) GetPcrs(w http.ResponseWriter, r *http.Request) {
 	// Get query parameters
 	teamIDStr := r.URL.Query().Get("team_id")
 	credlistName := r.URL.Query().Get("credlist")
@@ -41,7 +42,7 @@ func GetPcrs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	credentials, err := eng.GetTeamCredentials(uint(teamID), credlistName)
+	credentials, err := a.eng.GetTeamCredentials(uint(teamID), credlistName)
 	if err != nil {
 		WriteInternalError(w, r, "Error getting credentials", err)
 		return
@@ -50,7 +51,7 @@ func GetPcrs(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, credentials)
 }
 
-func GetPcrHistory(w http.ResponseWriter, r *http.Request) {
+func (a *API) GetPcrHistory(w http.ResponseWriter, r *http.Request) {
 	// Get query parameters
 	teamIDStr := r.URL.Query().Get("team_id")
 	credlistName := r.URL.Query().Get("credlist")
@@ -67,7 +68,7 @@ func GetPcrHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	history, err := eng.GetPCRHistory(uint(teamID), credlistName, username)
+	history, err := a.eng.GetPCRHistory(uint(teamID), credlistName, username)
 	if err != nil {
 		WriteInternalError(w, r, "Error getting PCR history", err)
 		return
@@ -78,11 +79,11 @@ func GetPcrHistory(w http.ResponseWriter, r *http.Request) {
 
 // allowPCRForTeam reports whether the caller may act on teamID, writing the
 // 403 itself when not.
-func allowPCRForTeam(w http.ResponseWriter, r *http.Request, teamID uint, easyPCRDisabledMsg string) bool {
+func (a *API) allowPCRForTeam(w http.ResponseWriter, r *http.Request, teamID uint, easyPCRDisabledMsg string) bool {
 	if slices.Contains(r.Context().Value("roles").([]string), "admin") {
 		return true
 	}
-	if !conf.MiscSettings.EasyPCR {
+	if !a.conf.MiscSettings.EasyPCR {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": easyPCRDisabledMsg})
 		return false
 	}
@@ -100,7 +101,7 @@ func allowPCRForTeam(w http.ResponseWriter, r *http.Request, teamID uint, easyPC
 
 // pcrTeamID parses formTeamID, authorizes the caller for it and resolves it to
 // a real team, writing the refusal itself when any of the three fails.
-func pcrTeamID(w http.ResponseWriter, r *http.Request, formTeamID string, easyPCRDisabledMsg string) (uint, bool) {
+func (a *API) pcrTeamID(w http.ResponseWriter, r *http.Request, formTeamID string, easyPCRDisabledMsg string) (uint, bool) {
 	parsed, err := strconv.ParseUint(formTeamID, 10, 32)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid team ID"})
@@ -108,13 +109,13 @@ func pcrTeamID(w http.ResponseWriter, r *http.Request, formTeamID string, easyPC
 	}
 	teamID := uint(parsed)
 
-	if !allowPCRForTeam(w, r, teamID, easyPCRDisabledMsg) {
+	if !a.allowPCRForTeam(w, r, teamID, easyPCRDisabledMsg) {
 		return 0, false
 	}
 
 	// Existence is checked after authorization, so a caller cannot tell a team
 	// that does not exist from one that is not theirs.
-	teams, err := db.GetTeams()
+	teams, err := a.eng.DB.GetTeams()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving teams", err)
 		return 0, false
@@ -126,7 +127,7 @@ func pcrTeamID(w http.ResponseWriter, r *http.Request, formTeamID string, easyPC
 	return teamID, true
 }
 
-func CreatePcr(w http.ResponseWriter, r *http.Request) {
+func (a *API) CreatePcr(w http.ResponseWriter, r *http.Request) {
 	// get teamid from request
 	// get username,password from request
 	// somehow determine which credlist to change
@@ -147,12 +148,12 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	teamID, ok := pcrTeamID(w, r, form.TeamID, "PCR not allowed")
+	teamID, ok := a.pcrTeamID(w, r, form.TeamID, "PCR not allowed")
 	if !ok {
 		return
 	}
 
-	updatedCount, skippedUsernames, err := eng.UpdateCredentials(teamID, form.CredlistPath, form.Usernames, form.Passwords)
+	updatedCount, skippedUsernames, err := a.eng.UpdateCredentials(teamID, form.CredlistPath, form.Usernames, form.Passwords)
 	if err != nil {
 		WriteInternalError(w, r, "Error updating PCR", err)
 		return
@@ -168,7 +169,7 @@ func CreatePcr(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, data)
 }
 
-func ResetPcr(w http.ResponseWriter, r *http.Request) {
+func (a *API) ResetPcr(w http.ResponseWriter, r *http.Request) {
 	// get teamid from request
 	// somehow determine which credlist to change
 	type Form struct {
@@ -184,13 +185,13 @@ func ResetPcr(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Failed to decode PCR json", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
-	teamID, ok := pcrTeamID(w, r, form.TeamID, "PCR reset not allowed")
+	teamID, ok := a.pcrTeamID(w, r, form.TeamID, "PCR reset not allowed")
 	if !ok {
 		return
 	}
 
 	changedBy := r.Context().Value("username").(string)
-	if err := eng.ResetCredentials(teamID, form.CredlistPath, changedBy); err != nil {
+	if err := a.eng.ResetCredentials(teamID, form.CredlistPath, changedBy); err != nil {
 		WriteInternalError(w, r, "Error resetting PCR", err)
 		return
 	}

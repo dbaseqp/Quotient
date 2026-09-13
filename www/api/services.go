@@ -9,8 +9,8 @@ import (
 	"github.com/dbaseqp/Quotient/engine/db"
 )
 
-func GetTeams(w http.ResponseWriter, r *http.Request) {
-	teams, err := db.GetTeams()
+func (a *API) GetTeams(w http.ResponseWriter, r *http.Request) {
+	teams, err := a.eng.DB.GetTeams()
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving teams"})
 		return
@@ -37,8 +37,8 @@ func filterToTeam(teams []db.TeamSchema, teamID uint, hasTeam bool) []db.TeamSch
 	return []db.TeamSchema{}
 }
 
-func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
-	if !CheckCompetitionStarted(w, r) {
+func (a *API) GetTeamSummary(w http.ResponseWriter, r *http.Request) {
+	if !a.CheckCompetitionStarted(w, r) {
 		return
 	}
 
@@ -53,7 +53,7 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summaries, err := db.GetTeamSummary(teamID)
+	summaries, err := a.eng.DB.GetTeamSummary(teamID)
 	if err != nil {
 		slog.Error("Failed to get team summary", "teamID", teamID, "err", err)
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving team summary"})
@@ -67,8 +67,8 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		Uptime       float64          `json:"Uptime"`
 	}
 
-	eng.RLockUptime()
-	uptimeMap := eng.GetUptimePerService()
+	a.eng.RLockUptime()
+	uptimeMap := a.eng.GetUptimePerService()
 	var s []summary
 	for _, v := range summaries {
 		uptime := uptimeMap[teamID][v["ServiceName"].(string)]
@@ -79,13 +79,13 @@ func GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 			Uptime:       float64(uptime.PassedChecks) / float64(uptime.TotalChecks),
 		})
 	}
-	eng.RUnlockUptime()
+	a.eng.RUnlockUptime()
 
 	WriteJSON(w, http.StatusOK, s)
 }
 
-func GetServiceAll(w http.ResponseWriter, r *http.Request) {
-	if !CheckCompetitionStarted(w, r) {
+func (a *API) GetServiceAll(w http.ResponseWriter, r *http.Request) {
+	if !a.CheckCompetitionStarted(w, r) {
 		return
 	}
 
@@ -103,7 +103,7 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	service, err := db.GetServiceAllChecksByTeam(teamID, serviceID)
+	service, err := a.eng.DB.GetServiceAllChecksByTeam(teamID, serviceID)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving service data"})
 		return
@@ -111,7 +111,7 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 
 	// Remove debug and error fields for non-admins
 	// Red team never sees credentials, blue team only if ShowDebugToBlueTeam is enabled
-	if !slices.Contains(req_roles, "admin") && (slices.Contains(req_roles, "red") || !conf.MiscSettings.ShowDebugToBlueTeam) {
+	if !slices.Contains(req_roles, "admin") && (slices.Contains(req_roles, "red") || !a.conf.MiscSettings.ShowDebugToBlueTeam) {
 		for i := range service {
 			service[i].Debug = ""
 			service[i].Error = ""
@@ -121,14 +121,14 @@ func GetServiceAll(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, service)
 }
 
-func CreateService(w http.ResponseWriter, r *http.Request) {
+func (a *API) CreateService(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func UpdateService(w http.ResponseWriter, r *http.Request) {
+func (a *API) UpdateService(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func DeleteService(w http.ResponseWriter, r *http.Request) {
+func (a *API) DeleteService(w http.ResponseWriter, r *http.Request) {
 
 }

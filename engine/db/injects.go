@@ -23,16 +23,16 @@ type InjectSchema struct {
 }
 
 // CreateInject creates a new inject in the database using the provided schema
-func CreateInject(inject InjectSchema) (InjectSchema, error) {
-	result := db.Table("inject_schemas").Create(&inject)
+func (d *DB) CreateInject(inject InjectSchema) (InjectSchema, error) {
+	result := d.db.Table("inject_schemas").Create(&inject)
 	if result.Error != nil {
 		return InjectSchema{}, result.Error
 	}
 	return inject, nil
 }
 
-func CreateInjectBatch(injects []InjectSchema) ([]InjectSchema, error) {
-	err := db.Transaction(func(tx *gorm.DB) error {
+func (d *DB) CreateInjectBatch(injects []InjectSchema) ([]InjectSchema, error) {
+	err := d.db.Transaction(func(tx *gorm.DB) error {
 		return tx.Table("inject_schemas").Create(&injects).Error
 	})
 	if err != nil {
@@ -41,11 +41,11 @@ func CreateInjectBatch(injects []InjectSchema) ([]InjectSchema, error) {
 	return injects, nil
 }
 
-func DeleteInjectBatch(ids []uint) error {
+func (d *DB) DeleteInjectBatch(ids []uint) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return db.Transaction(func(tx *gorm.DB) error {
+	return d.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Table("submission_schemas").Where("inject_id IN ?", ids).Delete(&SubmissionSchema{}).Error; err != nil {
 			return err
 		}
@@ -53,8 +53,8 @@ func DeleteInjectBatch(ids []uint) error {
 	})
 }
 
-func RecalculateImportedInjectTimes(start time.Time) error {
-	return db.Transaction(func(tx *gorm.DB) error {
+func (d *DB) RecalculateImportedInjectTimes(start time.Time) error {
+	return d.db.Transaction(func(tx *gorm.DB) error {
 		return recalculateImportedInjectTimes(tx, start)
 	})
 }
@@ -76,9 +76,9 @@ func recalculateImportedInjectTimes(tx *gorm.DB, start time.Time) error {
 }
 
 // GetInjects retrieves all injects from the database
-func GetInjects() ([]InjectSchema, error) {
+func (d *DB) GetInjects() ([]InjectSchema, error) {
 	var injects []InjectSchema
-	result := db.Table("inject_schemas").Order("open_time desc, id desc").Find(&injects)
+	result := d.db.Table("inject_schemas").Order("open_time desc, id desc").Find(&injects)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return injects, nil
@@ -89,9 +89,9 @@ func GetInjects() ([]InjectSchema, error) {
 }
 
 // GetInjectByID retrieves a single inject by ID
-func GetInjectByID(id uint) (InjectSchema, error) {
+func (d *DB) GetInjectByID(id uint) (InjectSchema, error) {
 	var inject InjectSchema
-	result := db.Table("inject_schemas").First(&inject, id)
+	result := d.db.Table("inject_schemas").First(&inject, id)
 	if result.Error != nil {
 		return InjectSchema{}, result.Error
 	}
@@ -99,8 +99,8 @@ func GetInjectByID(id uint) (InjectSchema, error) {
 }
 
 // UpdateInject
-func UpdateInject(inject InjectSchema) (InjectSchema, error) {
-	result := db.Table("inject_schemas").Save(&inject)
+func (d *DB) UpdateInject(inject InjectSchema) (InjectSchema, error) {
+	result := d.db.Table("inject_schemas").Save(&inject)
 	if result.Error != nil {
 		return InjectSchema{}, result.Error
 	}
@@ -108,12 +108,12 @@ func UpdateInject(inject InjectSchema) (InjectSchema, error) {
 }
 
 // DeleteInject deletes an inject and its submissions from the database
-func DeleteInject(inject InjectSchema) error {
+func (d *DB) DeleteInject(inject InjectSchema) error {
 	// Delete submissions first (foreign key constraint)
-	if err := db.Table("submission_schemas").Where("inject_id = ?", inject.ID).Delete(&SubmissionSchema{}).Error; err != nil {
+	if err := d.db.Table("submission_schemas").Where("inject_id = ?", inject.ID).Delete(&SubmissionSchema{}).Error; err != nil {
 		return err
 	}
-	result := db.Table("inject_schemas").Delete(&inject)
+	result := d.db.Table("inject_schemas").Delete(&inject)
 	if result.Error != nil {
 		return result.Error
 	}

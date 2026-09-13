@@ -19,9 +19,9 @@ type TeamServiceCheckSchema struct {
 
 // IsTeamServiceEnabled returns true if the service check is enabled for a team.
 // If no entry exists, it defaults to true.
-func IsTeamServiceEnabled(teamID uint, serviceName string) (bool, error) {
+func (d *DB) IsTeamServiceEnabled(teamID uint, serviceName string) (bool, error) {
 	var t TeamServiceCheckSchema
-	result := db.Table("team_service_check_schemas").Where("team_id = ? AND service_name = ?", teamID, serviceName).First(&t)
+	result := d.db.Table("team_service_check_schemas").Where("team_id = ? AND service_name = ?", teamID, serviceName).First(&t)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return true, nil
@@ -32,18 +32,18 @@ func IsTeamServiceEnabled(teamID uint, serviceName string) (bool, error) {
 }
 
 // SetTeamServiceEnabled creates or updates the enabled state for a team/service
-func SetTeamServiceEnabled(teamID uint, serviceName string, enabled bool) error {
+func (d *DB) SetTeamServiceEnabled(teamID uint, serviceName string, enabled bool) error {
 	t := TeamServiceCheckSchema{TeamID: teamID, ServiceName: serviceName, Enabled: enabled}
-	return db.Table("team_service_check_schemas").Clauses(clause.OnConflict{
+	return d.db.Table("team_service_check_schemas").Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "team_id"}, {Name: "service_name"}},
 		DoUpdates: clause.AssignmentColumns([]string{"enabled"}),
 	}).Create(&t).Error
 }
 
 // GetAllTeamServiceChecks returns all per-team service check entries
-func GetAllTeamServiceChecks() ([]TeamServiceCheckSchema, error) {
+func (d *DB) GetAllTeamServiceChecks() ([]TeamServiceCheckSchema, error) {
 	var out []TeamServiceCheckSchema
-	result := db.Table("team_service_check_schemas").Find(&out)
+	result := d.db.Table("team_service_check_schemas").Find(&out)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return out, nil

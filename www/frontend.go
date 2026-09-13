@@ -5,9 +5,6 @@ import (
 	"net/http"
 	"slices"
 	"text/template"
-
-	"github.com/dbaseqp/Quotient/engine/db"
-	"github.com/dbaseqp/Quotient/www/api"
 )
 
 var (
@@ -73,7 +70,7 @@ func (router *Router) HomePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (router *Router) LoginPage(w http.ResponseWriter, r *http.Request) {
-	if identity, ok := api.Authenticate(w, r); ok {
+	if identity, ok := router.api.Authenticate(w, r); ok {
 		var home string
 		if slices.Contains(identity.Roles, "admin") || slices.Contains(identity.Roles, "inject") {
 			home = "/announcements"
@@ -93,7 +90,7 @@ func (router *Router) LoginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (router *Router) LogoutPage(w http.ResponseWriter, r *http.Request) {
-	api.Logout(w, r)
+	router.api.Logout(w, r)
 	http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
 }
 
@@ -106,7 +103,7 @@ func (router *Router) AnnouncementsPage(w http.ResponseWriter, r *http.Request) 
 
 func (router *Router) ServicesPage(w http.ResponseWriter, r *http.Request) {
 	roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && !db.GetCompetitionStarted() {
+	if !slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && !router.Engine.DB.GetCompetitionStarted() {
 		page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/countdown.html"))
 		if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Competition Not Started"})); err != nil {
 			panic(err)
@@ -122,7 +119,7 @@ func (router *Router) ServicesPage(w http.ResponseWriter, r *http.Request) {
 
 func (router *Router) InjectsPage(w http.ResponseWriter, r *http.Request) {
 	roles := r.Context().Value("roles").([]string)
-	if !slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && !db.GetCompetitionStarted() {
+	if !slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && !router.Engine.DB.GetCompetitionStarted() {
 		page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/countdown.html"))
 		if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Competition Not Started"})); err != nil {
 			panic(err)
@@ -184,7 +181,7 @@ func (router *Router) GraphPage(w http.ResponseWriter, r *http.Request) {
 		roles = r.Context().Value("roles").([]string)
 	}
 
-	if !slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && !db.GetCompetitionStarted() {
+	if !slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && !router.Engine.DB.GetCompetitionStarted() {
 		page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/countdown.html"))
 		if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Competition Not Started"})); err != nil {
 			panic(err)
