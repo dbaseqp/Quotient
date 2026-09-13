@@ -36,7 +36,7 @@ func TestDownloadAllSubmissions(t *testing.T) {
 	}
 
 	redis, pg := testutil.StartContainers(t)
-	eng := engine.NewTestEngine(t, redis, 3)
+	eng := engine.NewTestEngine(t, redis, pg, 3)
 	api := api.NewAPI(eng.Config, eng)
 
 	// Use temp dir for submission files
@@ -118,7 +118,7 @@ func TestDownloadAllSubmissions_MultipleTeamsSameFilename(t *testing.T) {
 	}
 
 	redis, pg := testutil.StartContainers(t)
-	eng := engine.NewTestEngine(t, redis, 3)
+	eng := engine.NewTestEngine(t, redis, pg, 3)
 	api := api.NewAPI(eng.Config, eng)
 
 	// Use temp dir for submission files

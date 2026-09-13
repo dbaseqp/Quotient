@@ -28,7 +28,7 @@ func TestProcessCollectedResults_SavesRound(t *testing.T) {
 
 	team := pg.CreateTestTeam(t, "Team", "01")
 
-	engine := NewTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, pg, 3)
 	engine.CurrentRound = 1
 	engine.CurrentRoundStartTime = time.Now()
 
@@ -76,7 +76,7 @@ func TestProcessCollectedResults_TracksUptime(t *testing.T) {
 
 	team := pg.CreateTestTeam(t, "Team", "01")
 
-	engine := NewTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, pg, 3)
 	engine.CurrentRoundStartTime = time.Now()
 
 	// Round 1: pass
@@ -116,7 +116,7 @@ func TestProcessCollectedResults_TriggersSLA(t *testing.T) {
 	team := pg.CreateTestTeam(t, "Team SLA", "01")
 
 	// SLA threshold of 3 consecutive failures
-	engine := NewTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, pg, 3)
 	engine.CurrentRoundStartTime = time.Now()
 
 	// Fail 3 times in a row - should trigger SLA
@@ -149,7 +149,7 @@ func TestProcessCollectedResults_SLAResetsOnPass(t *testing.T) {
 
 	team := pg.CreateTestTeam(t, "Team SLA Reset", "01")
 
-	engine := NewTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, pg, 3)
 	engine.CurrentRoundStartTime = time.Now()
 
 	// Fail twice
@@ -204,7 +204,7 @@ func TestProcessCollectedResults_MultipleTeamsIndependent(t *testing.T) {
 	team1 := pg.CreateTestTeam(t, "Team Multi 1", "01")
 	team2 := pg.CreateTestTeam(t, "Team Multi 2", "02")
 
-	engine := NewTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, pg, 3)
 	engine.CurrentRoundStartTime = time.Now()
 
 	// Team 1 fails, Team 2 passes - over 3 rounds
@@ -279,7 +279,7 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 	team2 := pg.CreateTestTeam(t, "Team Rvb 2", "02")
 
 	// Create engine with mock runner
-	engine := NewTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, pg, 3)
 	engine.CurrentRound = 1
 
 	// Add a mock service to the config
@@ -383,7 +383,7 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 
 	team := pg.CreateTestTeam(t, "Team Multi Svc", "01")
 
-	engine := NewTestEngine(t, redis, 3)
+	engine := NewTestEngine(t, redis, pg, 3)
 	engine.CurrentRound = 1
 
 	// Add multiple services

@@ -646,7 +646,7 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 }
 
 // newTestEngine creates a minimal engine for testing
-func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, slaThreshold int) *ScoringEngine {
+func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.PostgresContainer, slaThreshold int) *ScoringEngine {
 	t.Helper()
 
 	conf := &config.ConfigSettings{
@@ -672,6 +672,7 @@ func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, slaThreshold in
 		UptimePerService: make(map[uint]map[string]db.Uptime),
 		SlaPerService:    make(map[uint]map[string]int),
 		RedisClient:      redis.Client,
+		DB:               pg.DB,
 		CurrentRound:     1,
 	}
 }
