@@ -79,11 +79,10 @@ jobs:
         run: go mod download
 
       - name: Run integration tests
-        # -p 1 runs one package binary at a time. These packages share a single
-        # Postgres database and a single Redis instance, and they use fixed
-        # names for both (the `tasks` and `results` lists, one schema). Running
-        # them concurrently lets one package consume the other's queued tasks
-        # and reset its rows.
+        # -p 1: the engine and tests/integration packages share one Postgres
+        # database and one Redis instance under fixed names, so in parallel they
+        # race in AutoMigrate, drain each other's `tasks`/`results` lists, and
+        # truncate each other's rows. The Makefile targets pass -p 1 too.
         run: go test -v -race -p 1 ./tests/integration/... ./engine/... -timeout 10m
         env:
           REDIS_HOST: localhost

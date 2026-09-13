@@ -19,6 +19,9 @@ var (
 	db *gorm.DB
 )
 
+// Connect opens the connection pool and runs AutoMigrate. AutoMigrate reads the
+// catalog and then creates, so it is not safe to run from two processes against
+// the same database at once.
 func Connect(connectURL string) {
 	var err error
 
