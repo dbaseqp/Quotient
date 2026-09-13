@@ -17,7 +17,6 @@ import (
 func startRedis(t *testing.T) *testutil.RedisContainer {
 	redis := testutil.StartRedis(t)
 	t.Cleanup(func() {
-
 		require.NoError(t, redis.Close())
 	})
 	return redis
