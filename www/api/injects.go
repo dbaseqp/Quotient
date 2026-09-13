@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/dbaseqp/Quotient/engine/db"
@@ -107,13 +109,24 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	// nolint:errcheck
 	defer file.Close()
 
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
-	w.Header().Set("Content-Type", "application/octet-stream")
-
-	if _, err := io.Copy(w, file); err != nil {
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to send file"})
+	fileInfo, err := file.Stat()
+	if err != nil {
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to read file metadata"})
 		return
 	}
+
+	disposition := "attachment"
+	contentType := "application/octet-stream"
+	if r.URL.Query().Get("inline") == "1" && strings.EqualFold(filepath.Ext(fileName), ".pdf") {
+		disposition = "inline"
+		contentType = "application/pdf"
+		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
+	}
+
+	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": fileName}))
+	w.Header().Set("Content-Type", contentType)
+	http.ServeContent(w, r, fileName, fileInfo.ModTime(), file)
 }
 
 func CreateInject(w http.ResponseWriter, r *http.Request) {
