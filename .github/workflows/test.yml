@@ -71,7 +71,7 @@ jobs:
           REDIS_PORT: 6379
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
-          POSTGRES_DB: quotient_test
+          POSTGRES_DB: engine
           POSTGRES_USER: engineuser
           POSTGRES_PASSWORD: postgres_password
 
