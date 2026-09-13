@@ -14,14 +14,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func startRedis(t *testing.T) *testutil.RedisContainer {
+	redis := testutil.StartRedis(t)
+	t.Cleanup(func() {
+
+		require.NoError(t, redis.Close())
+	})
+	return redis
+}
+
 // TestEngineRedisTaskEnqueue tests that the engine correctly enqueues tasks to Redis
 func TestEngineRedisTaskEnqueue(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := testutil.StartRedis(t)
-	defer require.NoError(t, redisContainer.Close())
+	redisContainer := startRedis(t)
 
 	ctx := context.Background()
 
@@ -142,8 +150,7 @@ func TestEngineRedisResultCollection(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := testutil.StartRedis(t)
-	defer require.NoError(t, redisContainer.Close())
+	redisContainer := startRedis(t)
 
 	ctx := context.Background()
 
@@ -279,9 +286,7 @@ func TestEngineRedisPubSub(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := testutil.StartRedis(t)
-	// nolint:errcheck
-	defer redisContainer.Close()
+	redisContainer := startRedis(t)
 
 	ctx := context.Background()
 
@@ -379,9 +384,7 @@ func TestEngineRedisRoundWorkflow(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redisContainer := testutil.StartRedis(t)
-	// nolint:errcheck
-	defer redisContainer.Close()
+	redisContainer := startRedis(t)
 
 	ctx := context.Background()
 

@@ -19,6 +19,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func chDirToTempForTest(t *testing.T) {
+	tempDir := t.TempDir()
+	originalWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(tempDir))
+	t.Cleanup(func() {
+		require.NoError(t, os.Chdir(originalWd))
+	})
+}
+
 func TestDownloadAllSubmissions(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -29,10 +38,7 @@ func TestDownloadAllSubmissions(t *testing.T) {
 	db.Connect(pgContainer.ConnectionString())
 
 	// Use temp dir for submission files
-	submissionsDir := t.TempDir()
-	originalWd, _ := os.Getwd()
-	require.NoError(t, os.Chdir(submissionsDir))
-	defer require.NoError(t, os.Chdir(originalWd))
+	chDirToTempForTest(t)
 
 	// Setup: team, inject, submissions
 	team, err := db.CreateTeam(db.TeamSchema{
@@ -114,10 +120,7 @@ func TestDownloadAllSubmissions_MultipleTeamsSameFilename(t *testing.T) {
 	db.Connect(pgContainer.ConnectionString())
 
 	// Use temp dir for submission files
-	submissionsDir := t.TempDir()
-	originalWd, _ := os.Getwd()
-	require.NoError(t, os.Chdir(submissionsDir))
-	defer require.NoError(t, os.Chdir(originalWd))
+	chDirToTempForTest(t)
 
 	// Create inject
 	inject, err := db.CreateInject(db.InjectSchema{

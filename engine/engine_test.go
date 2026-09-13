@@ -76,18 +76,25 @@ func newTestEngine(t *testing.T, redis *testutil.RedisContainer, slaThreshold in
 	}
 }
 
+func startContainers(t *testing.T) *testutil.RedisContainer {
+	redis := testutil.StartRedis(t)
+	pg := testutil.StartPostgres(t)
+	db.Connect(pg.ConnectionString())
+
+	t.Cleanup(func() {
+		pg.Close()
+		require.NoError(t, redis.Close())
+	})
+
+	return redis
+}
+
 func TestProcessCollectedResults_SavesRound(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := testutil.StartRedis(t)
-	// nolint:errcheck
-	defer require.NoError(t, redis.Close())
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	// Clean slate
 	redis.Client.FlushDB(context.Background())
@@ -136,12 +143,7 @@ func TestProcessCollectedResults_TracksUptime(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := testutil.StartRedis(t)
-	defer require.NoError(t, redis.Close())
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	redis.Client.FlushDB(context.Background())
 	require.NoError(t, db.ResetScores())
@@ -180,12 +182,7 @@ func TestProcessCollectedResults_TriggersSLA(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := testutil.StartRedis(t)
-	defer require.NoError(t, redis.Close())
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	redis.Client.FlushDB(context.Background())
 	require.NoError(t, db.ResetScores())
@@ -219,12 +216,7 @@ func TestProcessCollectedResults_SLAResetsOnPass(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := testutil.StartRedis(t)
-	defer require.NoError(t, redis.Close())
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	redis.Client.FlushDB(context.Background())
 	require.NoError(t, db.ResetScores())
@@ -278,12 +270,7 @@ func TestProcessCollectedResults_MultipleTeamsIndependent(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := testutil.StartRedis(t)
-	defer require.NoError(t, redis.Close())
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	redis.Client.FlushDB(context.Background())
 	require.NoError(t, db.ResetScores())
@@ -356,12 +343,7 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 	// Set Redis address for rvb() internal connections
 	t.Setenv("REDIS_ADDR", "localhost:6379")
 
-	redis := testutil.StartRedis(t)
-	defer require.NoError(t, redis.Close())
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	ctx := context.Background()
 	redis.Client.FlushDB(ctx)
@@ -467,12 +449,7 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 
 	t.Setenv("REDIS_ADDR", "localhost:6379")
 
-	redis := testutil.StartRedis(t)
-	defer require.NoError(t, redis.Close())
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	ctx := context.Background()
 	redis.Client.FlushDB(ctx)

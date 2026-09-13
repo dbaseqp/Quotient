@@ -38,22 +38,26 @@ func createTestTeam(t *testing.T, name string, identifier string) db.TeamSchema 
 	return team
 }
 
+func startContainers(t *testing.T) *testutil.RedisContainer {
+	redis := testutil.StartRedis(t)
+	pg := testutil.StartPostgres(t)
+	db.Connect(pg.ConnectionString())
+
+	t.Cleanup(func() {
+		pg.Close()
+		require.NoError(t, redis.Close())
+	})
+
+	return redis
+}
+
 // TestFullEngineWorkflow tests the complete engine workflow with real databases
 func TestFullEngineWorkflow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping full integration test in short mode")
 	}
 
-	// Start Redis
-	redisContainer := testutil.StartRedis(t)
-	defer require.NoError(t, redisContainer.Close())
-
-	// Start PostgreSQL
-	pgContainer := testutil.StartPostgres(t)
-	defer pgContainer.Close()
-
-	// Initialize database connection for db package
-	db.Connect(pgContainer.ConnectionString())
+	redisContainer := startContainers(t)
 
 	ctx := context.Background()
 
