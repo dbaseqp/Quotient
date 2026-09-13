@@ -56,16 +56,8 @@ jobs:
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v2
 
-      - name: Setup Compose stack
-        run: docker compose up db redis -d
-
       - name: Run integration tests
-        # -p 1 runs one package binary at a time. These packages share a single
-        # Postgres database and a single Redis instance, and they use fixed
-        # names for both (the `tasks` and `results` lists, one schema). Running
-        # them concurrently lets one package consume the other's queued tasks
-        # and reset its rows.
-        run: go test -v -race -p 1 ./tests/integration/... ./engine/... -timeout 10m
+        run: make test-integration
         env:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
