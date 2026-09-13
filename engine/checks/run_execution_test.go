@@ -11,6 +11,7 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestWebRun_ActualExecution tests Web check Run() with real HTTP server
@@ -26,7 +27,8 @@ func TestWebRun_ActualExecution(t *testing.T) {
 			name: "successful check - correct status code",
 			serverHandler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("Hello World"))
+				_, err := w.Write([]byte("Hello World"))
+				require.NoError(t, err)
 			},
 			webCheck: func(port int) *Web {
 				return &Web{
@@ -64,7 +66,8 @@ func TestWebRun_ActualExecution(t *testing.T) {
 			name: "successful check - regex match",
 			serverHandler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("Flag{test123}"))
+				_, err := w.Write([]byte("Flag{test123}"))
+				require.NoError(t, err)
 			},
 			webCheck: func(port int) *Web {
 				return &Web{
@@ -83,7 +86,8 @@ func TestWebRun_ActualExecution(t *testing.T) {
 			name: "failed check - regex not found",
 			serverHandler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("No flag here"))
+				_, err := w.Write([]byte("No flag here"))
+				require.NoError(t, err)
 			},
 			webCheck: func(port int) *Web {
 				return &Web{
@@ -129,7 +133,8 @@ func TestWebRun_ActualExecution(t *testing.T) {
 
 				// Extract port from server URL
 				_, portStr, _ := net.SplitHostPort(server.Listener.Addr().String())
-				fmt.Sscanf(portStr, "%d", &tt.webCheck.Port)
+				_, err := fmt.Sscanf(portStr, "%d", &tt.webCheck.Port)
+				require.NoError(t, err)
 			}
 
 			// Run the ACTUAL check
@@ -172,12 +177,12 @@ func TestTcpRun_ActualExecution(t *testing.T) {
 						if err != nil {
 							return
 						}
-						conn.Close()
+						require.NoError(t, conn.Close())
 					}
 				}()
 
 				port := listener.Addr().(*net.TCPAddr).Port
-				cleanup := func() { listener.Close() }
+				cleanup := func() { require.NoError(t, listener.Close()) }
 				return port, cleanup
 			},
 			expectedStatus: true,
@@ -280,7 +285,8 @@ func TestDnsRun_ActualExecution(t *testing.T) {
 			}
 
 			packed, _ := resp.Pack()
-			pc.WriteTo(packed, addr)
+			_, err = pc.WriteTo(packed, addr)
+			require.NoError(t, err)
 		}
 	}()
 
@@ -466,7 +472,8 @@ func TestServiceTimeout(t *testing.T) {
 
 		_, portStr, _ := net.SplitHostPort(server.Listener.Addr().String())
 		var port int
-		fmt.Sscanf(portStr, "%d", &port)
+		_, err := fmt.Sscanf(portStr, "%d", &port)
+		require.NoError(t, err)
 
 		webCheck := &Web{
 			Service: Service{

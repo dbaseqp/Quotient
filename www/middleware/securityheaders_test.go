@@ -3,8 +3,9 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
-	"quotient/engine/config"
 	"testing"
+
+	"github.com/dbaseqp/Quotient/engine/config"
 
 	"github.com/stretchr/testify/assert"
 )

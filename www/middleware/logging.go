@@ -18,6 +18,8 @@ func Logging(next http.HandlerFunc) http.HandlerFunc {
 		requestID := r.Context().Value("request_id")
 		if requestID == "" {
 			requestID = uuid.New().String()
+			// TODO: use custom type to fix staticcheck instead
+			// nolint:staticcheck
 			r = r.WithContext(context.WithValue(r.Context(), "request_id", requestID))
 		}
 

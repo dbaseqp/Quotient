@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"quotient/engine/checks"
-	"quotient/engine/config"
-	"quotient/engine/db"
-	"quotient/tests/testutil"
+	"github.com/dbaseqp/Quotient/engine/checks"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
+	"github.com/dbaseqp/Quotient/tests/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,21 +76,29 @@ func newTestEngine(t *testing.T, redis *testutil.RedisContainer, slaThreshold in
 	}
 }
 
+func startContainers(t *testing.T) *testutil.RedisContainer {
+	redis := testutil.StartRedis(t)
+	pg := testutil.StartPostgres(t)
+	db.Connect(pg.ConnectionString())
+
+	t.Cleanup(func() {
+		pg.Close()
+		require.NoError(t, redis.Close())
+	})
+
+	return redis
+}
+
 func TestProcessCollectedResults_SavesRound(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := testutil.StartRedis(t)
-	defer redis.Close()
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	// Clean slate
 	redis.Client.FlushDB(context.Background())
-	db.ResetScores()
+	require.NoError(t, db.ResetScores())
 
 	team := createTestTeam(t, "Team", "01")
 
@@ -135,15 +143,10 @@ func TestProcessCollectedResults_TracksUptime(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := testutil.StartRedis(t)
-	defer redis.Close()
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	redis.Client.FlushDB(context.Background())
-	db.ResetScores()
+	require.NoError(t, db.ResetScores())
 
 	team := createTestTeam(t, "Team", "01")
 
@@ -179,15 +182,10 @@ func TestProcessCollectedResults_TriggersSLA(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := testutil.StartRedis(t)
-	defer redis.Close()
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	redis.Client.FlushDB(context.Background())
-	db.ResetScores()
+	require.NoError(t, db.ResetScores())
 
 	team := createTestTeam(t, "Team SLA", "01")
 
@@ -218,15 +216,10 @@ func TestProcessCollectedResults_SLAResetsOnPass(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := testutil.StartRedis(t)
-	defer redis.Close()
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	redis.Client.FlushDB(context.Background())
-	db.ResetScores()
+	require.NoError(t, db.ResetScores())
 
 	team := createTestTeam(t, "Team SLA Reset", "01")
 
@@ -277,15 +270,10 @@ func TestProcessCollectedResults_MultipleTeamsIndependent(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	redis := testutil.StartRedis(t)
-	defer redis.Close()
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	redis.Client.FlushDB(context.Background())
-	db.ResetScores()
+	require.NoError(t, db.ResetScores())
 
 	team1 := createTestTeam(t, "Team Multi 1", "01")
 	team2 := createTestTeam(t, "Team Multi 2", "02")
@@ -333,13 +321,13 @@ func (m *mockRunner) Run(teamID uint, identifier string, roundID uint, resultsCh
 	}
 }
 
-func (m *mockRunner) Runnable() bool                  { return true }
-func (m *mockRunner) GetType() string                 { return m.ServiceType }
-func (m *mockRunner) GetName() string                 { return m.Name }
-func (m *mockRunner) GetAttempts() int                { return 1 }
-func (m *mockRunner) GetCredlists() []string          { return nil }
+func (m *mockRunner) Runnable() bool         { return true }
+func (m *mockRunner) GetType() string        { return m.ServiceType }
+func (m *mockRunner) GetName() string        { return m.Name }
+func (m *mockRunner) GetAttempts() int       { return 1 }
+func (m *mockRunner) GetCredlists() []string { return nil }
 func (m *mockRunner) Verify(box, ip string, points, timeout, slapenalty, slathreshold int) error {
-	m.Name = box + "-" + m.Service.Display
+	m.Name = box + "-" + m.Display
 	m.Target = ip
 	m.Points = points
 	m.Timeout = timeout
@@ -355,16 +343,11 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 	// Set Redis address for rvb() internal connections
 	t.Setenv("REDIS_ADDR", "localhost:6379")
 
-	redis := testutil.StartRedis(t)
-	defer redis.Close()
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	ctx := context.Background()
 	redis.Client.FlushDB(ctx)
-	db.ResetScores()
+	require.NoError(t, db.ResetScores())
 
 	team1 := createTestTeam(t, "Team Rvb 1", "01")
 	team2 := createTestTeam(t, "Team Rvb 2", "02")
@@ -466,16 +449,11 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 
 	t.Setenv("REDIS_ADDR", "localhost:6379")
 
-	redis := testutil.StartRedis(t)
-	defer redis.Close()
-
-	pg := testutil.StartPostgres(t)
-	defer pg.Close()
-	db.Connect(pg.ConnectionString())
+	redis := startContainers(t)
 
 	ctx := context.Background()
 	redis.Client.FlushDB(ctx)
-	db.ResetScores()
+	require.NoError(t, db.ResetScores())
 
 	team := createTestTeam(t, "Team Multi Svc", "01")
 
@@ -514,13 +492,14 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 				}
 
 				var task Task
-				json.Unmarshal([]byte(val[1]), &task)
+				require.NoError(t, json.Unmarshal([]byte(val[1]), &task))
 
 				// Return points based on service name
 				points := 10
-				if task.ServiceName == "box01-ssh" {
+				switch task.ServiceName {
+				case "box01-ssh":
 					points = 5
-				} else if task.ServiceName == "box01-dns" {
+				case "box01-dns":
 					points = 15
 				}
 

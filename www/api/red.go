@@ -5,8 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"quotient/engine/db"
 	"strconv"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 func GetRed(w http.ResponseWriter, r *http.Request) {
@@ -21,6 +22,7 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 		WriteInternalError(w, r, "Error opening vulnerability data", err)
 		return
 	}
+	// nolint:errcheck
 	defer file.Close()
 
 	var vulns []db.VulnSchema

@@ -48,10 +48,10 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 		defer func() {
-		if err := conn.Close(); err != nil {
-			slog.Error("failed to close smb connection", "error", err)
-		}
-	}()
+			if err := conn.Close(); err != nil {
+				slog.Error("failed to close smb connection", "error", err)
+			}
+		}()
 
 		d := &smb2.Dialer{
 			Initiator: &smb2.NTLMInitiator{
@@ -71,6 +71,7 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			response <- checkResult
 			return
 		}
+		// nolint:errcheck
 		defer s.Logoff()
 
 		if len(c.File) > 0 {
@@ -81,6 +82,7 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				response <- checkResult
 				return
 			}
+			// nolint:errcheck
 			defer fs.Umount()
 
 			file := c.File[rand.Intn(len(c.File))] // #nosec G404 -- non-crypto selection of file to test
@@ -93,10 +95,10 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				return
 			}
 			defer func() {
-			if err := f.Close(); err != nil {
-				slog.Error("failed to close smb file", "error", err)
-			}
-		}()
+				if err := f.Close(); err != nil {
+					slog.Error("failed to close smb file", "error", err)
+				}
+			}()
 
 			buf, err := io.ReadAll(f)
 			if err != nil {
@@ -164,7 +166,7 @@ func (c *Smb) Verify(box string, ip string, points int, timeout int, slapenalty 
 	if c.ServiceType == "" {
 		c.ServiceType = "Smb"
 	}
-	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
+	if err := c.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}
 	if c.Display == "" {

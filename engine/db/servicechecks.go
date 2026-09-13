@@ -28,6 +28,7 @@ func GetServiceCheckSumByTeam() (map[uint]any, error) {
 		return nil, err
 	}
 
+	// nolint:errcheck
 	defer rows.Close()
 	for rows.Next() {
 		var id uint
@@ -65,6 +66,7 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 		return nil, err
 	}
 
+	// nolint:errcheck
 	defer rows.Close()
 	for rows.Next() {
 		var id uint
@@ -94,6 +96,7 @@ func GetServiceCheckSumByRound() ([]map[uint]int, error) {
 		return nil, err
 	}
 
+	// nolint:errcheck
 	defer rows.Close()
 	for rows.Next() {
 		var id uint
@@ -155,6 +158,7 @@ func LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
 	if err != nil {
 		return err
 	}
+	// nolint:errcheck
 	defer rows.Close()
 
 	for rows.Next() {
@@ -202,6 +206,7 @@ func GetServiceScores() ([]ServiceScoreData, error) {
 	if err != nil {
 		return nil, err
 	}
+	// nolint:errcheck
 	defer pointsRows.Close()
 
 	for pointsRows.Next() {
@@ -233,6 +238,7 @@ func GetServiceScores() ([]ServiceScoreData, error) {
 	if err != nil {
 		return nil, err
 	}
+	// nolint:errcheck
 	defer slaRows.Close()
 
 	for slaRows.Next() {
@@ -281,6 +287,7 @@ func LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) error {
 	if err != nil {
 		return err
 	}
+	// nolint:errcheck
 	defer rows.Close()
 
 	for rows.Next() {
