@@ -33,9 +33,11 @@ func startRedis(t *testing.T) *RedisContainer {
 
 	host := cmp.Or(os.Getenv("REDIS_HOST"), "localhost")
 	port := cmp.Or(os.Getenv("REDIS_PORT"), "6379")
+	password := cmp.Or(os.Getenv("REDIS_PASSWORD"), "redis_password")
 
 	client := redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("%s:%s", host, port),
+		Addr:     fmt.Sprintf("%s:%s", host, port),
+		Password: password,
 	})
 
 	return &RedisContainer{Client: client}
@@ -57,9 +59,9 @@ func startPostgres(t *testing.T) *PostgresContainer {
 
 	host := cmp.Or(os.Getenv("POSTGRES_HOST"), "localhost")
 	port := cmp.Or(os.Getenv("POSTGRES_PORT"), "5432")
-	dbname := cmp.Or(os.Getenv("POSTGRES_DB"), "quotient_test")
-	user := cmp.Or(os.Getenv("POSTGRES_USER"), "postgres")
-	password := cmp.Or(os.Getenv("POSTGRES_PASSWORD"), "postgres")
+	dbname := cmp.Or(os.Getenv("POSTGRES_DB"), "engine")
+	user := cmp.Or(os.Getenv("POSTGRES_USER"), "engineuser")
+	password := cmp.Or(os.Getenv("POSTGRES_PASSWORD"), "postgres_password")
 
 	connString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
