@@ -9,6 +9,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
+	_ "time/tzdata"
 
 	"github.com/dbaseqp/Quotient/engine/checks"
 
@@ -39,6 +41,9 @@ type ConfigSettings struct {
 
 	// Restrict information
 	UISettings UIConfig `toml:"UISettings,omitempty" json:"UISettings,omitempty"`
+
+	// Inject schedule settings
+	InjectSettings InjectConfig `toml:"InjectSettings,omitempty" json:"InjectSettings,omitempty"`
 
 	Admin  []Admin
 	Red    []Red
@@ -133,6 +138,32 @@ type UIConfig struct {
 	DisableGraphsForBlueTeam            bool
 	AllowNonAnonymizedGraphsForBlueTeam bool
 	ShowAnnouncementsForRedTeam         bool
+}
+
+type InjectConfig struct {
+	CompetitionStartTime string
+	CompetitionTimezone  string
+}
+
+func (conf *ConfigSettings) CompetitionStart() (time.Time, error) {
+	settings := conf.InjectSettings
+	if settings.CompetitionStartTime == "" || settings.CompetitionTimezone == "" {
+		return time.Time{}, errors.New("InjectSettings.CompetitionStartTime and InjectSettings.CompetitionTimezone are required for inject imports")
+	}
+
+	location, err := time.LoadLocation(settings.CompetitionTimezone)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid competition timezone %q: %w", settings.CompetitionTimezone, err)
+	}
+
+	start, err := time.ParseInLocation("2006-01-02 15:04", settings.CompetitionStartTime, location)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid competition start time %q (expected YYYY-MM-DD HH:MM): %w", settings.CompetitionStartTime, err)
+	}
+	if start.Format("2006-01-02 15:04") != settings.CompetitionStartTime {
+		return time.Time{}, fmt.Errorf("competition start time %q does not exist in timezone %q", settings.CompetitionStartTime, settings.CompetitionTimezone)
+	}
+	return start, nil
 }
 
 type User struct {
@@ -334,6 +365,12 @@ func checkConfig(conf *ConfigSettings) error {
 
 	if conf.MiscSettings.SlaPenalty == 0 {
 		conf.MiscSettings.SlaPenalty = conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
+	}
+
+	if conf.InjectSettings.CompetitionStartTime != "" || conf.InjectSettings.CompetitionTimezone != "" {
+		if _, err := conf.CompetitionStart(); err != nil {
+			errResult = errors.Join(errResult, err)
+		}
 	}
 
 	// OIDC settings defaults

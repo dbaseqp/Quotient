@@ -278,6 +278,24 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 		inject.CloseTime = closeTime
 	}
 
+	if inject.OpenOffset != nil {
+		anchor, _, err := injectScheduleAnchor()
+		if err != nil {
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		openOffset := int64(inject.OpenTime.Sub(anchor) / time.Second)
+		dueOffset := int64(inject.DueTime.Sub(anchor) / time.Second)
+		closeOffset := int64(inject.CloseTime.Sub(anchor) / time.Second)
+		if openOffset < 0 {
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Imported injects cannot open before the competition start"})
+			return
+		}
+		inject.OpenOffset = &openOffset
+		inject.DueOffset = &dueOffset
+		inject.CloseOffset = &closeOffset
+	}
+
 	if inject.OpenTime.After(inject.DueTime) {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Open time must be before due time"})
 		return
@@ -385,6 +403,10 @@ func DeleteInject(w http.ResponseWriter, r *http.Request) {
 	uploadDir := fmt.Sprintf("config/injects/%d", inject.ID)
 	if err := os.RemoveAll(uploadDir); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to remove inject files"})
+		return
+	}
+	if err := os.RemoveAll(fmt.Sprintf("submissions/%d", inject.ID)); err != nil {
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Inject deleted, but submission files could not be removed"})
 		return
 	}
 

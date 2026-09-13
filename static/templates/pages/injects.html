@@ -9,6 +9,138 @@
         <button class="btn btn-primary rounded-0 w-100" data-bs-toggle="modal" data-bs-target="#create__form">
             Create Inject
         </button>
+        <button class="btn btn-outline-primary rounded-0 w-100" data-bs-toggle="modal"
+            data-bs-target="#import__form">
+            Import Injects
+        </button>
+
+        <div class="modal fade" id="import__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+            aria-labelledby="import__form--label" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-fullscreen-lg-down">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="import__form--label">Import Injects</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>
+                            Upload a ZIP containing <code>injects.toml</code> and any files it references. Times are
+                            calculated from the competition start configured in <code>event.conf</code>.
+                        </p>
+                        <div class="mb-3">
+                            <label for="inject-import-bundle" class="form-label required">Import bundle</label>
+                            <input type="file" class="form-control" id="inject-import-bundle" accept=".zip,application/zip">
+                        </div>
+                        <div class="alert d-none" role="alert" id="inject-import-message"></div>
+                        <div class="d-none" id="inject-import-preview">
+                            <p class="mb-2" id="inject-import-anchor"></p>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>Inject</th>
+                                            <th>Opens</th>
+                                            <th>Due</th>
+                                            <th>Closes</th>
+                                            <th>Files</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="inject-import-preview-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-outline-primary" id="inject-import-preview-button">
+                            Preview
+                        </button>
+                        <button type="button" class="btn btn-primary" id="inject-import-submit-button" disabled>
+                            Import
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            const IMPORT_BUNDLE = document.getElementById("inject-import-bundle")
+            const IMPORT_MESSAGE = document.getElementById("inject-import-message")
+            const IMPORT_PREVIEW = document.getElementById("inject-import-preview")
+            const IMPORT_PREVIEW_BODY = document.getElementById("inject-import-preview-body")
+            const IMPORT_ANCHOR = document.getElementById("inject-import-anchor")
+            const IMPORT_PREVIEW_BUTTON = document.getElementById("inject-import-preview-button")
+            const IMPORT_SUBMIT_BUTTON = document.getElementById("inject-import-submit-button")
+
+            function showImportMessage(message, kind) {
+                IMPORT_MESSAGE.textContent = message
+                IMPORT_MESSAGE.className = `alert alert-${kind}`
+            }
+
+            function resetImportPreview() {
+                IMPORT_MESSAGE.classList.add("d-none")
+                IMPORT_PREVIEW.classList.add("d-none")
+                IMPORT_PREVIEW_BODY.innerHTML = ""
+                IMPORT_SUBMIT_BUTTON.disabled = true
+            }
+
+            async function sendInjectImport(preview) {
+                if (!IMPORT_BUNDLE.files.length) {
+                    showImportMessage("Choose an import ZIP first.", "warning")
+                    return
+                }
+
+                IMPORT_PREVIEW_BUTTON.disabled = true
+                IMPORT_SUBMIT_BUTTON.disabled = true
+                const payload = new FormData()
+                payload.append("bundle", IMPORT_BUNDLE.files[0])
+
+                try {
+                    const suffix = preview ? "?preview=1" : ""
+                    const response = await fetch(`/api/injects/import${suffix}`, { method: "POST", body: payload })
+                    const data = await response.json()
+                    if (!response.ok) {
+                        throw new Error(data.error || "Import failed")
+                    }
+
+                    if (preview) {
+                        IMPORT_PREVIEW_BODY.innerHTML = ""
+                        for (const inject of data.injects) {
+                            const row = document.createElement("tr")
+                            for (const value of [
+                                inject.title,
+                                new Date(inject.open_time).toLocaleString(),
+                                new Date(inject.due_time).toLocaleString(),
+                                new Date(inject.close_time).toLocaleString(),
+                                inject.files.length ? inject.files.join(", ") : "None",
+                            ]) {
+                                const cell = document.createElement("td")
+                                cell.textContent = value
+                                row.appendChild(cell)
+                            }
+                            IMPORT_PREVIEW_BODY.appendChild(row)
+                        }
+                        const source = data.anchor_source === "actual" ? "actual" : "planned"
+                        IMPORT_ANCHOR.textContent = `Using the ${source} competition start: ${new Date(data.anchor).toLocaleString()}`
+                        IMPORT_PREVIEW.classList.remove("d-none")
+                        IMPORT_MESSAGE.classList.add("d-none")
+                        IMPORT_SUBMIT_BUTTON.disabled = false
+                    } else {
+                        showImportMessage(data.message, "success")
+                        IMPORT_PREVIEW.classList.add("d-none")
+                        IMPORT_BUNDLE.value = ""
+                        refreshInjects()
+                    }
+                } catch (error) {
+                    showImportMessage(error.message, "danger")
+                } finally {
+                    IMPORT_PREVIEW_BUTTON.disabled = false
+                }
+            }
+
+            IMPORT_BUNDLE.addEventListener("change", resetImportPreview)
+            IMPORT_PREVIEW_BUTTON.addEventListener("click", () => sendInjectImport(true))
+            IMPORT_SUBMIT_BUTTON.addEventListener("click", () => sendInjectImport(false))
+        </script>
 
         <div class="modal fade" id="create__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
             aria-labelledby="create__form--label" aria-hidden="true">
