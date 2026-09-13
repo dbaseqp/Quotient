@@ -13,9 +13,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"quotient/engine/checks"
-	"quotient/engine/config"
-	"quotient/engine/db"
+	"github.com/dbaseqp/Quotient/engine/checks"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -119,6 +119,7 @@ func (se *ScoringEngine) Start() {
 	})
 
 	events := rdb.Subscribe(context.Background(), "events")
+	// nolint:errcheck
 	defer events.Close()
 	eventsChannel := events.Channel()
 
@@ -186,6 +187,7 @@ func waitForReset() {
 	})
 
 	events := rdb.Subscribe(context.Background(), "events")
+	// nolint:errcheck
 	defer events.Close()
 	eventsChannel := events.Channel()
 
@@ -362,6 +364,7 @@ func (se *ScoringEngine) rvb() error {
 	})
 
 	events := rdb.Subscribe(context.Background(), "events")
+	// nolint:errcheck
 	defer events.Close()
 	eventsChannel := events.Channel()
 	//

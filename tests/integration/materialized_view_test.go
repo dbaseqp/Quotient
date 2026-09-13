@@ -1,10 +1,11 @@
 package integration
 
 import (
-	"quotient/engine/db"
-	"quotient/tests/testutil"
 	"testing"
 	"time"
+
+	"github.com/dbaseqp/Quotient/engine/db"
+	"github.com/dbaseqp/Quotient/tests/testutil"
 
 	"github.com/stretchr/testify/require"
 )

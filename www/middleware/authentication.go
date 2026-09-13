@@ -3,9 +3,10 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"quotient/www/api"
 	"slices"
 	"strings"
+
+	"github.com/dbaseqp/Quotient/www/api"
 )
 
 // load in authentication sources
@@ -40,7 +41,9 @@ func Authentication(roles ...string) Middleware {
 					// for handlers that still read them; drop both once
 					// every handler uses api.IdentityFrom.
 					ctx := api.WithIdentity(r.Context(), identity)
+					// nolint:staticcheck
 					ctx = context.WithValue(ctx, "username", identity.Username)
+					// nolint:staticcheck
 					ctx = context.WithValue(ctx, "roles", identity.Roles)
 					next(w, r.WithContext(ctx))
 					return

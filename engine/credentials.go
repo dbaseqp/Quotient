@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"quotient/engine/db"
 	"sync"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 // safeOpenInDir opens a file within the given base directory safely using os.Root.
@@ -15,6 +16,7 @@ func safeOpenInDir(baseDir, relativePath string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open root directory: %w", err)
 	}
+	// nolint:errcheck
 	defer root.Close()
 	return root.Open(relativePath)
 }

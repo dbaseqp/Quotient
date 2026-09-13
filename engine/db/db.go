@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"os"
 
-	"quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/config"
 
 	"github.com/go-ldap/ldap/v3"
 	"gorm.io/driver/postgres"
@@ -110,6 +110,7 @@ func AddTeams(conf *config.ConfigSettings) error {
 		if err != nil {
 			return err
 		}
+		// nolint:errcheck
 		defer conn.Close()
 
 		err = conn.Bind(conf.LdapSettings.LdapBindDn, conf.LdapSettings.LdapBindPassword)

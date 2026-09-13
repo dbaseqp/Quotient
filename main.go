@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"os"
 
-	"quotient/engine"
-	"quotient/engine/config"
-	"quotient/engine/db"
-	"quotient/www"
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
+	"github.com/dbaseqp/Quotient/www"
 )
 
 var logLvels = map[string]slog.Level{
@@ -35,8 +35,7 @@ func main() {
 		log.Fatalf("Invalid log level: %s", opts.logger.level)
 	}
 	// use config to setup engine
-	var handler slog.Handler
-	handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 

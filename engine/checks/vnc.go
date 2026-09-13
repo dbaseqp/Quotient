@@ -41,10 +41,10 @@ func (c Vnc) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 		defer func() {
-		if err := conn.Close(); err != nil {
-			slog.Error("failed to close vnc connection", "error", err)
-		}
-	}()
+			if err := conn.Close(); err != nil {
+				slog.Error("failed to close vnc connection", "error", err)
+			}
+		}()
 
 		vncClient, err := vnc.Client(conn, &config)
 		if err != nil {
@@ -54,10 +54,10 @@ func (c Vnc) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 		defer func() {
-		if err := vncClient.Close(); err != nil {
-			slog.Error("failed to close vnc client", "error", err)
-		}
-	}()
+			if err := vncClient.Close(); err != nil {
+				slog.Error("failed to close vnc client", "error", err)
+			}
+		}()
 
 		checkResult.Status = true
 		checkResult.Debug = "creds " + username + ":" + password
@@ -71,7 +71,7 @@ func (c *Vnc) Verify(box string, ip string, points int, timeout int, slapenalty 
 	if c.ServiceType == "" {
 		c.ServiceType = "Vnc"
 	}
-	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
+	if err := c.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}
 	if c.Display == "" {

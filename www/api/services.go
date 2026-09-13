@@ -3,9 +3,10 @@ package api
 import (
 	"log/slog"
 	"net/http"
-	"quotient/engine/db"
 	"slices"
 	"strconv"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 func GetTeams(w http.ResponseWriter, r *http.Request) {

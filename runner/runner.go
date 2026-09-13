@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"quotient/engine"
-	"quotient/engine/checks"
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/checks"
 
 	reaper "github.com/ramr/go-reaper"
 	"github.com/redis/go-redis/v9"
@@ -55,6 +55,7 @@ func runApp(err error) int {
 
 	go func() {
 		events := rdb.Subscribe(context.Background(), "events")
+		// nolint:errcheck
 		defer events.Close()
 		eventsChannel := events.Channel()
 

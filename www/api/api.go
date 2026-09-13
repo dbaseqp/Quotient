@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"quotient/engine"
-	"quotient/engine/config"
-	"quotient/engine/db"
+
 	"strings"
+
+	"github.com/dbaseqp/Quotient/engine"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 var (
@@ -46,6 +48,7 @@ func SafeOpen(baseDir, relativePath string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open root directory: %w", err)
 	}
+	// nolint:errcheck
 	defer root.Close()
 	return root.Open(relativePath)
 }
@@ -56,6 +59,7 @@ func SafeCreate(baseDir, relativePath string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open root directory: %w", err)
 	}
+	// nolint:errcheck
 	defer root.Close()
 	return root.Create(relativePath)
 }
@@ -67,6 +71,7 @@ func SafeMkdirAll(baseDir, relativePath string, perm os.FileMode) error {
 	if err != nil {
 		return err
 	}
+	// nolint:errcheck
 	defer root.Close()
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(relativePath)), "/")
 	for i := range parts {

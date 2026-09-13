@@ -6,8 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"quotient/engine/db"
 	"strconv"
+
+	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 func GetRed(w http.ResponseWriter, r *http.Request) {
@@ -24,6 +25,7 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
 	}
+	// nolint:errcheck
 	defer file.Close()
 
 	var vulns []db.VulnSchema

@@ -138,10 +138,10 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 		defer func() {
-		if err := conn.Close(); err != nil {
-			slog.Error("failed to close ssh connection", "error", err)
-		}
-	}()
+			if err := conn.Close(); err != nil {
+				slog.Error("failed to close ssh connection", "error", err)
+			}
+		}()
 
 		// Create a session
 		session, err := conn.NewSession()
@@ -151,6 +151,7 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			response <- checkResult
 			return
 		}
+		// nolint:errcheck
 		defer session.Close()
 
 		// Set up terminal modes
@@ -193,7 +194,7 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		// If any commands specified, run a random one
 		if len(c.Command) > 0 {
 			r := c.Command[rand.Intn(len(c.Command))] // #nosec G404 -- non-crypto selection of command to test
-			fmt.Fprintln(stdin, r.Command)
+			_, _ = fmt.Fprintln(stdin, r.Command)
 			time.Sleep(time.Duration(int(time.Duration(c.Timeout)*time.Second) / 8)) // command wait time
 			if r.Contains {
 				if !strings.Contains(stdoutBytes.String(), r.Output) {
@@ -232,7 +233,7 @@ func (c *Ssh) Verify(box string, ip string, points int, timeout int, slapenalty 
 	if c.ServiceType == "" {
 		c.ServiceType = "Ssh"
 	}
-	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
+	if err := c.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}
 	if c.Display == "" {

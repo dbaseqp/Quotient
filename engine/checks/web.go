@@ -94,10 +94,10 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		}
 
 		defer func() {
-		if err := resp.Body.Close(); err != nil {
-			slog.Error("failed to close http response body", "error", err)
-		}
-	}()
+			if err := resp.Body.Close(); err != nil {
+				slog.Error("failed to close http response body", "error", err)
+			}
+		}()
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			checkResult.Error = "error reading page content"
@@ -139,7 +139,7 @@ func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty 
 	if c.ServiceType == "" {
 		c.ServiceType = "Web"
 	}
-	if err := c.Service.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
+	if err := c.Configure(ip, points, timeout, slapenalty, slathreshold); err != nil {
 		return err
 	}
 

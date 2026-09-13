@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"quotient/engine/config"
-	"quotient/engine/db"
+	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/db"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -189,6 +189,7 @@ func TestIdentityRoundTripsThroughContext(t *testing.T) {
 func requestAs(roles []string, id Identity) *http.Request {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	ctx := WithIdentity(r.Context(), id)
+	// nolint:staticcheck
 	ctx = context.WithValue(ctx, "roles", roles)
 	return r.WithContext(ctx)
 }

@@ -109,13 +109,16 @@ func TestWebCheckVerification(t *testing.T) {
 func TestWebCheckRun(t *testing.T) {
 	// Create a test HTTP server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/success" {
+		switch r.URL.Path {
+		case "/success":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Welcome to the competition!"))
-		} else if r.URL.Path == "/admin" {
+			_, err := w.Write([]byte("Welcome to the competition!"))
+			require.NoError(t, err)
+		case "/admin":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("Admin Panel - Flag{test123}"))
-		} else {
+			_, err := w.Write([]byte("Admin Panel - Flag{test123}"))
+			require.NoError(t, err)
+		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
@@ -136,7 +139,7 @@ func TestWebCheckRun(t *testing.T) {
 			check: &Web{
 				Service: Service{
 					Target:  parts[0],
-					Port:    mustAtoi(parts[1]),
+					Port:    mustAtoi(t, parts[1]),
 					Timeout: 5,
 				},
 				Scheme: "http",
@@ -149,7 +152,7 @@ func TestWebCheckRun(t *testing.T) {
 			check: &Web{
 				Service: Service{
 					Target:  parts[0],
-					Port:    mustAtoi(parts[1]),
+					Port:    mustAtoi(t, parts[1]),
 					Timeout: 5,
 				},
 				Scheme: "http",
@@ -162,7 +165,7 @@ func TestWebCheckRun(t *testing.T) {
 			check: &Web{
 				Service: Service{
 					Target:  parts[0],
-					Port:    mustAtoi(parts[1]),
+					Port:    mustAtoi(t, parts[1]),
 					Timeout: 5,
 				},
 				Scheme: "http",
@@ -176,7 +179,7 @@ func TestWebCheckRun(t *testing.T) {
 			check: &Web{
 				Service: Service{
 					Target:  parts[0],
-					Port:    mustAtoi(parts[1]),
+					Port:    mustAtoi(t, parts[1]),
 					Timeout: 5,
 				},
 				Scheme: "http",
@@ -277,11 +280,13 @@ func TestDnsCheckRun(t *testing.T) {
 		t.Skip("Cannot create UDP listener for DNS test")
 		return
 	}
-	defer pc.Close()
+	t.Cleanup(func() {
+		require.NoError(t, pc.Close())
+	})
 
 	serverAddr := pc.LocalAddr().String()
 	parts := strings.Split(serverAddr, ":")
-	serverPort := mustAtoi(parts[1])
+	serverPort := mustAtoi(t, parts[1])
 
 	// DNS server handler
 	go func() {
@@ -316,7 +321,8 @@ func TestDnsCheckRun(t *testing.T) {
 			}
 
 			packed, _ := resp.Pack()
-			pc.WriteTo(packed, addr)
+			_, err = pc.WriteTo(packed, addr)
+			require.NoError(t, err)
 		}
 	}()
 
@@ -438,10 +444,10 @@ func TestSshCheckVerification(t *testing.T) {
 // TestSimpleCheckVerification tests basic verification for check types with simple default port logic
 func TestSimpleCheckVerification(t *testing.T) {
 	tests := []struct {
-		name         string
-		serviceType  string
-		defaultPort  int
-		needsCreds   bool
+		name        string
+		serviceType string
+		defaultPort int
+		needsCreds  bool
 	}{
 		{"Tcp", "Tcp", 0, false},
 		{"Ping", "Ping", 0, false},
@@ -624,8 +630,8 @@ func TestSqlCheckVerification(t *testing.T) {
 // TestWinRMCheckVerification tests WinRM check configuration validation
 func TestWinRMCheckVerification(t *testing.T) {
 	tests := []struct {
-		name        string
-		check       *WinRM
+		name         string
+		check        *WinRM
 		expectedPort int
 	}{
 		{
@@ -844,8 +850,12 @@ func TestTeamIdentifierInTargets(t *testing.T) {
 }
 
 // Helper function to convert string to int
-func mustAtoi(s string) int {
+func mustAtoi(t *testing.T, s string) int {
+	t.Helper()
 	i := 0
-	fmt.Sscanf(s, "%d", &i)
+	_, err := fmt.Sscanf(s, "%d", &i)
+	if err != nil {
+		t.Fatalf("failed to parse %q as int: %v", s, err)
+	}
 	return i
 }
