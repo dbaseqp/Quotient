@@ -38,31 +38,6 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
 
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: quotient_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -78,21 +53,20 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v2
+
       - name: Run integration tests
-        # -p 1 runs one package binary at a time. These packages share a single
-        # Postgres database and a single Redis instance, and they use fixed
-        # names for both (the `tasks` and `results` lists, one schema). Running
-        # them concurrently lets one package consume the other's queued tasks
-        # and reset its rows.
-        run: go test -v -race -p 1 ./tests/integration/... ./engine/... -timeout 10m
+        run: make test-integration
         env:
           REDIS_HOST: localhost
-          REDIS_PORT: 6379
+          REDIS_PORT: 6380
+          REDIS_PASSWORD: redis_password
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
-          POSTGRES_DB: quotient_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: engine
+          POSTGRES_USER: engineuser
+          POSTGRES_PASSWORD: postgres_password
 
   security-scanner:
     name: Security Scanner

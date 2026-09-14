@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"sync/atomic"
@@ -30,17 +31,13 @@ func (r *RedisContainer) Close() error {
 func startRedis(t *testing.T) *RedisContainer {
 	t.Helper()
 
-	host := os.Getenv("REDIS_HOST")
-	if host == "" {
-		host = "localhost"
-	}
-	port := os.Getenv("REDIS_PORT")
-	if port == "" {
-		port = "6379"
-	}
+	host := cmp.Or(os.Getenv("REDIS_HOST"), "localhost")
+	port := cmp.Or(os.Getenv("REDIS_PORT"), "6380")
+	password := cmp.Or(os.Getenv("REDIS_PASSWORD"), "redis_password")
 
 	client := redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("%s:%s", host, port),
+		Addr:     fmt.Sprintf("%s:%s", host, port),
+		Password: password,
 	})
 
 	return &RedisContainer{Client: client}
@@ -60,26 +57,11 @@ func (p *PostgresContainer) Close() error {
 func startPostgres(t *testing.T) *PostgresContainer {
 	t.Helper()
 
-	host := os.Getenv("POSTGRES_HOST")
-	if host == "" {
-		host = "localhost"
-	}
-	port := os.Getenv("POSTGRES_PORT")
-	if port == "" {
-		port = "5432"
-	}
-	dbname := os.Getenv("POSTGRES_DB")
-	if dbname == "" {
-		dbname = "quotient_test"
-	}
-	user := os.Getenv("POSTGRES_USER")
-	if user == "" {
-		user = "postgres"
-	}
-	password := os.Getenv("POSTGRES_PASSWORD")
-	if password == "" {
-		password = "postgres"
-	}
+	host := cmp.Or(os.Getenv("POSTGRES_HOST"), "localhost")
+	port := cmp.Or(os.Getenv("POSTGRES_PORT"), "5432")
+	dbname := cmp.Or(os.Getenv("POSTGRES_DB"), "engine")
+	user := cmp.Or(os.Getenv("POSTGRES_USER"), "engineuser")
+	password := cmp.Or(os.Getenv("POSTGRES_PASSWORD"), "postgres_password")
 
 	connString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
