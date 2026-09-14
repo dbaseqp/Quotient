@@ -2,14 +2,14 @@
 <div class="inject-layout d-flex w-100 h-100">
     <div class="nav-pills d-flex flex-column h-100 overflow-y-scroll justify-content-start align-items-center bg-body-secondary"
         role="tablist" id="tab-container">
-        <button class="btn btn-warning rounded-2 w-100 mb-2 d-none" onclick="refreshInjects()" id="refresh--btn">
+        <button class="btn btn-warning rounded-0 w-100 d-none" onclick="refreshInjects()" id="refresh--btn">
             Refresh
         </button>
         {{ if or (contains .roles "admin") (contains .roles "inject") }}
-        <button class="btn btn-primary rounded-2 w-100 mb-2" data-bs-toggle="modal" data-bs-target="#create__form">
+        <button class="btn btn-primary rounded-0 w-100" data-bs-toggle="modal" data-bs-target="#create__form">
             Create Inject
         </button>
-        <button class="btn btn-outline-primary rounded-2 w-100 mb-3" data-bs-toggle="modal"
+        <button class="btn btn-outline-primary rounded-0 w-100" data-bs-toggle="modal"
             data-bs-target="#import__form">
             Import Injects
         </button>
@@ -437,23 +437,21 @@
             };
         </script>
         {{ end }}
-        <button class="inject-tab active nav-link w-100 text-start bg-body rounded-3 border placeholder-glow" id="tab--placeholder"
+        <button class="inject-tab active nav-link w-100 text-start bg-body rounded-0 border placeholder-glow" id="tab--placeholder"
             data-bs-toggle="pill" data-bs-target="#pane--placeholder" type="button" role="tab"
             aria-controls="pane--placeholder" aria-selected="true">
-            <div class="container-fluid">
-                <div class="row">
-                    <div class="col-10">
-                        <div class="d-flex flex-column">
-                            <span class="text-nowrap overflow-hidden text-truncate">
-                                <span id="tab__title--placeholder" class="placeholder placeholder-xs col-12"></span>
-                            </span>
-                        </div>
+            <div class="container-fluid px-0">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div class="inject-tab-title flex-grow-1">
+                        <span class="d-block text-nowrap overflow-hidden text-truncate">
+                            <span id="tab__title--placeholder" class="placeholder placeholder-xs col-12"></span>
+                        </span>
                     </div>
-                    <div class="col-2">
+                    <div class="flex-shrink-0 pe-1">
                         <span id="tab__status--placeholder" class="d-flex justify-content-center"></span>
                     </div>
                 </div>
-                <div class="inject-tab-meta d-flex justify-content-between align-items-center gap-2 pt-2">
+                <div class="inject-tab-meta d-flex flex-wrap justify-content-between align-items-center gap-2 pt-2 pe-1">
                     <span id="tab__time--placeholder" class="inject-tab-time placeholder placeholder-xs col-4"></span>
                     <span id="tab__countdown--placeholder" class="placeholder placeholder-xs col-3"></span>
                 </div>
@@ -602,24 +600,36 @@
         flex: 0 0 clamp(260px, 24vw, 300px);
         min-width: 260px;
         max-width: 300px;
-        padding: .75rem;
     }
 
     .inject-layout .inject-tab {
-        margin-bottom: .5rem;
-        padding: .85rem;
-        box-shadow: var(--bs-box-shadow-sm);
-        transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
-    }
-
-    .inject-layout .inject-tab:hover {
-        border-color: var(--bs-primary-border-subtle) !important;
-        transform: translateY(-1px);
+        height: auto;
+        overflow: visible;
+        padding: .375rem .5rem;
     }
 
     .inject-layout .inject-tab.active {
-        border-color: var(--bs-primary-border-subtle) !important;
-        box-shadow: inset 4px 0 0 var(--bs-primary), var(--bs-box-shadow-sm);
+        color: var(--bs-nav-pills-link-active-color);
+    }
+
+    .inject-layout .inject-tab.active .inject-tab-time,
+    .inject-layout .inject-tab.active [id^="tab__status--"] i {
+        color: rgba(var(--bs-white-rgb), .85) !important;
+    }
+
+    .inject-layout .inject-tab.active .inject-countdown-badge.text-bg-primary {
+        color: var(--bs-primary-text-emphasis) !important;
+        background-color: rgba(var(--bs-white-rgb), .92) !important;
+    }
+
+    .inject-tab-title {
+        min-width: 0;
+    }
+
+    .inject-tab-meta .inject-countdown-badge {
+        flex-shrink: 0;
+        margin-left: auto;
+        max-width: 100%;
     }
 
     .inject-tab-time {
@@ -637,11 +647,6 @@
             flex-basis: 210px;
             min-width: 210px;
             max-width: 210px;
-            padding: .5rem;
-        }
-
-        .inject-layout .inject-tab {
-            padding: .7rem;
         }
 
         .inject-tab-time {
@@ -649,15 +654,6 @@
         }
     }
 
-    @media (prefers-reduced-motion: reduce) {
-        .inject-layout .inject-tab {
-            transition: none;
-        }
-
-        .inject-layout .inject-tab:hover {
-            transform: none;
-        }
-    }
 </style>
 
 <script src="/static/assets/inject-countdown.js"></script>
