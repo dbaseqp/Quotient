@@ -19,10 +19,10 @@ type DB struct {
 	db *gorm.DB
 }
 
-// Connect opens the connection pool and runs AutoMigrate. AutoMigrate reads the
-// catalog and then creates, so it is not safe to run from two processes against
-// the same database at once.
-func Connect(connectURL string) {
+// Connect opens the connection pool and migrates. AutoMigrate reads the catalog
+// and then creates, so it is not safe to run from two processes against the same
+// database at once.
+func Connect(connectURL string) *DB {
 	var err error
 
 	newLogger := logger.New(
@@ -42,7 +42,15 @@ func Connect(connectURL string) {
 
 	slog.Info("Connected to DB")
 
-	err = db.AutoMigrate(&AnnouncementSchema{},
+	db := &DB{db: gormDB}
+
+	db.migrate()
+
+	return db
+}
+
+func (d *DB) migrate() {
+	err := d.db.AutoMigrate(&AnnouncementSchema{},
 		&TeamSchema{}, &RoundSchema{}, &ServiceCheckSchema{}, &SLASchema{}, &ManualAdjustmentSchema{},
 		&InjectSchema{}, &SubmissionSchema{}, &TeamServiceCheckSchema{},
 		// box schema must come first for automigrate to work
