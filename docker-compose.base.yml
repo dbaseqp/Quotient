@@ -1,0 +1,27 @@
+services:
+  db-base:
+    image: postgres:17
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 3s
+    networks:
+      - quotient_network
+  
+  redis-base:
+    image: redis:alpine
+    env_file:
+      - .env
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD variable is not set}"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 3s
+    networks:
+      - quotient_network

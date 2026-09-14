@@ -8,8 +8,8 @@ type SLASchema struct {
 	Penalty     int
 }
 
-func CreateSLA(sla SLASchema) (SLASchema, error) {
-	result := db.Table("sla_schemas").Create(&sla)
+func (d *DB) CreateSLA(sla SLASchema) (SLASchema, error) {
+	result := d.db.Table("sla_schemas").Create(&sla)
 	if result.Error != nil {
 		return SLASchema{}, result.Error
 	}

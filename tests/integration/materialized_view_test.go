@@ -16,19 +16,16 @@ func TestMaterializedViewLifecycle(t *testing.T) {
 	}
 
 	// Start PostgreSQL connection
-	pgContainer := testutil.StartPostgres(t)
-
-	// Initialize database connection
 	// This calls createCumulativeScoresView() internally, which now includes the initial REFRESH
-	db.Connect(pgContainer.ConnectionString())
+	_, pg := testutil.StartContainers(t)
 
 	// Data cleanup
-	err := db.ResetScores()
+	err := pg.DB.ResetScores()
 	require.NoError(t, err, "ResetScores should succeed")
 
 	t.Run("refresh with zero rows", func(t *testing.T) {
 		// The view should operate correctly even with no data
-		err := db.RefreshScoresMaterializedView()
+		err := pg.DB.RefreshScoresMaterializedView()
 		require.NoError(t, err, "RefreshScoresMaterializedView should succeed with 0 rows")
 	})
 
@@ -39,7 +36,7 @@ func TestMaterializedViewLifecycle(t *testing.T) {
 			Active:     true,
 			Identifier: "vt1",
 		}
-		teamCreated, err := db.CreateTeam(team)
+		teamCreated, err := pg.DB.CreateTeam(team)
 		require.NoError(t, err)
 
 		// Create a round with a result
@@ -57,11 +54,11 @@ func TestMaterializedViewLifecycle(t *testing.T) {
 			Checks:    []db.ServiceCheckSchema{check},
 		}
 
-		_, err = db.CreateRound(round)
+		_, err = pg.DB.CreateRound(round)
 		require.NoError(t, err, "should save round to database")
 
 		// Refresh should succeed with data
-		err = db.RefreshScoresMaterializedView()
+		err = pg.DB.RefreshScoresMaterializedView()
 		require.NoError(t, err, "RefreshScoresMaterializedView should succeed with data")
 
 		// Optional: We could verify data via db.GetServiceCheckSumByRound() if we wanted to be thorough

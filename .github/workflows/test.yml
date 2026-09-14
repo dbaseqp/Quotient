@@ -38,31 +38,6 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
 
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: quotient_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -78,20 +53,20 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v2
+
       - name: Run integration tests
-        # -p 1: the engine and tests/integration packages share one Postgres
-        # database and one Redis instance under fixed names, so in parallel they
-        # race in AutoMigrate, drain each other's `tasks`/`results` lists, and
-        # truncate each other's rows. The Makefile targets pass -p 1 too.
-        run: go test -v -race -p 1 ./tests/integration/... ./engine/... -timeout 10m
+        run: make test-integration
         env:
           REDIS_HOST: localhost
-          REDIS_PORT: 6379
+          REDIS_PORT: 6380
+          REDIS_PASSWORD: redis_password
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
-          POSTGRES_DB: quotient_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: engine
+          POSTGRES_USER: engineuser
+          POSTGRES_PASSWORD: postgres_password
 
   security-scanner:
     name: Security Scanner

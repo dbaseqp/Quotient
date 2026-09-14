@@ -18,8 +18,8 @@ import (
 	"gorm.io/gorm"
 )
 
-func GetInjects(w http.ResponseWriter, r *http.Request) {
-	data, err := db.GetInjects()
+func (a *API) GetInjects(w http.ResponseWriter, r *http.Request) {
+	data, err := a.eng.DB.GetInjects()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving injects", err)
 		return
@@ -38,7 +38,7 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for i, inject := range data {
-		data[i].Submissions, err = db.GetSubmissionsForInject(inject.ID)
+		data[i].Submissions, err = a.eng.DB.GetSubmissionsForInject(inject.ID)
 		if err != nil {
 			WriteInternalError(w, r, "Error retrieving submissions", err)
 			return
@@ -60,7 +60,7 @@ func GetInjects(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, data)
 }
 
-func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
+func (a *API) DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	injectID := r.PathValue("id")
 	if injectID == "" {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing inject ID"})
@@ -73,7 +73,7 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	injects, err := db.GetInjects()
+	injects, err := a.eng.DB.GetInjects()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving injects", err)
 		return
@@ -129,7 +129,7 @@ func DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, fileName, fileInfo.ModTime(), file)
 }
 
-func CreateInject(w http.ResponseWriter, r *http.Request) {
+func (a *API) CreateInject(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
@@ -190,7 +190,7 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if inject, err = db.CreateInject(inject); err != nil {
+	if inject, err = a.eng.DB.CreateInject(inject); err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Inject with the same title already exists"})
 			return
@@ -232,7 +232,7 @@ func CreateInject(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Inject created successfully"})
 }
 
-func UpdateInject(w http.ResponseWriter, r *http.Request) {
+func (a *API) UpdateInject(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
@@ -245,7 +245,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	injects, err := db.GetInjects()
+	injects, err := a.eng.DB.GetInjects()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving injects", err)
 		return
@@ -298,7 +298,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if inject.OpenOffset != nil {
-		anchor, _, err := injectScheduleAnchor()
+		anchor, _, err := a.injectScheduleAnchor()
 		if err != nil {
 			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
@@ -382,7 +382,7 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if _, err := db.UpdateInject(inject); err != nil {
+	if _, err := a.eng.DB.UpdateInject(inject); err != nil {
 		WriteInternalError(w, r, "Error updating the inject", err)
 		return
 	}
@@ -390,14 +390,14 @@ func UpdateInject(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{"message": "Inject updated successfully"})
 }
 
-func DeleteInject(w http.ResponseWriter, r *http.Request) {
+func (a *API) DeleteInject(w http.ResponseWriter, r *http.Request) {
 	injectID := r.PathValue("id")
 	if injectID == "" {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing inject ID"})
 		return
 	}
 
-	injects, err := db.GetInjects()
+	injects, err := a.eng.DB.GetInjects()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving injects", err)
 		return
@@ -416,7 +416,7 @@ func DeleteInject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := db.DeleteInject(inject); err != nil {
+	if err := a.eng.DB.DeleteInject(inject); err != nil {
 		WriteInternalError(w, r, "Error deleting the inject", err)
 		return
 	}

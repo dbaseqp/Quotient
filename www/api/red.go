@@ -10,8 +10,8 @@ import (
 	"github.com/dbaseqp/Quotient/engine/db"
 )
 
-func GetRed(w http.ResponseWriter, r *http.Request) {
-	teams, err := db.GetTeams()
+func (a *API) GetRed(w http.ResponseWriter, r *http.Request) {
+	teams, err := a.eng.DB.GetTeams()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving teams", err)
 		return
@@ -32,13 +32,13 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	boxes, err := db.GetBoxes()
+	boxes, err := a.eng.DB.GetBoxes()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving boxes", err)
 		return
 	}
 
-	attacks, err := db.GetAttacks()
+	attacks, err := a.eng.DB.GetAttacks()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving attacks", err)
 		return
@@ -52,7 +52,7 @@ func GetRed(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func CreateBox(w http.ResponseWriter, r *http.Request) {
+func (a *API) CreateBox(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	ip := r.FormValue("ip")
 	hostname := r.FormValue("hostname")
@@ -62,7 +62,7 @@ func CreateBox(w http.ResponseWriter, r *http.Request) {
 		Hostname: hostname,
 	}
 
-	if _, err := db.CreateBox(box); err != nil {
+	if _, err := a.eng.DB.CreateBox(box); err != nil {
 		WriteInternalError(w, r, "Failed to create box", err)
 		return
 	}
@@ -70,7 +70,7 @@ func CreateBox(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Box created successfully"})
 }
 
-func EditBox(w http.ResponseWriter, r *http.Request) {
+func (a *API) EditBox(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var id uint
 	if temp, err := strconv.ParseUint(r.FormValue("box-id"), 10, 64); err != nil {
@@ -89,7 +89,7 @@ func EditBox(w http.ResponseWriter, r *http.Request) {
 		Hostname: hostname,
 	}
 
-	if _, err := db.UpdateBox(box); err != nil {
+	if _, err := a.eng.DB.UpdateBox(box); err != nil {
 		WriteInternalError(w, r, "Failed to update box", err)
 		return
 	}
@@ -97,11 +97,11 @@ func EditBox(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{"message": "Box updated successfully"})
 }
 
-func CreateVector(w http.ResponseWriter, r *http.Request) {
+func (a *API) CreateVector(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	a := r.FormValue("vuln-id")
-	b := r.FormValue("box-id")
-	c := r.FormValue("port")
+	vulnID := r.FormValue("vuln-id")
+	boxID := r.FormValue("box-id")
+	portStr := r.FormValue("port")
 
 	description := r.FormValue("description")
 	protocol := r.FormValue("protocol")
@@ -112,7 +112,7 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var vuln uint
-	if v, err := strconv.Atoi(a); err != nil {
+	if v, err := strconv.Atoi(vulnID); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert vuln id"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
@@ -124,7 +124,7 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var box uint
-	if v, err := strconv.Atoi(b); err != nil {
+	if v, err := strconv.Atoi(boxID); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert box id"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
@@ -135,7 +135,7 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 		box = uint(v)
 	}
 
-	port, err := strconv.Atoi(c)
+	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert port"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
@@ -154,7 +154,7 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 		ImplementationDescription: description,
 	}
 
-	if _, err := db.CreateVector(vector); err != nil {
+	if _, err := a.eng.DB.CreateVector(vector); err != nil {
 		WriteInternalError(w, r, "Failed to create vector", err)
 		return
 	}
@@ -162,11 +162,11 @@ func CreateVector(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Vector created successfully"})
 }
 
-func EditVector(w http.ResponseWriter, r *http.Request) {
+func (a *API) EditVector(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func CreateAttack(w http.ResponseWriter, r *http.Request) {
+func (a *API) CreateAttack(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
@@ -180,9 +180,9 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 		filenames[i] = fileHeader.Filename
 	}
 
-	a := r.FormValue("vector-id")
-	b := r.FormValue("team-id")
-	c := r.FormValue("access-level")
+	vectorID := r.FormValue("vector-id")
+	teamID := r.FormValue("team-id")
+	accessLevelStr := r.FormValue("access-level")
 	narrative := r.FormValue("narrative")
 
 	active := r.FormValue("active") == "true"
@@ -192,7 +192,7 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 	database := r.FormValue("accesseddatabases") == "true"
 
 	var vector uint
-	if v, err := strconv.Atoi(a); err != nil {
+	if v, err := strconv.Atoi(vectorID); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert vector id"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
@@ -204,7 +204,7 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var team uint
-	if v, err := strconv.Atoi(b); err != nil {
+	if v, err := strconv.Atoi(teamID); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert team id"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
 		return
@@ -215,7 +215,7 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 		team = uint(v)
 	}
 
-	access, err := strconv.Atoi(c)
+	access, err := strconv.Atoi(accessLevelStr)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert access level"})
 		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
@@ -235,7 +235,7 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 		DataAccessDatabase:            database,
 	}
 
-	if _, err := db.CreateAttack(attack); err != nil {
+	if _, err := a.eng.DB.CreateAttack(attack); err != nil {
 		WriteInternalError(w, r, "Failed to create attack", err)
 		return
 	}
@@ -243,5 +243,5 @@ func CreateAttack(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, map[string]any{"message": "Attack created successfully"})
 }
 
-func EditAttack(w http.ResponseWriter, r *http.Request) {
+func (a *API) EditAttack(w http.ResponseWriter, r *http.Request) {
 }

@@ -15,9 +15,9 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-var (
+type DB struct {
 	db *gorm.DB
-)
+}
 
 // Connect opens the connection pool and runs AutoMigrate. AutoMigrate reads the
 // catalog and then creates, so it is not safe to run from two processes against
@@ -32,7 +32,7 @@ func Connect(connectURL string) {
 		},
 	)
 
-	db, err = gorm.Open(postgres.Open(connectURL), &gorm.Config{
+	gormDB, err := gorm.Open(postgres.Open(connectURL), &gorm.Config{
 		TranslateError: true,
 		Logger:         newLogger,
 	})
@@ -54,14 +54,23 @@ func Connect(connectURL string) {
 	}
 
 	// Create materialized views
-	createCumulativeScoresView()
+	d.createCumulativeScoresView()
+}
+
+func (d *DB) Close() error {
+	rawDB, err := d.db.DB()
+	if err != nil {
+		return err
+	}
+
+	return rawDB.Close()
 }
 
 // createCumulativeScoresView creates the materialized view for cumulative scores.
-func createCumulativeScoresView() {
+func (d *DB) createCumulativeScoresView() {
 	// Create the materialized view if it doesn't exist
 	// If it does exist, CREATE won't refresh it, so we do that separately
-	err := db.Exec(`
+	err := d.db.Exec(`
 		CREATE MATERIALIZED VIEW IF NOT EXISTS cumulative_scores AS
 		SELECT DISTINCT 
 			round_id, 
@@ -76,7 +85,7 @@ func createCumulativeScoresView() {
 	}
 
 	// Unique index required to enable REFRESH CONCURRENTLY
-	err = db.Exec(`
+	err = d.db.Exec(`
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_cumulative_scores_round_team 
 		ON cumulative_scores (round_id, team_id)
 	`).Error
@@ -85,19 +94,19 @@ func createCumulativeScoresView() {
 	}
 
 	// Ensure view is populated/fresh on startup in case there was existing data
-	err = db.Exec("REFRESH MATERIALIZED VIEW cumulative_scores").Error
+	err = d.db.Exec("REFRESH MATERIALIZED VIEW cumulative_scores").Error
 	if err != nil {
 		log.Fatalln("Failed to refresh cumulative_scores materialized view:", err)
 	}
 }
 
-func AddTeams(conf *config.ConfigSettings) error {
+func (d *DB) AddTeams(conf *config.ConfigSettings) error {
 	for _, team := range conf.Team {
 		t := TeamSchema{Name: team.Name}
-		result := db.Where(&t).First(&t)
+		result := d.db.Where(&t).First(&t)
 		if result.Error != nil {
 			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-				if _, err := CreateTeam(t); err != nil {
+				if _, err := d.CreateTeam(t); err != nil {
 					return err
 				}
 			} else {
@@ -137,10 +146,10 @@ func AddTeams(conf *config.ConfigSettings) error {
 		for _, entry := range sr.Entries {
 			teamName := entry.GetAttributeValue("sAMAccountName")
 			t := TeamSchema{Name: teamName}
-			result := db.Where(&t).First(&t)
+			result := d.db.Where(&t).First(&t)
 			if result.Error != nil {
 				if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-					if _, err := CreateTeam(t); err != nil {
+					if _, err := d.CreateTeam(t); err != nil {
 						return err
 					}
 				} else {
@@ -152,14 +161,14 @@ func AddTeams(conf *config.ConfigSettings) error {
 	return nil
 }
 
-func ResetScores() error {
+func (d *DB) ResetScores() error {
 	// truncate servicecheckschemas, slaschemas, and roundschemas with cascade
-	if err := db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas CASCADE").Error; err != nil {
+	if err := d.db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas CASCADE").Error; err != nil {
 		return err
 	}
 
 	// Refresh the materialized view to clear it
-	if err := db.Exec("REFRESH MATERIALIZED VIEW cumulative_scores").Error; err != nil {
+	if err := d.db.Exec("REFRESH MATERIALIZED VIEW cumulative_scores").Error; err != nil {
 		return err
 	}
 

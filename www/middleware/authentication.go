@@ -16,10 +16,10 @@ import (
 // from config
 
 // middleware requiring authentication to even hit
-func Authentication(roles ...string) Middleware {
+func Authentication(a *api.API, roles ...string) Middleware {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			identity, ok := api.Authenticate(w, r)
+			identity, ok := a.Authenticate(w, r)
 
 			if !ok {
 				if slices.Contains(roles, "anonymous") {

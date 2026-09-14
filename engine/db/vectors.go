@@ -16,9 +16,9 @@ type VectorSchema struct {
 	ImplementationDescription string
 }
 
-func GetVectors() ([]VectorSchema, error) {
+func (d *DB) GetVectors() ([]VectorSchema, error) {
 	var vectors []VectorSchema
-	result := db.Table("vector_schemas").Order("port asc").Find(&vectors)
+	result := d.db.Table("vector_schemas").Order("port asc").Find(&vectors)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return vectors, nil
@@ -29,16 +29,16 @@ func GetVectors() ([]VectorSchema, error) {
 	return vectors, nil
 }
 
-func CreateVector(vector VectorSchema) (VectorSchema, error) {
-	result := db.Table("vector_schemas").Create(&vector)
+func (d *DB) CreateVector(vector VectorSchema) (VectorSchema, error) {
+	result := d.db.Table("vector_schemas").Create(&vector)
 	if result.Error != nil {
 		return VectorSchema{}, result.Error
 	}
 	return vector, nil
 }
 
-func UpdateVector(vector VectorSchema) (VectorSchema, error) {
-	result := db.Table("vector_schemas").Save(&vector)
+func (d *DB) UpdateVector(vector VectorSchema) (VectorSchema, error) {
+	result := d.db.Table("vector_schemas").Save(&vector)
 	if result.Error != nil {
 		return VectorSchema{}, result.Error
 	}
