@@ -1,7 +1,6 @@
 package db
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -20,6 +19,9 @@ type DB struct {
 	db *gorm.DB
 }
 
+// Connect opens the connection pool and migrates. AutoMigrate reads the catalog
+// and then creates, so it is not safe to run from two processes against the same
+// database at once.
 func Connect(connectURL string) *DB {
 	var err error
 
@@ -47,45 +49,8 @@ func Connect(connectURL string) *DB {
 	return db
 }
 
-// migrationLockID identifies the advisory lock that serializes schema
-// migration. Any value works as long as every process agrees on it.
-const migrationLockID int64 = 0x71756F74
-
-// migrate applies the schema under an advisory lock.
-//
-// AutoMigrate and CREATE ... IF NOT EXISTS both read the catalog and then
-// write, so two processes connecting at once can each decide a table is
-// missing and issue CREATE TABLE. The loser gets "relation already exists" or
-// a unique violation on pg_type. The lock makes the read-then-write pair
-// exclusive; the second process runs its migration afterwards and finds
-// nothing to do.
 func (d *DB) migrate() {
-	sqlDB, err := d.db.DB()
-	if err != nil {
-		log.Fatalln("Failed to access database handle:", err)
-	}
-
-	// The lock is session scoped, so it has to be held on one pinned
-	// connection rather than borrowed from the pool per statement.
-	ctx := context.Background()
-	conn, err := sqlDB.Conn(ctx)
-	if err != nil {
-		log.Fatalln("Failed to acquire connection for migration lock:", err)
-	}
-	defer func() {
-		if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockID); err != nil {
-			slog.Error("failed to release migration lock", "error", err)
-		}
-		if err := conn.Close(); err != nil {
-			slog.Error("failed to close migration lock connection", "error", err)
-		}
-	}()
-
-	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationLockID); err != nil {
-		log.Fatalln("Failed to acquire migration lock:", err)
-	}
-
-	err = d.db.AutoMigrate(&AnnouncementSchema{},
+	err := d.db.AutoMigrate(&AnnouncementSchema{},
 		&TeamSchema{}, &RoundSchema{}, &ServiceCheckSchema{}, &SLASchema{}, &ManualAdjustmentSchema{},
 		&InjectSchema{}, &SubmissionSchema{}, &TeamServiceCheckSchema{},
 		// box schema must come first for automigrate to work
