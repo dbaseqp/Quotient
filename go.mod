@@ -26,7 +26,7 @@ require (
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.33.0
-	golang.org/x/oauth2 v0.24.0
+	golang.org/x/oauth2 v0.27.0
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.11
 	pgregory.net/rapid v1.2.0
