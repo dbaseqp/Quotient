@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/rand"
 	"os"
@@ -143,90 +144,119 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			}
 		}()
 
-		// Create a session
-		session, err := conn.NewSession()
-		if err != nil {
-			checkResult.Error = "unable to create ssh session"
-			checkResult.Debug = err.Error()
-			response <- checkResult
-			return
-		}
-		// nolint:errcheck
-		defer session.Close()
-
-		// Set up terminal modes
-		modes := ssh.TerminalModes{
-			ssh.ECHO:          0,     // disable echoing
-			ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
-			ssh.TTY_OP_OSPEED: 14400, // output speed = 14.4kbaud
-		}
-
-		// Request pseudo terminal
-		if err := session.RequestPty("xterm", 40, 80, modes); err != nil {
-			checkResult.Error = "couldn't allocate pts"
-			checkResult.Debug = err.Error()
-			response <- checkResult
-			return
-		}
-
-		// I/O for shell
-		stdin, err := session.StdinPipe()
-		if err != nil {
-			checkResult.Error = "couldn't get stdin pipe"
-			checkResult.Debug = err.Error()
-			response <- checkResult
-			return
-		}
-
-		var stdoutBytes bytes.Buffer
-		var stderrBytes bytes.Buffer
-		session.Stdout = &stdoutBytes
-		session.Stderr = &stderrBytes
-
-		// Start remote shell
-		if err := session.Shell(); err != nil {
-			checkResult.Error = "failed to start shell"
-			checkResult.Debug = "error: " + err.Error()
-			response <- checkResult
-			return
-		}
-
-		// If any commands specified, run a random one
-		if len(c.Command) > 0 {
-			r := c.Command[rand.Intn(len(c.Command))] // #nosec G404 -- non-crypto selection of command to test
-			_, _ = fmt.Fprintln(stdin, r.Command)
-			time.Sleep(time.Duration(int(time.Duration(c.Timeout)*time.Second) / 8)) // command wait time
-			if r.Contains {
-				if !strings.Contains(stdoutBytes.String(), r.Output) {
-					checkResult.Error = "command output didn't contain string"
-					checkResult.Debug = "command output of '" + r.Command + "' didn't contain string '" + r.Output + "': " + stdoutBytes.String() + ",  " + stderrBytes.String()
-					response <- checkResult
-					return
+		// Each shell (and so each command) gets its own session on the shared
+		// connection, so one command's output can't satisfy another's check.
+		if len(c.Command) == 0 {
+			// No commands: just make sure a shell can be started
+			shell, errMsg, err := openShell(conn)
+			if err != nil {
+				checkResult.Error = errMsg
+				checkResult.Debug = err.Error()
+				response <- checkResult
+				return
+			}
+			_ = shell.session.Close()
+			checkResult.Status = true
+			checkResult.Debug = "creds used were " + username + ":" + password
+		} else {
+			// Run a random command (or all if CheckAll)
+			checkResult = RunSubchecks(c.Command, c.CheckAll, checkResult, "creds used were "+username+":"+password, func(r commandData, res Result) Result {
+				shell, errMsg, err := openShell(conn)
+				if err != nil {
+					res.Error = errMsg
+					res.Debug = err.Error()
+					res.Status = false
+					return res
 				}
-			} else if r.UseRegex {
-				re := regexp.MustCompile(r.Output)
-				if !re.Match(stdoutBytes.Bytes()) {
-					checkResult.Error = "command output didn't match regex"
-					checkResult.Debug = "command output'" + r.Command + "' didn't match regex '" + r.Output
-					response <- checkResult
-					return
+				// nolint:errcheck
+				defer shell.session.Close()
+
+				_, _ = fmt.Fprintln(shell.stdin, r.Command)
+				time.Sleep(time.Duration(int(time.Duration(c.Timeout)*time.Second) / 8)) // command wait time
+				if r.Contains {
+					if !strings.Contains(shell.stdout.String(), r.Output) {
+						res.Error = "command output didn't contain string"
+						res.Debug = "command output of '" + r.Command + "' didn't contain string '" + r.Output + "': " + shell.stdout.String() + ",  " + shell.stderr.String()
+						res.Status = false
+						return res
+					}
+				} else if r.UseRegex {
+					re := regexp.MustCompile(r.Output)
+					if !re.Match(shell.stdout.Bytes()) {
+						res.Error = "command output didn't match regex"
+						res.Debug = "command output'" + r.Command + "' didn't match regex '" + r.Output
+						res.Status = false
+						return res
+					}
+				} else {
+					if shell.stderr.Len() != 0 {
+						res.Error = "command returned an error"
+						res.Debug = "command stderr was not empty: " + shell.stderr.String()
+						res.Status = false
+						return res
+					}
 				}
-			} else {
-				if stderrBytes.Len() != 0 {
-					checkResult.Error = "command returned an error"
-					checkResult.Debug = "command stderr was not empty: " + stderrBytes.String()
-					response <- checkResult
-					return
-				}
+				res.Status = true
+				return res
+			})
+			if !checkResult.Status {
+				response <- checkResult
+				return
 			}
 		}
-		checkResult.Status = true
+
 		checkResult.Points = c.Points
-		checkResult.Debug = "creds used were " + username + ":" + password
 		response <- checkResult
 	}
 
 	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
+}
+
+type sshShell struct {
+	session *ssh.Session
+	stdin   io.WriteCloser
+	stdout  bytes.Buffer
+	stderr  bytes.Buffer
+}
+
+// openShell starts an interactive shell with a pty in a new session on conn.
+// On failure it returns a short error message for the check result along with the error.
+func openShell(conn *ssh.Client) (*sshShell, string, error) {
+	session, err := conn.NewSession()
+	if err != nil {
+		return nil, "unable to create ssh session", err
+	}
+
+	// Set up terminal modes
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          0,     // disable echoing
+		ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
+		ssh.TTY_OP_OSPEED: 14400, // output speed = 14.4kbaud
+	}
+
+	// Request pseudo terminal
+	if err := session.RequestPty("xterm", 40, 80, modes); err != nil {
+		_ = session.Close()
+		return nil, "couldn't allocate pts", err
+	}
+
+	// I/O for shell
+	shell := &sshShell{session: session}
+	shell.stdin, err = session.StdinPipe()
+	if err != nil {
+		_ = session.Close()
+		return nil, "couldn't get stdin pipe", err
+	}
+	session.Stdout = &shell.stdout
+	session.Stderr = &shell.stderr
+
+	// Start remote shell
+	if err := session.Shell(); err != nil {
+		_ = session.Close()
+		return nil, "failed to start shell", err
+	}
+
+	return shell, "", nil
 }
 
 func (c *Ssh) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {

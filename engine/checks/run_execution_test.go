@@ -500,3 +500,27 @@ func TestServiceTimeout(t *testing.T) {
 		}
 	})
 }
+
+// TestServiceRun_TimeoutDoesNotLeakGoroutine checks that a check which finishes
+// after the timeout can still send its result and exit instead of blocking forever.
+func TestServiceRun_TimeoutDoesNotLeakGoroutine(t *testing.T) {
+	svc := &Service{Name: "slow", Timeout: 1}
+	results := make(chan Result, 1)
+	done := make(chan struct{})
+
+	svc.Run(1, "1", 1, results, func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
+		time.Sleep(1500 * time.Millisecond)
+		response <- checkResult
+		close(done)
+	})
+
+	res := <-results
+	assert.False(t, res.Status)
+	assert.Equal(t, "check timeout exceeded", res.Error)
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("check goroutine blocked sending its result after timeout")
+	}
+}
