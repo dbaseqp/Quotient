@@ -29,17 +29,17 @@ BindAddress = "0.0.0.0:8080"
 
 func TestSlaPenaltyExplicitZeroIsKept(t *testing.T) {
 	misc := loadMiscSettings(t, "Points = 2\nSlaThreshold = 4\nSlaPenalty = 0\n")
-	assert.Equal(t, 0, misc.SlaPenaltyPoints())
+	assert.Equal(t, 0, *misc.SlaPenalty)
 }
 
 func TestSlaPenaltyOmittedUsesDefault(t *testing.T) {
 	misc := loadMiscSettings(t, "Points = 2\nSlaThreshold = 4\n")
-	assert.Equal(t, 8, misc.SlaPenaltyPoints())
+	assert.Equal(t, 8, *misc.SlaPenalty)
 }
 
 func TestSlaPenaltyExplicitValueIsKept(t *testing.T) {
 	misc := loadMiscSettings(t, "Points = 2\nSlaThreshold = 4\nSlaPenalty = 3\n")
-	assert.Equal(t, 3, misc.SlaPenaltyPoints())
+	assert.Equal(t, 3, *misc.SlaPenalty)
 }
 
 func TestSlaPenaltyNegativeIsRejected(t *testing.T) {

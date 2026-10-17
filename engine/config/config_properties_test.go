@@ -47,7 +47,7 @@ func TestPropertyConfigTimingConstraints(t *testing.T) {
 
 		// Property 3: unset SLA penalty defaults to threshold * points
 		expectedPenalty := conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
-		assert.Equal(t, expectedPenalty, conf.MiscSettings.SlaPenaltyPoints(),
+		assert.Equal(t, expectedPenalty, *conf.MiscSettings.SlaPenalty,
 			"SLA penalty should default to threshold * points")
 
 		// Property 4: Points has sensible default (line 294-296)

@@ -135,15 +135,6 @@ type MiscConfig struct {
 	SlaPenalty *int
 }
 
-// SlaPenaltyPoints is the points deducted per SLA, defaulting to
-// SlaThreshold * Points when SlaPenalty is unset.
-func (m MiscConfig) SlaPenaltyPoints() int {
-	if m.SlaPenalty != nil {
-		return *m.SlaPenalty
-	}
-	return m.SlaThreshold * m.Points
-}
-
 type UIConfig struct {
 	EnablePublicGraphs                  bool
 	DisableGraphsForBlueTeam            bool
@@ -374,9 +365,12 @@ func checkConfig(conf *ConfigSettings) error {
 		conf.MiscSettings.SlaThreshold = 5
 	}
 
-	if p := conf.MiscSettings.SlaPenalty; p != nil && *p < 0 {
+	if conf.MiscSettings.SlaPenalty == nil {
+		penalty := conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
+		conf.MiscSettings.SlaPenalty = &penalty
+	} else if *conf.MiscSettings.SlaPenalty < 0 {
 		errResult = errors.Join(errResult, errors.New("SlaPenalty must not be negative"))
-	} else if p != nil && *p == 0 {
+	} else if *conf.MiscSettings.SlaPenalty == 0 {
 		slog.Warn("SlaPenalty = 0: SLAs are counted but deduct no points")
 	}
 
@@ -472,7 +466,7 @@ func checkConfig(conf *ConfigSettings) error {
 					conf.Box[i].IP,
 					conf.MiscSettings.Points,
 					conf.MiscSettings.Timeout,
-					conf.MiscSettings.SlaPenaltyPoints(),
+					*conf.MiscSettings.SlaPenalty,
 					conf.MiscSettings.SlaThreshold,
 				); err != nil {
 					errResult = errors.Join(errResult, err)
