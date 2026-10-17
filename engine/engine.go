@@ -620,9 +620,6 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 					RoundID:     uint(se.CurrentRound),
 					Penalty:     se.Config.MiscSettings.SlaPenaltyPoints(),
 				}
-				if sla.Penalty == 0 {
-					sla.WaivedPenalty = se.Config.MiscSettings.DefaultSlaPenalty()
-				}
 				if _, err := se.DB.CreateSLA(sla); err != nil {
 					slog.Error("failed to create SLA", "team", result.TeamID, "service", result.ServiceName, "error", err)
 				}

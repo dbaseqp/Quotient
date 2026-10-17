@@ -6,8 +6,6 @@ type SLASchema struct {
 	Round       RoundSchema
 	ServiceName string
 	Penalty     int
-	// WaivedPenalty is what the SLA would have cost when Penalty is 0
-	WaivedPenalty int
 }
 
 func (d *DB) CreateSLA(sla SLASchema) (SLASchema, error) {

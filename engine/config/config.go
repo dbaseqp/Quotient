@@ -136,16 +136,11 @@ type MiscConfig struct {
 }
 
 // SlaPenaltyPoints is the points deducted per SLA, defaulting to
-// DefaultSlaPenalty when SlaPenalty is unset.
+// SlaThreshold * Points when SlaPenalty is unset.
 func (m MiscConfig) SlaPenaltyPoints() int {
 	if m.SlaPenalty != nil {
 		return *m.SlaPenalty
 	}
-	return m.DefaultSlaPenalty()
-}
-
-// DefaultSlaPenalty is the per-SLA penalty when SlaPenalty is unset.
-func (m MiscConfig) DefaultSlaPenalty() int {
 	return m.SlaThreshold * m.Points
 }
 
