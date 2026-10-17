@@ -69,6 +69,13 @@ func (d *DB) GetTeamSummary(teamID uint) ([]map[string]any, error) {
 		}
 		summary["SlaCount"] = int(c)
 
+		// SLAs recorded with no penalty, i.e. counted but not deducted
+		var waived int64
+		if result := d.db.Table("sla_schemas").Where("team_id = ? AND service_name = ? AND penalty = 0", teamID, name).Count(&waived); result.Error != nil {
+			return nil, result.Error
+		}
+		summary["SlaWaivedCount"] = int(waived)
+
 		// get last 10 rounds for service
 		var last10Rounds []RoundSchema
 		if result := d.db.Table("round_schemas").Preload("Checks", "team_id = ? AND service_name = ?", teamID, name).Order("id desc").Limit(10).Find(&last10Rounds); result.Error != nil {

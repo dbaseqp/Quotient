@@ -61,11 +61,14 @@ func (a *API) GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type summary struct {
-		ServiceName  string           `json:"ServiceName"`
-		SlaCount     int              `json:"SlaCount"`
-		Last10Rounds []db.RoundSchema `json:"Last10Rounds"`
-		Uptime       float64          `json:"Uptime"`
+		ServiceName     string           `json:"ServiceName"`
+		SlaCount        int              `json:"SlaCount"`
+		SlaWaivedPoints int              `json:"SlaWaivedPoints"`
+		Last10Rounds    []db.RoundSchema `json:"Last10Rounds"`
+		Uptime          float64          `json:"Uptime"`
 	}
+
+	waivedPenalty := a.eng.Config.MiscSettings.HypotheticalSlaPenalty()
 
 	a.eng.RLockUptime()
 	uptimeMap := a.eng.GetUptimePerService()
@@ -73,10 +76,11 @@ func (a *API) GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 	for _, v := range summaries {
 		uptime := uptimeMap[teamID][v["ServiceName"].(string)]
 		s = append(s, summary{
-			ServiceName:  v["ServiceName"].(string),
-			SlaCount:     v["SlaCount"].(int),
-			Last10Rounds: v["Last10Rounds"].([]db.RoundSchema),
-			Uptime:       float64(uptime.PassedChecks) / float64(uptime.TotalChecks),
+			ServiceName:     v["ServiceName"].(string),
+			SlaCount:        v["SlaCount"].(int),
+			SlaWaivedPoints: v["SlaWaivedCount"].(int) * waivedPenalty,
+			Last10Rounds:    v["Last10Rounds"].([]db.RoundSchema),
+			Uptime:          float64(uptime.PassedChecks) / float64(uptime.TotalChecks),
 		})
 	}
 	a.eng.RUnlockUptime()

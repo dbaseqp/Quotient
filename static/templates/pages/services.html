@@ -49,6 +49,8 @@
                                     <div class="d-flex flex-grow-1 align-items-center w-100">
                                         <span class="badge text-bg-secondary" id="service__slas--placeholder"></span>
                                     </div>
+                                    <div class="small text-body-secondary d-none" id="service__slas__waived--placeholder">
+                                    </div>
                                 </div>
                             </div>
                             <div class="d-block d-md-none w-100"></div>
@@ -216,6 +218,11 @@
                     checks.className = ""
 
                     slas.textContent = SLACOUNT
+                    if (SUMMARY.SlaWaivedPoints > 0) {
+                        let waived = service.querySelector("#service__slas__waived--placeholder")
+                        waived.textContent = `Would have cost ${SUMMARY.SlaWaivedPoints} pts`
+                        waived.classList.remove("d-none")
+                    }
                     name.textContent = SERVICENAME
                     uptime_text.textContent = UPTIME + "%"
                     uptime.style.width = UPTIME + "%"

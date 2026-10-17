@@ -131,6 +131,19 @@ type MiscConfig struct {
 	Timeout      int
 	SlaThreshold int
 	SlaPenalty   int
+
+	// slaPenaltySet distinguishes an explicit SlaPenalty = 0 (count SLAs
+	// without deducting points) from an omitted key.
+	slaPenaltySet bool
+}
+
+// HypotheticalSlaPenalty is the per-SLA penalty that would apply if SLAs
+// were penalized, for showing teams what an unpenalized SLA would have cost.
+func (m MiscConfig) HypotheticalSlaPenalty() int {
+	if m.SlaPenalty > 0 {
+		return m.SlaPenalty
+	}
+	return m.SlaThreshold * m.Points
 }
 
 type UIConfig struct {
@@ -221,6 +234,8 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 	for _, undecoded := range md.Undecoded() {
 		slog.Warn("undecoded configuration key \"" + undecoded.String() + "\" will not be used.")
 	}
+
+	tempConf.MiscSettings.slaPenaltySet = md.IsDefined("MiscSettings", "SlaPenalty")
 
 	// Log box count
 	slog.Debug("Configuration state", "boxes", len(tempConf.Box))
@@ -363,7 +378,11 @@ func checkConfig(conf *ConfigSettings) error {
 		conf.MiscSettings.SlaThreshold = 5
 	}
 
-	if conf.MiscSettings.SlaPenalty == 0 {
+	if conf.MiscSettings.SlaPenalty < 0 {
+		errResult = errors.Join(errResult, errors.New("SlaPenalty must not be negative"))
+	}
+
+	if conf.MiscSettings.SlaPenalty == 0 && !conf.MiscSettings.slaPenaltySet {
 		conf.MiscSettings.SlaPenalty = conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
 	}
 
