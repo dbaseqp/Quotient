@@ -130,18 +130,25 @@ type MiscConfig struct {
 	Points       int
 	Timeout      int
 	SlaThreshold int
-	SlaPenalty   int
+	// SlaPenalty is a pointer so an explicit 0 (count SLAs without deducting
+	// points) can be told apart from an omitted key.
+	SlaPenalty *int
+}
 
-	// slaPenaltySet distinguishes an explicit SlaPenalty = 0 (count SLAs
-	// without deducting points) from an omitted key.
-	slaPenaltySet bool
+// SlaPenaltyPoints is the points deducted per SLA, defaulting to
+// SlaThreshold * Points when SlaPenalty is unset.
+func (m MiscConfig) SlaPenaltyPoints() int {
+	if m.SlaPenalty != nil {
+		return *m.SlaPenalty
+	}
+	return m.SlaThreshold * m.Points
 }
 
 // HypotheticalSlaPenalty is the per-SLA penalty that would apply if SLAs
 // were penalized, for showing teams what an unpenalized SLA would have cost.
 func (m MiscConfig) HypotheticalSlaPenalty() int {
-	if m.SlaPenalty > 0 {
-		return m.SlaPenalty
+	if p := m.SlaPenaltyPoints(); p > 0 {
+		return p
 	}
 	return m.SlaThreshold * m.Points
 }
@@ -234,8 +241,6 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 	for _, undecoded := range md.Undecoded() {
 		slog.Warn("undecoded configuration key \"" + undecoded.String() + "\" will not be used.")
 	}
-
-	tempConf.MiscSettings.slaPenaltySet = md.IsDefined("MiscSettings", "SlaPenalty")
 
 	// Log box count
 	slog.Debug("Configuration state", "boxes", len(tempConf.Box))
@@ -378,12 +383,8 @@ func checkConfig(conf *ConfigSettings) error {
 		conf.MiscSettings.SlaThreshold = 5
 	}
 
-	if conf.MiscSettings.SlaPenalty < 0 {
+	if p := conf.MiscSettings.SlaPenalty; p != nil && *p < 0 {
 		errResult = errors.Join(errResult, errors.New("SlaPenalty must not be negative"))
-	}
-
-	if conf.MiscSettings.SlaPenalty == 0 && !conf.MiscSettings.slaPenaltySet {
-		conf.MiscSettings.SlaPenalty = conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
 	}
 
 	if conf.InjectSettings.CompetitionStartTime != "" || conf.InjectSettings.CompetitionTimezone != "" {
@@ -478,7 +479,7 @@ func checkConfig(conf *ConfigSettings) error {
 					conf.Box[i].IP,
 					conf.MiscSettings.Points,
 					conf.MiscSettings.Timeout,
-					conf.MiscSettings.SlaPenalty,
+					conf.MiscSettings.SlaPenaltyPoints(),
 					conf.MiscSettings.SlaThreshold,
 				); err != nil {
 					errResult = errors.Join(errResult, err)

@@ -45,13 +45,10 @@ func TestPropertyConfigTimingConstraints(t *testing.T) {
 			conf.MiscSettings.Delay-conf.MiscSettings.Jitter,
 			"timeout must be < delay - jitter")
 
-		// Property 3: SLA penalty defaults correctly (line 303)
-		if conf.MiscSettings.SlaPenalty == 0 {
-			// If not set, checkConfig sets default
-			expectedPenalty := conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
-			assert.Equal(t, expectedPenalty, conf.MiscSettings.SlaPenalty,
-				"SLA penalty should default to threshold * points")
-		}
+		// Property 3: unset SLA penalty defaults to threshold * points
+		expectedPenalty := conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
+		assert.Equal(t, expectedPenalty, conf.MiscSettings.SlaPenaltyPoints(),
+			"SLA penalty should default to threshold * points")
 
 		// Property 4: Points has sensible default (line 294-296)
 		assert.GreaterOrEqual(t, conf.MiscSettings.Points, 1,

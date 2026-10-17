@@ -29,23 +29,24 @@ BindAddress = "0.0.0.0:8080"
 
 func TestSlaPenaltyExplicitZeroIsKept(t *testing.T) {
 	misc := loadMiscSettings(t, "Points = 2\nSlaThreshold = 4\nSlaPenalty = 0\n")
-	assert.Equal(t, 0, misc.SlaPenalty)
+	assert.Equal(t, 0, misc.SlaPenaltyPoints())
 	assert.Equal(t, 8, misc.HypotheticalSlaPenalty())
 }
 
 func TestSlaPenaltyOmittedUsesDefault(t *testing.T) {
 	misc := loadMiscSettings(t, "Points = 2\nSlaThreshold = 4\n")
-	assert.Equal(t, 8, misc.SlaPenalty)
+	assert.Equal(t, 8, misc.SlaPenaltyPoints())
 	assert.Equal(t, 8, misc.HypotheticalSlaPenalty())
 }
 
 func TestSlaPenaltyExplicitValueIsKept(t *testing.T) {
 	misc := loadMiscSettings(t, "Points = 2\nSlaThreshold = 4\nSlaPenalty = 3\n")
-	assert.Equal(t, 3, misc.SlaPenalty)
+	assert.Equal(t, 3, misc.SlaPenaltyPoints())
 	assert.Equal(t, 3, misc.HypotheticalSlaPenalty())
 }
 
 func TestSlaPenaltyNegativeIsRejected(t *testing.T) {
+	penalty := -5
 	conf := &ConfigSettings{
 		RequiredSettings: RequiredConfig{
 			EventName:    "Test",
@@ -53,7 +54,7 @@ func TestSlaPenaltyNegativeIsRejected(t *testing.T) {
 			DBConnectURL: "postgres://test:test@localhost:5432/test",
 			BindAddress:  "0.0.0.0:8080",
 		},
-		MiscSettings: MiscConfig{SlaPenalty: -5},
+		MiscSettings: MiscConfig{SlaPenalty: &penalty},
 	}
 	require.Error(t, checkConfig(conf))
 }

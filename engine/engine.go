@@ -618,7 +618,7 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 					TeamID:      result.TeamID,
 					ServiceName: result.ServiceName,
 					RoundID:     uint(se.CurrentRound),
-					Penalty:     se.Config.MiscSettings.SlaPenalty,
+					Penalty:     se.Config.MiscSettings.SlaPenaltyPoints(),
 				}
 				if _, err := se.DB.CreateSLA(sla); err != nil {
 					slog.Error("failed to create SLA", "team", result.TeamID, "service", result.ServiceName, "error", err)
@@ -649,6 +649,7 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.PostgresContainer, slaThreshold int) *ScoringEngine {
 	t.Helper()
 
+	slaPenalty := 30
 	conf := &config.ConfigSettings{
 		RequiredSettings: config.RequiredConfig{
 			EventName:    "Test Event",
@@ -662,7 +663,7 @@ func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.Po
 			Timeout:      3,
 			Points:       10,
 			SlaThreshold: slaThreshold,
-			SlaPenalty:   30,
+			SlaPenalty:   &slaPenalty,
 		},
 	}
 
