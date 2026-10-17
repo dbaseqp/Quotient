@@ -137,6 +137,42 @@ func TestProcessCollectedResults_TriggersSLA(t *testing.T) {
 	assert.Equal(t, 1, slaCount, "expected 1 SLA violation")
 }
 
+func TestProcessCollectedResults_WaivedSLARecordsWouldBePenalty(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	redis, pg := testutil.StartContainers(t)
+
+	redis.Client.FlushDB(context.Background())
+	require.NoError(t, pg.DB.ResetScores())
+
+	team := pg.CreateTestTeam(t, "Team Waived SLA", "01")
+
+	engine := NewTestEngine(t, redis, pg, 3)
+	noPenalty := 0
+	engine.Config.MiscSettings.SlaPenalty = &noPenalty
+	engine.CurrentRoundStartTime = time.Now()
+
+	for round := uint(1); round <= 3; round++ {
+		engine.CurrentRound = round
+		engine.processCollectedResults([]checks.Result{
+			{TeamID: team.ID, ServiceName: "failing-svc", Status: false, Points: 0, RoundID: round},
+		})
+	}
+
+	_, slaCount, slaPoints, err := pg.DB.GetTeamScore(team.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, slaCount, "waived SLA should still be counted")
+	assert.Equal(t, 0, slaPoints, "waived SLA should not deduct points")
+
+	summaries, err := pg.DB.GetTeamSummary(team.ID)
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	// threshold 3 * points 10
+	assert.Equal(t, 30, summaries[0]["SlaWaivedPoints"])
+}
+
 func TestProcessCollectedResults_SLAResetsOnPass(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")

@@ -58,23 +58,16 @@ func (d *DB) GetTeamSummary(teamID uint) ([]map[string]any, error) {
 		summary := make(map[string]any)
 		summary["ServiceName"] = name
 
-		// get sla count for this service
-		var c int64
-		if result := d.db.Table("sla_schemas").Where("team_id = ? AND service_name = ?", teamID, name).Count(&c); result.Error != nil {
-			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-				continue
-			} else {
-				return nil, result.Error
-			}
+		// get sla count and waived penalty for this service
+		var sla struct {
+			Count  int
+			Waived int
 		}
-		summary["SlaCount"] = int(c)
-
-		// SLAs recorded with no penalty, i.e. counted but not deducted
-		var waived int64
-		if result := d.db.Table("sla_schemas").Where("team_id = ? AND service_name = ? AND penalty = 0", teamID, name).Count(&waived); result.Error != nil {
+		if result := d.db.Table("sla_schemas").Select("COUNT(*) AS count, COALESCE(SUM(waived_penalty), 0) AS waived").Where("team_id = ? AND service_name = ?", teamID, name).Scan(&sla); result.Error != nil {
 			return nil, result.Error
 		}
-		summary["SlaWaivedCount"] = int(waived)
+		summary["SlaCount"] = sla.Count
+		summary["SlaWaivedPoints"] = sla.Waived
 
 		// get last 10 rounds for service
 		var last10Rounds []RoundSchema

@@ -68,8 +68,6 @@ func (a *API) GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		Uptime          float64          `json:"Uptime"`
 	}
 
-	waivedPenalty := a.eng.Config.MiscSettings.HypotheticalSlaPenalty()
-
 	a.eng.RLockUptime()
 	uptimeMap := a.eng.GetUptimePerService()
 	var s []summary
@@ -78,7 +76,7 @@ func (a *API) GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		s = append(s, summary{
 			ServiceName:     v["ServiceName"].(string),
 			SlaCount:        v["SlaCount"].(int),
-			SlaWaivedPoints: v["SlaWaivedCount"].(int) * waivedPenalty,
+			SlaWaivedPoints: v["SlaWaivedPoints"].(int),
 			Last10Rounds:    v["Last10Rounds"].([]db.RoundSchema),
 			Uptime:          float64(uptime.PassedChecks) / float64(uptime.TotalChecks),
 		})

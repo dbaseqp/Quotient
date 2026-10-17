@@ -136,20 +136,16 @@ type MiscConfig struct {
 }
 
 // SlaPenaltyPoints is the points deducted per SLA, defaulting to
-// SlaThreshold * Points when SlaPenalty is unset.
+// DefaultSlaPenalty when SlaPenalty is unset.
 func (m MiscConfig) SlaPenaltyPoints() int {
 	if m.SlaPenalty != nil {
 		return *m.SlaPenalty
 	}
-	return m.SlaThreshold * m.Points
+	return m.DefaultSlaPenalty()
 }
 
-// HypotheticalSlaPenalty is the per-SLA penalty that would apply if SLAs
-// were penalized, for showing teams what an unpenalized SLA would have cost.
-func (m MiscConfig) HypotheticalSlaPenalty() int {
-	if p := m.SlaPenaltyPoints(); p > 0 {
-		return p
-	}
+// DefaultSlaPenalty is the per-SLA penalty when SlaPenalty is unset.
+func (m MiscConfig) DefaultSlaPenalty() int {
 	return m.SlaThreshold * m.Points
 }
 
@@ -385,6 +381,8 @@ func checkConfig(conf *ConfigSettings) error {
 
 	if p := conf.MiscSettings.SlaPenalty; p != nil && *p < 0 {
 		errResult = errors.Join(errResult, errors.New("SlaPenalty must not be negative"))
+	} else if p != nil && *p == 0 {
+		slog.Warn("SlaPenalty = 0: SLAs are counted but deduct no points")
 	}
 
 	if conf.InjectSettings.CompetitionStartTime != "" || conf.InjectSettings.CompetitionTimezone != "" {

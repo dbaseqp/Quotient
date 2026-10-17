@@ -264,7 +264,7 @@ Jitter = 10                 # Random jitter in seconds (default: 5, must be < De
 Points = 5                  # Points per successful check (default: 1)
 Timeout = 30                # Check timeout in seconds (default: Delay/2)
 SlaThreshold = 5            # Consecutive failures before SLA penalty (default: 5)
-SlaPenalty = 50             # Points deducted for SLA violation (default: SlaThreshold * Points; 0 counts SLAs without deducting)
+SlaPenalty = 50             # Points deducted for SLA violation (default: SlaThreshold * Points; 0 counts SLAs without deducting; not per-check)
 ```
 
 #### UI Settings
