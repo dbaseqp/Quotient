@@ -130,7 +130,9 @@ type MiscConfig struct {
 	Points       int
 	Timeout      int
 	SlaThreshold int
-	SlaPenalty   int
+	// SlaPenalty is a pointer so an explicit 0 (count SLAs without deducting
+	// points) can be told apart from an omitted key.
+	SlaPenalty *int
 }
 
 type UIConfig struct {
@@ -363,8 +365,13 @@ func checkConfig(conf *ConfigSettings) error {
 		conf.MiscSettings.SlaThreshold = 5
 	}
 
-	if conf.MiscSettings.SlaPenalty == 0 {
-		conf.MiscSettings.SlaPenalty = conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
+	if conf.MiscSettings.SlaPenalty == nil {
+		penalty := conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
+		conf.MiscSettings.SlaPenalty = &penalty
+	} else if *conf.MiscSettings.SlaPenalty < 0 {
+		errResult = errors.Join(errResult, errors.New("SlaPenalty must not be negative"))
+	} else if *conf.MiscSettings.SlaPenalty == 0 {
+		slog.Warn("SlaPenalty = 0: SLAs are counted but deduct no points")
 	}
 
 	if conf.InjectSettings.CompetitionStartTime != "" || conf.InjectSettings.CompetitionTimezone != "" {
@@ -459,7 +466,7 @@ func checkConfig(conf *ConfigSettings) error {
 					conf.Box[i].IP,
 					conf.MiscSettings.Points,
 					conf.MiscSettings.Timeout,
-					conf.MiscSettings.SlaPenalty,
+					*conf.MiscSettings.SlaPenalty,
 					conf.MiscSettings.SlaThreshold,
 				); err != nil {
 					errResult = errors.Join(errResult, err)
