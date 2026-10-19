@@ -1,6 +1,8 @@
 package checks
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"fmt"
 	"log/slog"
 	"net"
@@ -12,6 +14,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 )
 
 // TestWebRun_ActualExecution tests Web check Run() with real HTTP server
@@ -500,3 +503,127 @@ func TestServiceTimeout(t *testing.T) {
 		}
 	})
 }
+
+// TestSshRun_DomainExecution tests Ssh.Run() with Domain against an in-process SSH server
+func TestSshRun_DomainExecution(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	signer, err := ssh.NewSignerFromKey(priv)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name           string
+		credUser       string
+		domain         string
+		expectedServer string
+		expectedStatus bool
+	}{
+		{
+			name:           "domain without leading @ formats user@domain",
+			credUser:       "jdoe",
+			domain:         "example.com",
+			expectedServer: "jdoe@example.com",
+			expectedStatus: true,
+		},
+		{
+			name:           "domain with leading @ formats user@domain",
+			credUser:       "jdoe",
+			domain:         "@example.com",
+			expectedServer: "jdoe@example.com",
+			expectedStatus: true,
+		},
+		{
+			name:           "empty domain preserves bare username",
+			credUser:       "jdoe",
+			domain:         "",
+			expectedServer: "jdoe",
+			expectedStatus: true,
+		},
+		{
+			name:           "already qualified username is not double-suffixed",
+			credUser:       "jdoe@example.com",
+			domain:         "example.com",
+			expectedServer: "jdoe@example.com",
+			expectedStatus: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			serverConfig := &ssh.ServerConfig{
+				PasswordCallback: func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
+					if c.User() == tt.expectedServer && string(pass) == "s3cret" {
+						return nil, nil
+					}
+					return nil, fmt.Errorf("rejected %s", c.User())
+				},
+			}
+			serverConfig.AddHostKey(signer)
+
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			defer ln.Close()
+
+			go func() {
+				for {
+					nConn, err := ln.Accept()
+					if err != nil {
+						return
+					}
+					go func(c net.Conn) {
+						defer c.Close()
+						_, chans, reqs, err := ssh.NewServerConn(c, serverConfig)
+						if err != nil {
+							return
+						}
+						go ssh.DiscardRequests(reqs)
+						for newChannel := range chans {
+							if newChannel.ChannelType() != "session" {
+								_ = newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
+								continue
+							}
+							ch, requests, err := newChannel.Accept()
+							if err != nil {
+								return
+							}
+							go func(in <-chan *ssh.Request) {
+								for req := range in {
+									if req.WantReply {
+										_ = req.Reply(true, nil)
+									}
+								}
+							}(requests)
+							defer ch.Close()
+						}
+					}(nConn)
+				}
+			}()
+
+			port := ln.Addr().(*net.TCPAddr).Port
+			sshCheck := &Ssh{
+				Service: Service{
+					Target:  "127.0.0.1",
+					Port:    port,
+					Timeout: 5,
+					Points:  5,
+					TaskCredentials: []TaskCredential{
+						{Username: tt.credUser, Password: "s3cret"},
+					},
+				},
+				Domain: tt.domain,
+			}
+
+			resultsChan := make(chan Result, 1)
+			sshCheck.Run(1, "01", 1, resultsChan)
+
+			select {
+			case result := <-resultsChan:
+				assert.Equal(t, tt.expectedStatus, result.Status, "debug: %s, error: %s", result.Debug, result.Error)
+				assert.Contains(t, result.Debug, tt.expectedServer+":s3cret")
+			case <-time.After(5 * time.Second):
+				t.Fatal("ssh check timed out")
+			}
+		})
+	}
+}
+
