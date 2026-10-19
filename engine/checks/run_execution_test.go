@@ -522,7 +522,7 @@ func TestSshRun_DomainExecution(t *testing.T) {
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		for {
@@ -531,7 +531,7 @@ func TestSshRun_DomainExecution(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				_, chans, reqs, err := ssh.NewServerConn(c, serverConfig)
 				if err != nil {
 					return
@@ -553,7 +553,7 @@ func TestSshRun_DomainExecution(t *testing.T) {
 							}
 						}
 					}(requests)
-					defer ch.Close()
+					defer func() { _ = ch.Close() }()
 				}
 			}(nConn)
 		}
