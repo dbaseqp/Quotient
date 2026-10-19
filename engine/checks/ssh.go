@@ -62,9 +62,9 @@ type commandData struct {
 	Output   string `toml:",omitempty"`
 }
 
-func formatSSHUsername(username, domain string) string {
-	d := strings.TrimPrefix(strings.TrimSpace(domain), "@")
-	if d == "" || strings.Contains(username, "@") {
+func formatSSHUsername(username, domain, teamIdentifier string) string {
+	d := strings.TrimPrefix(strings.TrimSpace(strings.ReplaceAll(domain, "_", teamIdentifier)), "@")
+	if d == "" || strings.ContainsAny(username, `@\`) {
 		return username
 	}
 	return username + "@" + d
@@ -81,7 +81,7 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			response <- checkResult
 			return
 		}
-		username = formatSSHUsername(username, c.Domain)
+		username = formatSSHUsername(username, c.Domain, teamIdentifier)
 
 		config := &ssh.ClientConfig{
 			User:            username,

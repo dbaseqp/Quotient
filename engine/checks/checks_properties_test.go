@@ -197,11 +197,11 @@ func TestPropertyRunnableTimeBoundaries(t *testing.T) {
 	})
 }
 
-// TestPropertyFormatSSHUsername verifies domain formatting invariants for SSH usernames
 func TestPropertyFormatSSHUsername(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		user := rapid.StringMatching(`[a-z][a-z0-9._-]{0,15}`).Draw(t, "user")
 		domain := rapid.StringMatching(`[a-z][a-z0-9.-]{0,15}\.[a-z]{2,6}`).Draw(t, "domain")
+		teamID := rapid.StringMatching(`[0-9]{2}`).Draw(t, "teamID")
 		prefixAt := rapid.Bool().Draw(t, "prefixAt")
 
 		rawDomain := domain
@@ -209,16 +209,16 @@ func TestPropertyFormatSSHUsername(t *testing.T) {
 			rawDomain = "@" + domain
 		}
 
-		// Bare username with domain (with or without leading '@') produces user@domain
-		assert.Equal(t, user+"@"+domain, formatSSHUsername(user, rawDomain))
+		assert.Equal(t, user+"@"+domain, formatSSHUsername(user, rawDomain, teamID))
+		assert.Equal(t, user+"@team"+teamID+"."+domain, formatSSHUsername(user, "team_."+domain, teamID))
 
-		// Empty or '@' domain leaves username unchanged
-		assert.Equal(t, user, formatSSHUsername(user, ""))
-		assert.Equal(t, user, formatSSHUsername(user, "@"))
+		assert.Equal(t, user, formatSSHUsername(user, "", teamID))
+		assert.Equal(t, user, formatSSHUsername(user, "@", teamID))
 
-		// Username that already contains '@' is never modified
-		alreadyQualified := user + "@other.example"
-		assert.Equal(t, alreadyQualified, formatSSHUsername(alreadyQualified, rawDomain))
+		upn := user + "@other.example"
+		assert.Equal(t, upn, formatSSHUsername(upn, rawDomain, teamID))
+
+		netbios := `CORP\` + user
+		assert.Equal(t, netbios, formatSSHUsername(netbios, rawDomain, teamID))
 	})
 }
-
