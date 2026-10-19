@@ -748,6 +748,7 @@ func TestRunnerCreation(t *testing.T) {
 			serviceType: "Ssh",
 			checkData: Ssh{
 				Service: Service{Target: "10.100.1.2", Port: 22, CredLists: []string{"creds.csv"}},
+				Domain:  "example.com",
 			},
 			expectError: false,
 		},
@@ -802,6 +803,9 @@ func TestRunnerCreation(t *testing.T) {
 				err = runner.Verify("box01", "10.100.1.2", 5, 30, 1, 3)
 				require.NoError(t, err)
 				assert.Equal(t, tt.serviceType, runner.GetType())
+				if sshRunner, ok := runner.(*Ssh); ok {
+					assert.Equal(t, "example.com", sshRunner.Domain)
+				}
 			}
 		})
 	}

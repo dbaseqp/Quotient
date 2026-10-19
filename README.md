@@ -441,6 +441,7 @@ SSH login with optional command execution.
 display = "ssh"
 port = 22
 credlists = ["linux_users.credlist"]
+domain = "example.com"    # Domain for user@domain format (optional)
 privkey = "id_rsa"        # Private key file in config/scoredfiles/ (optional)
 badattempts = 3           # Failed login attempts before real attempt (optional)
 
