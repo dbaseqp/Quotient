@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -469,4 +471,117 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 		totalPoints += check.Points
 	}
 	assert.Equal(t, 30, totalPoints)
+}
+
+func TestEnsureCredentialsSeeded_HotReload(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	redis, pg := testutil.StartContainers(t)
+
+	dir := t.TempDir()
+	credlistsDir := filepath.Join(dir, "credlists")
+	require.NoError(t, os.MkdirAll(credlistsDir, 0o750))
+
+	linuxCreds := filepath.Join(credlistsDir, "reload_linux.credlist")
+	require.NoError(t, os.WriteFile(linuxCreds, []byte("alice,pass1\nbob,pass2\n"), 0o600))
+
+	se := NewTestEngine(t, redis, pg, 3)
+	se.configPath = filepath.Join(dir, "event.conf")
+	se.Config.Team = []config.Team{
+		{Name: "ReloadTeam1", Pw: "pw1"},
+		{Name: "ReloadTeam2", Pw: "pw2"},
+	}
+	se.Config.CredlistSettings.Credlist = []config.Credlist{
+		{CredlistName: "Linux", CredlistPath: "reload_linux.credlist"},
+	}
+
+	require.NoError(t, pg.DB.AddTeams(se.Config))
+	require.NoError(t, se.EnsureCredentialsSeeded())
+
+	teamsByName := func() map[string]db.TeamSchema {
+		teams, err := pg.DB.GetTeams()
+		require.NoError(t, err)
+		m := make(map[string]db.TeamSchema, len(teams))
+		for _, tm := range teams {
+			m[tm.Name] = tm
+		}
+		return m
+	}
+
+	credMap := func(teamID uint, credlist string) map[string]string {
+		creds, err := pg.DB.GetTeamCredentials(teamID, credlist)
+		require.NoError(t, err)
+		m := make(map[string]string, len(creds))
+		for _, c := range creds {
+			m[c.Username] = c.Password
+		}
+		return m
+	}
+
+	teams := teamsByName()
+	team1 := teams["ReloadTeam1"]
+	team2 := teams["ReloadTeam2"]
+	require.NotZero(t, team1.ID)
+	require.NotZero(t, team2.ID)
+
+	assert.Equal(t, map[string]string{"alice": "pass1", "bob": "pass2"}, credMap(team1.ID, "reload_linux.credlist"))
+	assert.Equal(t, map[string]string{"alice": "pass1", "bob": "pass2"}, credMap(team2.ID, "reload_linux.credlist"))
+
+	updated, skipped, err := se.UpdateCredentials(team1.ID, "reload_linux.credlist", []string{"alice"}, []string{"team1custom"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, updated)
+	assert.Empty(t, skipped)
+
+	require.NoError(t, os.WriteFile(linuxCreds, []byte("alice,pass1_updated\ncharlie,pass3\n"), 0o600))
+	winCreds := filepath.Join(credlistsDir, "reload_win.credlist")
+	require.NoError(t, os.WriteFile(winCreds, []byte("admin,winpass\n"), 0o600))
+	se.Config.CredlistSettings.Credlist = append(se.Config.CredlistSettings.Credlist,
+		config.Credlist{CredlistName: "Windows", CredlistPath: "reload_win.credlist"},
+	)
+	se.Config.Team = append(se.Config.Team, config.Team{Name: "ReloadTeam3", Pw: "pw3"})
+
+	require.NoError(t, pg.DB.AddTeams(se.Config))
+	require.NoError(t, se.EnsureCredentialsSeeded())
+
+	teams = teamsByName()
+	team3 := teams["ReloadTeam3"]
+	require.NotZero(t, team3.ID)
+
+	// Team 1 keeps its PCR-rotated password for alice, gets charlie, and drops removed bob
+	assert.Equal(t, map[string]string{
+		"alice":   "team1custom",
+		"charlie": "pass3",
+	}, credMap(team1.ID, "reload_linux.credlist"))
+
+	// Team 2 (which never rotated alice) gets the updated baseline password and audit entry
+	assert.Equal(t, map[string]string{
+		"alice":   "pass1_updated",
+		"charlie": "pass3",
+	}, credMap(team2.ID, "reload_linux.credlist"))
+	history, err := se.GetPCRHistory(team2.ID, "reload_linux.credlist", "alice")
+	require.NoError(t, err)
+	require.NotEmpty(t, history)
+	assert.Equal(t, "system", history[0].ChangedBy)
+	assert.Equal(t, "pass1", history[0].OldPassword)
+	assert.Equal(t, "pass1_updated", history[0].NewPassword)
+
+	// Newly added Team 3 is seeded with active credentials and has a working credential lock
+	assert.Equal(t, map[string]string{
+		"alice":   "pass1_updated",
+		"charlie": "pass3",
+	}, credMap(team3.ID, "reload_linux.credlist"))
+	updated3, _, err := se.UpdateCredentials(team3.ID, "reload_linux.credlist", []string{"alice"}, []string{"team3custom"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, updated3)
+	assert.Equal(t, "team3custom", credMap(team3.ID, "reload_linux.credlist")["alice"])
+
+	for _, tm := range []db.TeamSchema{team1, team2, team3} {
+		assert.Equal(t, map[string]string{"admin": "winpass"}, credMap(tm.ID, "reload_win.credlist"))
+	}
+
+	// Resetting Team 1's credlist uses the updated baseline password
+	require.NoError(t, se.ResetCredentials(team1.ID, "reload_linux.credlist", "admin"))
+	assert.Equal(t, "pass1_updated", credMap(team1.ID, "reload_linux.credlist")["alice"])
 }

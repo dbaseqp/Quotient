@@ -39,23 +39,67 @@ type PCRHistorySchema struct {
 	ChangedAt    time.Time `gorm:"autoCreateTime"`
 }
 
-// SeedOriginalCredentials inserts original credentials from config (called once on first startup)
+// SeedOriginalCredentials syncs original and unrotated team credentials with the credlist records.
 func (d *DB) SeedOriginalCredentials(credlistName string, credentials [][]string) error {
-	for _, cred := range credentials {
-		if len(cred) != 2 {
-			continue
+	return d.db.Transaction(func(tx *gorm.DB) error {
+		usernames := make([]string, 0, len(credentials))
+		for _, cred := range credentials {
+			if len(cred) != 2 {
+				continue
+			}
+			username, password := cred[0], cred[1]
+			usernames = append(usernames, username)
+
+			orig := OriginalCredentialSchema{
+				CredlistName: credlistName,
+				Username:     username,
+				Password:     password,
+			}
+			if err := tx.Where("credlist_name = ? AND username = ?", credlistName, username).FirstOrCreate(&orig).Error; err != nil {
+				return err
+			}
+			if orig.Password != password {
+				oldPassword := orig.Password
+				orig.Password = password
+				if err := tx.Save(&orig).Error; err != nil {
+					return err
+				}
+				var unrotated []CredentialSchema
+				if err := tx.Where("credlist_name = ? AND username = ? AND password = ?", credlistName, username, oldPassword).Find(&unrotated).Error; err != nil {
+					return err
+				}
+				for _, tc := range unrotated {
+					history := PCRHistorySchema{
+						TeamID:       tc.TeamID,
+						CredlistName: credlistName,
+						Username:     username,
+						OldPassword:  oldPassword,
+						NewPassword:  password,
+						ChangedBy:    "system",
+					}
+					if err := tx.Create(&history).Error; err != nil {
+						return err
+					}
+				}
+				if err := tx.Model(&CredentialSchema{}).
+					Where("credlist_name = ? AND username = ? AND password = ?", credlistName, username, oldPassword).
+					Update("password", password).Error; err != nil {
+					return err
+				}
+			}
 		}
-		orig := OriginalCredentialSchema{
-			CredlistName: credlistName,
-			Username:     cred[0],
-			Password:     cred[1],
+
+		if len(usernames) == 0 {
+			if err := tx.Where("credlist_name = ?", credlistName).Delete(&OriginalCredentialSchema{}).Error; err != nil {
+				return err
+			}
+			return tx.Where("credlist_name = ?", credlistName).Delete(&CredentialSchema{}).Error
 		}
-		result := d.db.Where("credlist_name = ? AND username = ?", credlistName, cred[0]).FirstOrCreate(&orig)
-		if result.Error != nil {
-			return result.Error
+		if err := tx.Where("credlist_name = ? AND username NOT IN ?", credlistName, usernames).Delete(&OriginalCredentialSchema{}).Error; err != nil {
+			return err
 		}
-	}
-	return nil
+		return tx.Where("credlist_name = ? AND username NOT IN ?", credlistName, usernames).Delete(&CredentialSchema{}).Error
+	})
 }
 
 // SeedTeamCredentials copies original credentials to a team's credential set
@@ -83,16 +127,6 @@ func (d *DB) SeedTeamCredentials(teamID uint) error {
 func (d *DB) GetTeamCredentials(teamID uint, credlistName string) ([]CredentialSchema, error) {
 	var creds []CredentialSchema
 	result := d.db.Where("team_id = ? AND credlist_name = ?", teamID, credlistName).Find(&creds)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	return creds, nil
-}
-
-// GetAllTeamCredentials returns all credentials for a team (all credlists)
-func (d *DB) GetAllTeamCredentials(teamID uint) ([]CredentialSchema, error) {
-	var creds []CredentialSchema
-	result := d.db.Where("team_id = ?", teamID).Find(&creds)
 	if result.Error != nil {
 		return nil, result.Error
 	}
@@ -184,15 +218,6 @@ func (d *DB) GetPCRHistory(teamID uint, credlistName string, username string) ([
 		return nil, result.Error
 	}
 	return history, nil
-}
-
-// IsCredentialsSeeded checks if original credentials have been seeded
-func (d *DB) IsCredentialsSeeded() (bool, error) {
-	var count int64
-	if err := d.db.Model(&OriginalCredentialSchema{}).Count(&count).Error; err != nil {
-		return false, err
-	}
-	return count > 0, nil
 }
 
 // GetOriginalCredentials returns original credentials for a credlist

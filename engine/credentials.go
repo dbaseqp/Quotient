@@ -8,6 +8,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/dbaseqp/Quotient/engine/config"
 	"github.com/dbaseqp/Quotient/engine/db"
 )
 
@@ -23,101 +24,61 @@ func safeOpenInDir(baseDir, relativePath string) (*os.File, error) {
 }
 
 func (se *ScoringEngine) EnsureCredentialsSeeded() error {
+	type credlistRecords struct {
+		path    string
+		records [][]string
+	}
+
+	credlistsDir := config.CredlistsDir(se.configPath)
+	loaded := make([]credlistRecords, 0, len(se.Config.CredlistSettings.Credlist))
+	for _, configCredlist := range se.Config.CredlistSettings.Credlist {
+		credlistPath := configCredlist.CredlistPath
+
+		file, err := safeOpenInDir(credlistsDir, credlistPath)
+		if err != nil {
+			return fmt.Errorf("failed to open credlist file %s: %v", credlistPath, err)
+		}
+
+		records, err := csv.NewReader(file).ReadAll()
+		if closeErr := file.Close(); closeErr != nil {
+			slog.Error("failed to close credlist file", "path", credlistPath, "error", closeErr)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read credlist file %s: %v", credlistPath, err)
+		}
+		loaded = append(loaded, credlistRecords{path: credlistPath, records: records})
+	}
+
 	teams, err := se.DB.GetTeams()
 	if err != nil {
 		return fmt.Errorf("failed to get teams: %v", err)
 	}
 
 	se.setTeamCredentialLocks(teams)
-
-	// Check if credentials are already seeded in DB
-	seeded, err := se.DB.IsCredentialsSeeded()
-	if err != nil {
-		return fmt.Errorf("failed to check if credentials are seeded: %v", err)
+	locked := make([]*sync.Mutex, 0, len(teams))
+	defer func() {
+		for i := len(locked) - 1; i >= 0; i-- {
+			locked[i].Unlock()
+		}
+	}()
+	for _, team := range teams {
+		mu, err := se.teamCredentialLock(team.ID)
+		if err != nil {
+			return err
+		}
+		mu.Lock()
+		locked = append(locked, mu)
 	}
 
-	if !seeded {
-		slog.Info("Seeding credentials from config files to database")
-		// Seed original credentials from files
-		for _, configCredlist := range se.Config.CredlistSettings.Credlist {
-			credlistPath := configCredlist.CredlistPath
-
-			file, err := safeOpenInDir("config/credlists", credlistPath)
-			if err != nil {
-				return fmt.Errorf("failed to open credlist file %s: %v", credlistPath, err)
-			}
-
-			reader := csv.NewReader(file)
-			records, err := reader.ReadAll()
-			if closeErr := file.Close(); closeErr != nil {
-				slog.Error("failed to close credlist file", "path", credlistPath, "error", closeErr)
-			}
-			if err != nil {
-				return fmt.Errorf("failed to read credlist file %s: %v", credlistPath, err)
-			}
-
-			if err := se.DB.SeedOriginalCredentials(credlistPath, records); err != nil {
-				return fmt.Errorf("failed to seed original credentials for %s: %v", credlistPath, err)
-			}
+	for _, cl := range loaded {
+		if err := se.DB.SeedOriginalCredentials(cl.path, cl.records); err != nil {
+			return fmt.Errorf("failed to seed original credentials for %s: %v", cl.path, err)
 		}
+	}
 
-		// Seed team credentials from originals
-		for _, team := range teams {
-			if err := se.DB.SeedTeamCredentials(team.ID); err != nil {
-				return fmt.Errorf("failed to seed credentials for team %d: %v", team.ID, err)
-			}
-		}
-		slog.Info("Credentials seeded successfully")
-	} else {
-		slog.Info("Credentials already seeded in database")
-		// Check for new teams that need seeding
-		for _, team := range teams {
-			creds, err := se.DB.GetAllTeamCredentials(team.ID)
-			if err != nil {
-				return fmt.Errorf("failed to get credentials for team %d: %v", team.ID, err)
-			}
-			if len(creds) == 0 {
-				slog.Info("Seeding credentials for new team", "team_id", team.ID)
-				if err := se.DB.SeedTeamCredentials(team.ID); err != nil {
-					return fmt.Errorf("failed to seed credentials for team %d: %v", team.ID, err)
-				}
-			}
-		}
-
-		// Check for new credlists that need seeding
-		for _, configCredlist := range se.Config.CredlistSettings.Credlist {
-			credlistPath := configCredlist.CredlistPath
-			origCreds, err := se.DB.GetOriginalCredentials(credlistPath)
-			if err != nil {
-				return fmt.Errorf("failed to check original credentials for %s: %v", credlistPath, err)
-			}
-			if len(origCreds) == 0 {
-				slog.Info("Seeding new credlist", "credlist", credlistPath)
-				file, err := safeOpenInDir("config/credlists", credlistPath)
-				if err != nil {
-					return fmt.Errorf("failed to open credlist file %s: %v", credlistPath, err)
-				}
-
-				reader := csv.NewReader(file)
-				records, err := reader.ReadAll()
-				if closeErr := file.Close(); closeErr != nil {
-					slog.Error("failed to close credlist file", "path", credlistPath, "error", closeErr)
-				}
-				if err != nil {
-					return fmt.Errorf("failed to read credlist file %s: %v", credlistPath, err)
-				}
-
-				if err := se.DB.SeedOriginalCredentials(credlistPath, records); err != nil {
-					return fmt.Errorf("failed to seed original credentials for %s: %v", credlistPath, err)
-				}
-
-				// Seed to all teams
-				for _, team := range teams {
-					if err := se.DB.SeedTeamCredentials(team.ID); err != nil {
-						return fmt.Errorf("failed to seed credentials for team %d: %v", team.ID, err)
-					}
-				}
-			}
+	for _, team := range teams {
+		if err := se.DB.SeedTeamCredentials(team.ID); err != nil {
+			return fmt.Errorf("failed to seed credentials for team %d: %v", team.ID, err)
 		}
 	}
 
