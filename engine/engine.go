@@ -80,8 +80,14 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 		DB:               d,
 	}
 
-	// Start watching config file for changes
-	if err := conf.WatchConfig(configPath); err != nil {
+	if err := conf.WatchConfig(configPath, func() {
+		if err := se.DB.AddTeams(se.Config); err != nil {
+			slog.Error("failed to add teams on config reload", "error", err)
+		}
+		if err := se.EnsureCredentialsSeeded(); err != nil {
+			slog.Error("failed to seed credentials on config reload", "error", err)
+		}
+	}); err != nil {
 		slog.Error("Failed to start config watcher", "error", err)
 	}
 
