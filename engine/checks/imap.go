@@ -19,18 +19,15 @@ type Imap struct {
 
 func (c Imap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		// Create a dialer so we can set timeouts
 		dialer := net.Dialer{
 			Timeout: time.Duration(c.Timeout) * time.Second,
 		}
 
-		// Defining these allow the if/else block below
 		var cl *client.Client
 		var err error
 
-		// Connect to server with TLS or not
 		if c.Encrypted {
-			cl, err = client.DialWithDialerTLS(&dialer, fmt.Sprintf("%s:%d", c.Target, c.Port), &tls.Config{}) // #nosec G402 -- competition services may use self-signed certs
+			cl, err = client.DialWithDialerTLS(&dialer, fmt.Sprintf("%s:%d", c.Target, c.Port), &tls.Config{InsecureSkipVerify: true}) // #nosec G402 -- competition services may use self-signed certs
 		} else {
 			cl, err = client.DialWithDialer(&dialer, fmt.Sprintf("%s:%d", c.Target, c.Port))
 		}
