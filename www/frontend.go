@@ -48,6 +48,7 @@ func (router *Router) pageData(r *http.Request, unique map[string]any) map[strin
 	data["name"] = "QUOTIENT"
 	data["config"] = router.Config
 	data["error"] = ""
+	data["path"] = r.URL.Path
 
 	if data["roles"] != nil {
 		roles := data["roles"].([]string)
@@ -141,10 +142,7 @@ func (router *Router) PcrPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (router *Router) AdminPage(w http.ResponseWriter, r *http.Request) {
-	page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/admin/admin.html"))
-	if err := page.ExecuteTemplate(w, "base", router.pageData(r, map[string]any{"title": "Admin"})); err != nil {
-		panic(err)
-	}
+	http.Redirect(w, r, "/admin/engine", http.StatusTemporaryRedirect)
 }
 
 func (router *Router) AdministrateTeamsPage(w http.ResponseWriter, r *http.Request) {
