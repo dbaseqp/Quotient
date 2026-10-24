@@ -2,233 +2,333 @@
 <div class="d-flex w-100 h-100">
     <div class="pt-4 w-100 h-100 overflow-y-scroll">
         <div class="container">
-            <div class="row">
-                <div class="row mb-3">
-                    <div class="mb-3">
-                        <h3>Engine Controls</h3>
-                        <button id="pauseButton" class="btn rounded-0"></button>
-                        <button id="resetButton" class="btn btn-danger rounded-0">Reset Scores</button>
-                        <button id="competitionStartButton" class="btn rounded-0"></button>
+            <header class="mb-4">
+                <h1 class="h3 mb-1">Engine &amp; Scoring Data</h1>
+                <p class="text-body-secondary mb-0">Control competition state, monitor round timing, and export scoring records.</p>
+            </header>
+
+            <div id="engine-alert" class="alert d-none" role="status" aria-live="polite"></div>
+
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Engine Controls</h2>
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                        <div class="d-flex flex-wrap gap-2">
+                            <button id="pauseButton" type="button" class="btn btn-secondary" disabled>Loading...</button>
+                            <button id="competitionStartButton" type="button" class="btn btn-secondary" disabled>Loading...</button>
+                        </div>
+                        <button id="resetButton" type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#resetScoresModal">
+                            <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>Reset Scores
+                        </button>
                     </div>
                 </div>
-                <div class="row mb-3">
-                    <div class="col">
-                        <h3>Round Progress</h3>
-                        <p id="round__number"></p>
-                        <div class="progress">
-                            <div id="roundProgress"
-                                class="progress-bar progress-bar-striped progress-bar-animated bg-success"
-                                role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0"
-                                aria-valuemax="100"></div>
-                        </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-2">Round Progress</h2>
+                    <p id="round__number" class="text-body-secondary small mb-2">Loading round status...</p>
+                    <div class="progress" style="height: 1.25rem;">
+                        <div id="roundProgress"
+                            class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                            role="progressbar" aria-label="Current round progress" style="width: 0%;" aria-valuenow="0" aria-valuemin="0"
+                            aria-valuemax="100">0%</div>
                     </div>
                 </div>
-                <div class="row mb-3">
-                    <div class="col">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h3 class="mb-0">Scoring Data</h3>
-                            <div>
-                                <button class="btn btn-primary me-2" onclick="exportJSON()">Export JSON</button>
-                                <button class="btn btn-primary" onclick="exportCSV()">Export CSV</button>
-                            </div>
-                        </div>
-                        <div class="card">
-                            <div class="card-body">
-                                <pre id="scoringData" class="m-0"></pre>
-                            </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                        <h2 class="h5 mb-0">Scoring Data</h2>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="exportJSON()">
+                                <i class="bi bi-filetype-json me-1" aria-hidden="true"></i>Export JSON
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="exportCSV()">
+                                <i class="bi bi-filetype-csv me-1" aria-hidden="true"></i>Export CSV
+                            </button>
                         </div>
                     </div>
+                    <details>
+                        <summary class="btn btn-sm btn-outline-secondary mb-2">View Raw JSON Payload</summary>
+                        <pre id="scoringData" class="m-0 p-3 bg-body-secondary rounded" style="max-height: 420px; overflow-y: auto;"></pre>
+                    </details>
                 </div>
-                <script>
-                    const PROGRESS = document.getElementById('roundProgress');
-                    let LASTROUND = 0;
-                    let CURRENTROUND = 0;
-                    let NEXTROUND = 0;
-                    let RUNNING = false;
-                    let COMPETITION_STARTED = false;
-
-                    document.getElementById('pauseButton').addEventListener('click', () => {
-                        fetch('/api/engine/pause', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                pause: document.getElementById('pauseButton').textContent.includes('Pause'),
-                            }),
-                        })
-                            .then(response => response.json())
-                            .then((data) => {
-                                window.location.reload()
-                            })
-                            .catch(error => console.error('Error pausing engine:', error));
-                    });
-                    document.getElementById('resetButton').addEventListener('click', () => {
-                        if (confirm("This will reset all scores and the engine but keep injects and their submissions. Are you sure?")) {
-                            fetch('/api/engine/reset')
-                                .then(response => response.json())
-                                .then((data) => {
-                                    window.location.reload()
-                                })
-                                .catch(error => {
-                                    console.error('Error resetting engine:', error)
-                                });
-                        }
-                    });
-                    document.getElementById('competitionStartButton').addEventListener('click', () => {
-                        const action = COMPETITION_STARTED ? 'stop' : 'start';
-                        const message = COMPETITION_STARTED
-                            ? "This will prevent non-admin users from accessing the competition. Are you sure?"
-                            : "This will allow non-admin users to access the competition. Are you sure?";
-
-                        if (confirm(message)) {
-                            fetch('/api/competition/start', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                    started: !COMPETITION_STARTED,
-                                }),
-                            })
-                                .then(response => response.json())
-                                .then((data) => {
-                                    window.location.reload()
-                                })
-                                .catch(error => console.error('Error toggling competition start:', error));
-                        }
-                    });
-                    function getEngineData() {
-                        fetch('/api/engine')
-                            .then(response => response.json())
-                            .then(data => {
-                                LASTROUND = data["last_round"];
-                                CURRENTROUND = data["current_round_time"];
-                                NEXTROUND = data["next_round_time"];
-                                RUNNING = data["running"];
-                                COMPETITION_STARTED = data["competition_started"];
-
-                                let last_round_start_time = new Date(LASTROUND.StartTime).toLocaleString();
-                                let current_round_time = new Date(CURRENTROUND).toLocaleString();
-                                let next_round_time = new Date(NEXTROUND).toLocaleString();
-
-                                document.getElementById('round__number').textContent = `Round ${LASTROUND.ID} was at ${last_round_start_time}.
-                                Round ${LASTROUND.ID + 1} started at ${current_round_time} and should end at ${next_round_time}.`;
-
-                                const PAUSE_BUTTON = document.getElementById('pauseButton')
-                                if (RUNNING) {
-                                    PAUSE_BUTTON.textContent = 'Pause Engine';
-                                    PAUSE_BUTTON.classList.add('btn-warning');
-                                } else {
-                                    PAUSE_BUTTON.textContent = 'Resume Engine';
-                                    PAUSE_BUTTON.classList.add('btn-success');
-                                }
-
-                                const COMP_START_BUTTON = document.getElementById('competitionStartButton')
-                                if (COMPETITION_STARTED) {
-                                    COMP_START_BUTTON.textContent = 'Stop Competition';
-                                    COMP_START_BUTTON.classList.add('btn-danger');
-                                } else {
-                                    COMP_START_BUTTON.textContent = 'Start Competition';
-                                    COMP_START_BUTTON.classList.add('btn-success');
-                                }
-                            })
-                            .catch(error => console.error('Error fetching engine status:', error));
-                    }
-                    function updateProgress() {
-                        const now = Date.now() / 1000; // current time in seconds
-                        let last_round_start_time = new Date(CURRENTROUND) / 1000;
-                        let next_round_start_time = new Date(NEXTROUND) / 1000;
-
-                        const elapsed = now - last_round_start_time;
-                        const duration = next_round_start_time - last_round_start_time;
-
-                        const progress = Math.round((elapsed / duration) * 100);
-
-                        if (progress >= 100) {
-                            PROGRESS.textContent = '100%';
-                            PROGRESS.style.width = '100%';
-                            PROGRESS.setAttribute('aria-valuenow', 100);
-                            if (RUNNING) {
-                                window.location.reload();
-                            }
-                            return;
-                        }
-
-                        PROGRESS.textContent = `${progress}%`;
-
-                        PROGRESS.style.width = `${progress}%`;
-                        PROGRESS.setAttribute('aria-valuenow', progress);
-                    }
-                    function fetchScores() {
-                        fetch('/api/engine/export/scores')
-                            .then((response) => {
-                                if (!response.ok) {
-                                    throw new Error('Network response was not ok');
-                                }
-                                return response.json()
-                            })
-                            .then((data) => {
-                                scoreData = data;
-                                document.getElementById('scoringData').textContent = JSON.stringify(data, null, 2);
-                            })
-                            .catch(error => {
-                                console.error('Error fetching scoring data:', error)
-                            });
-                    }
-                    async function exportJSON() {
-                        await fetchScores();
-                        const dataStr = JSON.stringify(scoreData, null, 2);
-                        const dataBlob = new Blob([dataStr], {type: 'application/json'});
-                        const url = URL.createObjectURL(dataBlob);
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.download = 'scoring_data.json';
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        URL.revokeObjectURL(url);
-                    }
-                    async function exportCSV() {
-                        await fetchScores();
-                        const headers = ['Team', 'Service', 'Service Points', 'SLA Violations', 'SLA Penalty', 'Total Points'];
-                        const csvRows = [headers.join(',')];
-
-                        scoreData.forEach(team => {
-                            team.services.forEach(service => {
-                                const row = [
-                                    team.team_name,
-                                    service.service_name,
-                                    service.service_points,
-                                    service.sla_violations,
-                                    service.sla_penalty,
-                                    team.total_points
-                                ];
-                                csvRows.push(row.join(','));
-                            });
-                        });
-
-                        const csvStr = csvRows.join('\n');
-                        const dataBlob = new Blob([csvStr], {type: 'text/csv'});
-                        const url = URL.createObjectURL(dataBlob);
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.download = 'scoring_data.csv';
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        URL.revokeObjectURL(url);
-                    }
-
-                    fetchScores();
-                    getEngineData()
-                    updateProgress()
-
-                    // update every second
-                    setInterval(updateProgress, 1000);
-                </script>
             </div>
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="resetScoresModal" tabindex="-1" aria-labelledby="resetScoresModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="resetScoresModalLabel">
+                    <i class="bi bi-exclamation-triangle text-danger me-2" aria-hidden="true"></i>Reset Competition Scores
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>This will permanently reset all service check scores and round history in the scoring engine while preserving injects and their submissions.</p>
+                <div class="alert alert-warning mb-0">
+                    <strong>Warning:</strong> This action cannot be undone.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmResetScoresButton">Reset All Scores</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const PROGRESS = document.getElementById('roundProgress');
+    const ALERT_BOX = document.getElementById('engine-alert');
+    let LASTROUND = 0;
+    let CURRENTROUND = 0;
+    let NEXTROUND = 0;
+    let RUNNING = false;
+    let COMPETITION_STARTED = false;
+    let scoreData = [];
+    let lastRolloverFetch = 0;
+
+    function showEngineAlert(message, type = 'info') {
+        if (!ALERT_BOX) return;
+        ALERT_BOX.textContent = message;
+        ALERT_BOX.className = `alert alert-${type}`;
+    }
+
+    document.getElementById('pauseButton').addEventListener('click', () => {
+        const PAUSE_BUTTON = document.getElementById('pauseButton');
+        const shouldPause = PAUSE_BUTTON.textContent.includes('Pause');
+        PAUSE_BUTTON.disabled = true;
+        fetch('/api/engine/pause', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                pause: shouldPause,
+            }),
+        })
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .then(() => {
+                showEngineAlert(shouldPause ? 'Scoring engine paused.' : 'Scoring engine resumed.', 'success');
+                getEngineData();
+                fetchScores();
+            })
+            .catch(error => {
+                console.error('Error pausing engine:', error);
+                showEngineAlert(`Failed to update engine state: ${error.message}`, 'danger');
+            })
+            .finally(() => {
+                PAUSE_BUTTON.disabled = false;
+            });
+    });
+
+    document.getElementById('confirmResetScoresButton').addEventListener('click', () => {
+        const confirmBtn = document.getElementById('confirmResetScoresButton');
+        confirmBtn.disabled = true;
+        fetch('/api/engine/reset')
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .then(() => {
+                bootstrap.Modal.getInstance(document.getElementById('resetScoresModal'))?.hide();
+                showEngineAlert('Scores and rounds have been reset.', 'success');
+                getEngineData();
+                fetchScores();
+            })
+            .catch(error => {
+                console.error('Error resetting engine:', error);
+                showEngineAlert(`Failed to reset scores: ${error.message}`, 'danger');
+            })
+            .finally(() => {
+                confirmBtn.disabled = false;
+            });
+    });
+
+    document.getElementById('competitionStartButton').addEventListener('click', () => {
+        const COMP_BUTTON = document.getElementById('competitionStartButton');
+        const message = COMPETITION_STARTED
+            ? "This will prevent non-admin users from accessing the competition. Are you sure?"
+            : "This will allow non-admin users to access the competition. Are you sure?";
+
+        if (confirm(message)) {
+            COMP_BUTTON.disabled = true;
+            fetch('/api/competition/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    started: !COMPETITION_STARTED,
+                }),
+            })
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.json();
+                })
+                .then(() => {
+                    showEngineAlert(!COMPETITION_STARTED ? 'Competition started.' : 'Competition stopped.', 'success');
+                    getEngineData();
+                })
+                .catch(error => {
+                    console.error('Error toggling competition start:', error);
+                    showEngineAlert(`Failed to toggle competition state: ${error.message}`, 'danger');
+                })
+                .finally(() => {
+                    COMP_BUTTON.disabled = false;
+                });
+        }
+    });
+
+    function getEngineData() {
+        fetch('/api/engine')
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .then(data => {
+                LASTROUND = data["last_round"] || { ID: 0, StartTime: new Date().toISOString() };
+                CURRENTROUND = data["current_round_time"];
+                NEXTROUND = data["next_round_time"];
+                RUNNING = data["running"];
+                COMPETITION_STARTED = data["competition_started"];
+
+                const last_round_start_time = new Date(LASTROUND.StartTime).toLocaleString();
+                const current_round_time = new Date(CURRENTROUND).toLocaleString();
+                const next_round_time = new Date(NEXTROUND).toLocaleString();
+
+                document.getElementById('round__number').textContent = `Round ${LASTROUND.ID} was at ${last_round_start_time}. Round ${LASTROUND.ID + 1} started at ${current_round_time} and should end at ${next_round_time}.`;
+
+                const PAUSE_BUTTON = document.getElementById('pauseButton');
+                PAUSE_BUTTON.disabled = false;
+                PAUSE_BUTTON.className = 'btn ' + (RUNNING ? 'btn-warning' : 'btn-success');
+                PAUSE_BUTTON.textContent = RUNNING ? 'Pause Engine' : 'Resume Engine';
+
+                const COMP_START_BUTTON = document.getElementById('competitionStartButton');
+                COMP_START_BUTTON.disabled = false;
+                COMP_START_BUTTON.className = 'btn ' + (COMPETITION_STARTED ? 'btn-danger' : 'btn-success');
+                COMP_START_BUTTON.textContent = COMPETITION_STARTED ? 'Stop Competition' : 'Start Competition';
+            })
+            .catch(error => {
+                console.error('Error fetching engine status:', error);
+                showEngineAlert('Failed to fetch engine status.', 'danger');
+            });
+    }
+
+    function updateProgress() {
+        if (!CURRENTROUND || !NEXTROUND) return;
+        const now = Date.now() / 1000;
+        const last_round_start_time = new Date(CURRENTROUND) / 1000;
+        const next_round_start_time = new Date(NEXTROUND) / 1000;
+
+        const elapsed = now - last_round_start_time;
+        const duration = Math.max(1, next_round_start_time - last_round_start_time);
+
+        const progress = Math.max(0, Math.round((elapsed / duration) * 100));
+
+        if (progress >= 100) {
+            PROGRESS.textContent = '100%';
+            PROGRESS.style.width = '100%';
+            PROGRESS.setAttribute('aria-valuenow', 100);
+            if (RUNNING && Date.now() - lastRolloverFetch > 3000) {
+                lastRolloverFetch = Date.now();
+                getEngineData();
+                fetchScores();
+            }
+            return;
+        }
+
+        PROGRESS.textContent = `${progress}%`;
+        PROGRESS.style.width = `${progress}%`;
+        PROGRESS.setAttribute('aria-valuenow', progress);
+    }
+
+    function fetchScores() {
+        return fetch('/api/engine/export/scores')
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then((data) => {
+                scoreData = data || [];
+                document.getElementById('scoringData').textContent = JSON.stringify(scoreData, null, 2);
+            })
+            .catch(error => {
+                console.error('Error fetching scoring data:', error);
+            });
+    }
+
+    function escapeCSVCell(value) {
+        let str = String(value ?? '');
+        if (/^[=+\-@]/.test(str)) {
+            str = "'" + str;
+        }
+        if (/[",\n\r]/.test(str)) {
+            return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+    }
+
+    async function exportJSON() {
+        await fetchScores();
+        const dataStr = JSON.stringify(scoreData, null, 2);
+        const dataBlob = new Blob([dataStr], {type: 'application/json'});
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'scoring_data.json';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    async function exportCSV() {
+        await fetchScores();
+        const headers = ['Team', 'Service', 'Service Points', 'SLA Violations', 'SLA Penalty', 'Total Points'];
+        const csvRows = [headers.join(',')];
+
+        (scoreData || []).forEach(team => {
+            (team.services || []).forEach(service => {
+                const row = [
+                    escapeCSVCell(team.team_name),
+                    escapeCSVCell(service.service_name),
+                    escapeCSVCell(service.service_points),
+                    escapeCSVCell(service.sla_violations),
+                    escapeCSVCell(service.sla_penalty),
+                    escapeCSVCell(team.total_points)
+                ];
+                csvRows.push(row.join(','));
+            });
+        });
+
+        const csvStr = csvRows.join('\n');
+        const dataBlob = new Blob([csvStr], {type: 'text/csv'});
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'scoring_data.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    fetchScores();
+    getEngineData();
+    updateProgress();
+
+    setInterval(updateProgress, 1000);
+</script>
 {{ end }}

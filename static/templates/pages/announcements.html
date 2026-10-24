@@ -1,21 +1,24 @@
 {{ define "page" }}
-<div class="d-flex w-100 h-100">
-    <div class="nav-pills d-flex flex-column h-100 overflow-y-scroll justify-content-start align-items-center bg-body-secondary"
-        role="tablist" id="tab-container">
+<div class="d-flex flex-column flex-md-row w-100 h-100 overflow-hidden">
+    <div class="nav-pills d-flex flex-column overflow-y-auto justify-content-start align-items-stretch bg-body-secondary border-bottom border-end-md flex-shrink-0"
+        role="tablist" aria-label="Announcements list" id="tab-container">
         {{ if contains .roles "admin" }}
-        <button class="btn btn-primary rounded-0 w-100" data-bs-toggle="modal" data-bs-target="#create__form">
-            Create Announcement
-        </button>
+        <div class="p-2 border-bottom">
+            <button class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#create__form">
+                <i class="bi bi-megaphone me-1" aria-hidden="true"></i>Create Announcement
+            </button>
+        </div>
 
-        <div class="modal fade" id="create__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+        <div class="modal fade" id="create__form" data-bs-backdrop="static" tabindex="-1"
             aria-labelledby="create__form--label" aria-hidden="true">
             <div class="modal-dialog modal-xl modal-fullscreen-lg-down">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h1 class="modal-title fs-5" id="create__form--label">Create announcement</h1>
+                        <h1 class="modal-title fs-5" id="create__form--label">Create Announcement</h1>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
+                        <div id="create-announcement-error" class="alert alert-danger d-none" role="alert"></div>
                         <form id="create-announcement-form" onsubmit="return formCreate(event)">
                             <div class="mb-3">
                                 <label for="announcement-title" class="form-label required">Title</label>
@@ -23,8 +26,9 @@
                             </div>
                             <div class="mb-3">
                                 <label for="announcement-description" class="form-label required">Description</label>
-                                <textarea class="form-control" id="announcement-description" rows="3"
-                                    required></textarea>
+                                <textarea class="form-control" id="announcement-description" rows="4"
+                                    aria-describedby="announcement-description-help" required></textarea>
+                                <div id="announcement-description-help" class="form-text">Markdown formatting is supported.</div>
                             </div>
                             <div class="mb-3">
                                 <label for="announcement-opentime" class="form-label required">Announcement Release
@@ -32,15 +36,20 @@
                                 <input type="datetime-local" class="form-control" id="announcement-opentime" required>
                             </div>
                             <div class="mb-3">
-                                <label for="announcement-files" class="form-label">Files</label>
+                                <label for="announcement-files" class="form-label">Attachments</label>
                                 <input type="file" class="form-control" id="announcement-files" multiple>
                             </div>
-
                         </form>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" form="create-announcement-form">Create</button>
+                        <button type="submit" class="btn btn-primary" id="create-announcement-submit" form="create-announcement-form">
+                            <span class="btn-text">Create</span>
+                            <span class="btn-loading d-none">
+                                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                Creating...
+                            </span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -53,6 +62,14 @@
                 const DESCRIPTION = FORM.querySelector("#announcement-description");
                 const OPENTIME = FORM.querySelector("#announcement-opentime");
                 const FILES = FORM.querySelector("#announcement-files");
+                const ERROR_BOX = document.getElementById("create-announcement-error");
+                const SUBMIT_BTN = document.getElementById("create-announcement-submit");
+
+                ERROR_BOX.classList.add("d-none");
+                SUBMIT_BTN.disabled = true;
+                SUBMIT_BTN.querySelector(".btn-text")?.classList.add("d-none");
+                SUBMIT_BTN.querySelector(".btn-loading")?.classList.remove("d-none");
+
                 const PAYLOAD = new FormData();
                 PAYLOAD.append("title", TITLE.value);
                 PAYLOAD.append("description", DESCRIPTION.value);
@@ -64,33 +81,50 @@
                 fetch("/api/announcements/create", {
                     method: "POST",
                     body: PAYLOAD,
-                }).then((response) => {
-                    return response.json();
-                }).then((data) => {
-                    if (data.error) {
-                        console.error(data.error);
-                        return;
-                    } else {
-                        window.location.reload();
-                    }
+                })
+                .then((response) => {
+                    return response.json()
+                        .catch(() => ({ error: `Request failed (HTTP ${response.status})` }))
+                        .then((data) => {
+                            if (!response.ok || data.error) {
+                                throw new Error(data.error || `Request failed (HTTP ${response.status})`);
+                            }
+                            return data;
+                        });
+                })
+                .then(() => {
+                    window.location.reload();
+                })
+                .catch((err) => {
+                    console.error(err);
+                    ERROR_BOX.textContent = err.message || "Failed to create announcement.";
+                    ERROR_BOX.classList.remove("d-none");
+                })
+                .finally(() => {
+                    SUBMIT_BTN.disabled = false;
+                    SUBMIT_BTN.querySelector(".btn-text")?.classList.remove("d-none");
+                    SUBMIT_BTN.querySelector(".btn-loading")?.classList.add("d-none");
                 });
             };
         </script>
 
-        <div class="modal fade" id="delete__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+        <div class="modal fade" id="delete__form" data-bs-backdrop="static" tabindex="-1"
             aria-labelledby="delete__form--label" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title" id="delete__form--label">Delete Announcement</h5>
+                        <h2 class="modal-title fs-5" id="delete__form--label">Delete Announcement</h2>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                        <p>This action cannot be undone.</p>
+                        <div id="delete-announcement-error" class="alert alert-danger d-none" role="alert"></div>
+                        <p class="mb-0">Permanently delete this announcement and its attachments? This action cannot be undone.</p>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-danger" onclick="deleteAnnouncement(event)">Delete</button>
+                        <button type="button" class="btn btn-danger" id="delete-announcement-submit" onclick="deleteAnnouncement(event)">
+                            Delete Announcement
+                        </button>
                     </div>
                 </div>
             </div>
@@ -98,159 +132,212 @@
         <script>
             document.getElementById('delete__form').addEventListener('show.bs.modal', function (event) {
                 const pane = event.relatedTarget.closest(".tab-pane");
-                // get pane's id number
                 const id = pane.id.split("--")[1];
+                document.getElementById("delete-announcement-error")?.classList.add("d-none");
                 document.getElementById("delete__form").setAttribute("data-announcement-id", id);
             });
 
-            const deleteAnnouncement = (event) => {
+            const deleteAnnouncement = () => {
                 const ID = document.getElementById("delete__form").getAttribute("data-announcement-id");
-                fetch(`/api/announcements/${ID}`, {
+                const ERROR_BOX = document.getElementById("delete-announcement-error");
+                const DELETE_BTN = document.getElementById("delete-announcement-submit");
+
+                ERROR_BOX.classList.add("d-none");
+                DELETE_BTN.disabled = true;
+
+                fetch(`/api/announcements/${encodeURIComponent(ID)}`, {
                     method: "DELETE",
-                }).then((response) => {
-                    return response.json();
-                }).then((data) => {
-                    if (data.error) {
-                        console.error(data.error);
-                        return;
-                    } else {
-                        console.log(data);
-                        window.location.reload();
-                    }
+                })
+                .then((response) => {
+                    return response.json()
+                        .catch(() => ({ error: `Delete failed (HTTP ${response.status})` }))
+                        .then((data) => {
+                            if (!response.ok || data.error) {
+                                throw new Error(data.error || `Delete failed (HTTP ${response.status})`);
+                            }
+                            return data;
+                        });
+                })
+                .then(() => {
+                    window.location.reload();
+                })
+                .catch((err) => {
+                    console.error(err);
+                    ERROR_BOX.textContent = err.message || "Failed to delete announcement.";
+                    ERROR_BOX.classList.remove("d-none");
+                    DELETE_BTN.disabled = false;
                 });
             };
         </script>
         {{ end }}
-        <button class="active nav-link w-100 text-start bg-body rounded-0 border placeholder-glow" id="tab--placeholder"
+        <button class="nav-link w-100 text-start bg-body rounded-0 border-bottom px-3 py-2 placeholder-glow" id="tab--placeholder"
             data-bs-toggle="pill" data-bs-target="#pane--placeholder" type="button" role="tab"
-            aria-controls="pane--placeholder" aria-selected="true">
-            <div class="container-fluid">
-                <div class="row">
-                    <div class="col-10">
-                        <div class="d-flex flex-column">
-                            <span class="text-nowrap overflow-hidden text-truncate">
-                                <span id="tab__title--placeholder" class="placeholder placeholder-xs col-12"></span>
-                            </span>
-                            <span class="text-nowrap overflow-hidden text-truncate">
-                                <span id="tab__subject--placeholder" class="placeholder placeholder-xs col-12"></span>
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                <div class="row justify-content-center align-items-center text-center">
-                    <span id="tab__time--placeholder" style="font-size: 10px;"
-                        class="placeholder placeholder-xs col-4 mb-1"></span>
-                </div>
+            aria-controls="pane--placeholder" aria-selected="false">
+            <div class="d-flex flex-column gap-1">
+                <span class="fw-semibold text-truncate d-block" id="tab__title--placeholder">
+                    <span class="placeholder placeholder-xs col-10"></span>
+                </span>
+                <span class="small text-body-secondary d-block" id="tab__time--placeholder">
+                    <span class="placeholder placeholder-xs col-6"></span>
+                </span>
             </div>
         </button>
     </div>
-    <div class="tab-content d-flex flex-column flex-grow-1 justify-content-start align-items-center"
+
+    <div class="tab-content d-flex flex-column flex-grow-1 justify-content-start align-items-stretch overflow-y-auto"
         id="pane-container">
-        <div class="active placeholder-glow w-100 tab-pane p-4 show position-relative h-100" tabindex="0"
-            role="tabpanel" data-bs-toggle="pill" id="pane--placeholder">
+        <div id="announcements-empty" class="d-none text-center my-auto p-5">
+            <i class="bi bi-broadcast-pin fs-1 text-body-secondary" aria-hidden="true"></i>
+            <h1 class="h5 mt-3 mb-1">No Announcements Yet</h1>
+            <p class="text-body-secondary mb-0">Competition announcements will appear here as soon as they are released.</p>
+        </div>
+
+        <div id="announcements-error" class="alert alert-danger m-4 d-none" role="alert"></div>
+
+        <div class="placeholder-glow w-100 tab-pane p-4 position-relative h-100" tabindex="0"
+            role="tabpanel" id="pane--placeholder">
             <div class="d-flex flex-column h-100">
-                <div class="d-flex flex-column">
-                    <span id="pane__from--placeholder" class="placeholder col-4"></span>
-                    <span id="pane__subject--placeholder" class="placeholder col-6"></span>
-                    <hr class="my-4">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                    <div>
+                        <h1 class="h4 mb-1" id="pane__subject--placeholder">
+                            <span class="placeholder col-6"></span>
+                        </h1>
+                        <p class="text-body-secondary small mb-0" id="pane__time--placeholder">
+                            <span class="placeholder col-4"></span>
+                        </p>
+                    </div>
                     {{ if contains .roles "admin" }}
-                    <div class="d-flex">
-                        <button class="btn btn-outline-danger rounded-1 m-2" data-bs-toggle="modal"
+                    <div>
+                        <button class="btn btn-sm btn-outline-danger rounded-1" data-bs-toggle="modal"
                             data-bs-target="#delete__form">
-                            Delete
+                            <i class="bi bi-trash me-1" aria-hidden="true"></i>Delete
                         </button>
                     </div>
                     {{ end }}
-                    <div class="h-100 p-4 overflow-auto">
-                        <div>
-                            <p id="pane__description--placeholder" class="placeholder col-12"></p>
-                        </div>
+                </div>
+                <hr class="my-3">
+                <div class="flex-grow-1 overflow-auto">
+                    <div id="pane__description--placeholder">
+                        <p class="placeholder col-12"></p>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+<style>
+    #tab-container .nav-link.active {
+        color: var(--bs-nav-pills-link-active-color);
+        background-color: var(--bs-nav-pills-link-active-bg) !important;
+    }
+    #tab-container .nav-link.active .text-body-secondary {
+        color: rgba(var(--bs-white-rgb), 0.85) !important;
+    }
+</style>
 <script>
     const TAB_CONTAINER = document.getElementById("tab-container")
     const PANE_CONTAINER = document.getElementById("pane-container")
     const PLACEHOLDER_TAB = document.getElementById("tab--placeholder")
     const PLACEHOLDER_PANE = document.getElementById("pane--placeholder")
+    const EMPTY_STATE = document.getElementById("announcements-empty")
+    const ERROR_STATE = document.getElementById("announcements-error")
 
     fetch("/api/announcements")
         .then((response) => {
             if (!response.ok) {
-                Promise.reject(response)
+                return Promise.reject(new Error(`Failed to load announcements (HTTP ${response.status})`))
             }
             return response.json()
         })
         .then((data) => {
-            let tabs = [];
-            let panes = [];
+            PLACEHOLDER_TAB.classList.add("d-none")
+            PLACEHOLDER_PANE.classList.add("d-none")
 
-            for (const announcement of data) {
-                announcement.OpenTime = (new Date(announcement.OpenTime)).toLocaleString()
-                let tab = PLACEHOLDER_TAB.cloneNode(true)
-                let pane = PLACEHOLDER_PANE.cloneNode(true)
-                tab.classList.remove("active", "placeholder-glow")
-                pane.classList.remove("active", "placeholder-glow")
+            if (!data || data.length === 0) {
+                EMPTY_STATE.classList.remove("d-none")
+                return
+            }
 
+            const tabs = []
+            const panes = []
 
-                let title = tab.querySelector("#tab__title--placeholder")
-                let a = tab.querySelector("#tab__subject--placeholder")
-                let time = tab.querySelector("#tab__time--placeholder")
+            data.forEach((announcement, index) => {
+                const formattedTime = (new Date(announcement.OpenTime)).toLocaleString()
+                const tab = PLACEHOLDER_TAB.cloneNode(true)
+                const pane = PLACEHOLDER_PANE.cloneNode(true)
+                const isFirst = index === 0
 
-                title.className = ""
-                a.className = ""
-                time.className = ""
+                tab.classList.remove("placeholder-glow", "d-none")
+                pane.classList.remove("placeholder-glow", "d-none")
+                tab.classList.toggle("active", isFirst)
+                tab.setAttribute("aria-selected", isFirst ? "true" : "false")
+                pane.classList.toggle("active", isFirst)
+                pane.classList.toggle("show", isFirst)
 
+                tab.id = `tab--${announcement.ID}`
+                tab.setAttribute("data-bs-target", `#pane--${announcement.ID}`)
+                tab.setAttribute("aria-controls", `pane--${announcement.ID}`)
+
+                pane.id = `pane--${announcement.ID}`
+                pane.setAttribute("aria-labelledby", `tab--${announcement.ID}`)
+
+                const title = tab.querySelector("#tab__title--placeholder")
+                const time = tab.querySelector("#tab__time--placeholder")
+                title.id = `tab__title--${announcement.ID}`
+                time.id = `tab__time--${announcement.ID}`
                 title.textContent = announcement.Title
-                a.textContent = announcement.Title
-                time.textContent = announcement.OpenTime
+                time.textContent = formattedTime
 
-                let from = pane.querySelector("#pane__from--placeholder")
-                let subject = pane.querySelector("#pane__subject--placeholder")
-                let description = pane.querySelector("#pane__description--placeholder")
+                const subject = pane.querySelector("#pane__subject--placeholder")
+                const paneTime = pane.querySelector("#pane__time--placeholder")
+                const description = pane.querySelector("#pane__description--placeholder")
+                subject.id = `pane__subject--${announcement.ID}`
+                paneTime.id = `pane__time--${announcement.ID}`
+                description.id = `pane__description--${announcement.ID}`
 
-                from.className = ""
-                subject.className = ""
-                description.className = ""
-
-                from.textContent = announcement.Title
                 subject.textContent = announcement.Title
-                description.textContent = announcement.Description
+                paneTime.textContent = `Released: ${formattedTime}`
+                description.replaceChildren(window.renderSafeMarkdown(announcement.Description))
 
                 if (announcement.AnnouncementFileNames != null && announcement.AnnouncementFileNames.length > 0) {
-                    let files = document.createElement("div")
-                    files.className = "d-flex flex-column"
-                    let header = document.createElement("h5")
-                    header.textContent = "Announcement Attachments"
+                    const files = document.createElement("div")
+                    files.className = "mt-4 pt-3 border-top"
+                    const header = document.createElement("h2")
+                    header.className = "h6 fw-semibold mb-2"
+                    header.textContent = "Attachments"
                     files.appendChild(header)
-                    let ul = document.createElement("ul")
-                    files.appendChild(ul)
+                    const ul = document.createElement("ul")
+                    ul.className = "list-unstyled mb-0"
                     for (const file of announcement.AnnouncementFileNames) {
-                        let li = document.createElement("li")
-                        let a = document.createElement("a")
-                        a.href = `/announcements/${announcement.ID}/${file}`
+                        const li = document.createElement("li")
+                        li.className = "mb-1"
+                        const a = document.createElement("a")
+                        a.href = `/announcements/${encodeURIComponent(announcement.ID)}/${encodeURIComponent(file)}`
                         a.textContent = file
                         a.target = "_blank"
+                        a.rel = "noopener noreferrer"
                         li.appendChild(a)
-                        files.appendChild(li)
+                        ul.appendChild(li)
                     }
+                    files.appendChild(ul)
                     description.appendChild(files)
                 }
 
-                tab.setHTMLUnsafe(tab.outerHTML.replaceAll("placeholder", announcement.ID))
-                pane.setHTMLUnsafe(pane.outerHTML.replaceAll("placeholder", announcement.ID))
-                tabs.push(tab.firstChild)
-                panes.push(pane.firstChild)
-            }
-            PLACEHOLDER_TAB.classList.add("d-none")
-            PLACEHOLDER_PANE.classList.add("d-none")
+                tabs.push(tab)
+                panes.push(pane)
+            })
+
             for (let i = 0; i < tabs.length; i++) {
                 TAB_CONTAINER.appendChild(tabs[i])
                 PANE_CONTAINER.appendChild(panes[i])
             }
+        })
+        .catch((err) => {
+            console.error(err)
+            PLACEHOLDER_TAB.classList.add("d-none")
+            PLACEHOLDER_PANE.classList.add("d-none")
+            ERROR_STATE.textContent = err.message || "Failed to load announcements."
+            ERROR_STATE.classList.remove("d-none")
         })
 </script>
 {{ end }}

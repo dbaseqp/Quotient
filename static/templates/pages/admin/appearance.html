@@ -2,13 +2,13 @@
 <div class="d-flex w-100 h-100">
     <div class="pt-4 w-100 h-100 overflow-y-scroll">
         <div class="container">
-            <div class="row">
-                <h3>Appearance/Roles Settings</h3>
-            </div>
+            <header class="mb-4">
+                <h1 class="h3 mb-1">Appearance &amp; Role Settings</h1>
+            </header>
             <div class="row">
                 <form class="row g-3" onsubmit="return formSubmit(event)">
-                    <div class="col-12">
-                        <label for="inputName" class="form-label">Public Scoreboard</label>
+                    <fieldset class="col-12 mb-3">
+                        <legend class="col-form-label pt-0 fw-semibold">Public Scoreboard</legend>
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="radio--publicScoreboard" id="radio--publicScoreboard1">
                             <label class="form-check-label" for="radio--publicScoreboard1">
@@ -21,9 +21,9 @@
                                 Disabled
                             </label>
                         </div>
-                    </div>
-                    <div class="col-12">
-                        <label for="inputName" class="form-label">Show Announcements to Red Team</label>
+                    </fieldset>
+                    <fieldset class="col-12 mb-3">
+                        <legend class="col-form-label pt-0 fw-semibold">Show Announcements to Red Team</legend>
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="radio--showAnnouncementsRedTeam" id="radio--showAnnouncementsRedTeam1">
                             <label class="form-check-label" for="radio--showAnnouncementsRedTeam1">
@@ -36,14 +36,21 @@
                                 Disabled
                             </label>
                         </div>
-                    </div>
+                    </fieldset>
                     <div class="col-12">
                         <div class="d-flex justify-content-end">
                             <button class="btn btn-primary" type="submit">Save</button>
                         </div>
                     </div>
+                </form>
             </div>
         </div>
     </div>
 </div>
+<script>
+    const formSubmit = (event) => {
+        event.preventDefault();
+        return false;
+    };
+</script>
 {{ end }}

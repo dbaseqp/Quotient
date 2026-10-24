@@ -1,2 +1,36 @@
 {{ define "topnav" }}
+{{ if and (ne .username nil) (or (eq .title "Admin") (eq .title "Appearance")) }}
+<nav class="bg-body-tertiary border-bottom px-3 py-2 flex-shrink-0" aria-label="Admin navigation">
+    <div class="container-fluid d-flex flex-wrap align-items-center justify-content-between gap-2 px-0">
+        <a href="/admin" class="text-decoration-none fw-semibold text-body d-flex align-items-center">
+            <i class="bi bi-shield-lock me-2 text-primary" aria-hidden="true"></i>Admin Console
+        </a>
+        <ul class="nav nav-pills nav-fill gap-1" id="admin-subnav">
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 small" href="/admin/engine" data-admin-nav="/admin/engine">
+                    <i class="bi bi-cpu me-1" aria-hidden="true"></i>Engine &amp; Scores
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 small" href="/admin/runners" data-admin-nav="/admin/runners">
+                    <i class="bi bi-activity me-1" aria-hidden="true"></i>Runner Tasks
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 small" href="/admin/teams" data-admin-nav="/admin/teams">
+                    <i class="bi bi-people me-1" aria-hidden="true"></i>Team Configuration
+                </a>
+            </li>
+        </ul>
+    </div>
+</nav>
+<script>
+    document.querySelectorAll('#admin-subnav [data-admin-nav]').forEach(link => {
+        if (window.location.pathname === link.getAttribute('data-admin-nav')) {
+            link.classList.add('active')
+            link.setAttribute('aria-current', 'page')
+        }
+    })
+</script>
+{{ end }}
 {{ end }}

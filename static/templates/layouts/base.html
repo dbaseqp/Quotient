@@ -6,7 +6,7 @@
     <!-- Metadata and resources
     –––––––––––––––––––––––––––––––––––––––––––––––––– -->
     <title>{{ if .title }}{{ .title }} - {{ end }}{{ .name }}</title>
-    <link rel="icon" type="image/ico" href="/static/assets/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/static/assets/favicon.svg" />
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -18,17 +18,14 @@
 
     <link rel="stylesheet" href="/static/assets/bootstrap-icons-1.11.3/font/bootstrap-icons.min.css">
 
-    <!-- Popperjs -->
-    <script src="/static/assets/popper-2.11.8/popper.min.js"></script>
-
-    <!-- Bootstrap -->
+    <!-- Bootstrap (includes Popper) -->
     <script src="/static/assets/bootstrap-5.3.3-dist/js/bootstrap.bundle.min.js"></script>
     <link rel="stylesheet" href="/static/assets/css/main.css">
 
+    {{ if eq .title "Injects" }}
     <!-- Datatables -->
     <script src="https://code.jquery.com/jquery-3.7.1.slim.min.js"
         integrity="sha256-kmHvs0B+OpCW5GVHUNjv9rOmY0IvSIRcf7zGUDTDQM8=" crossorigin="anonymous"></script>
-
     <link rel="stylesheet" href="https://cdn.datatables.net/2.1.8/css/dataTables.dataTables.css"
         integrity="sha384-eCorNQ6xLKDT9aok8iCYVVP8S813O3kaugZFLBt1YhfR80d1ZgkNcf2ghiTRzRno" crossorigin="anonymous" />
     <link rel="stylesheet" href="https://cdn.datatables.net/2.1.8/css/dataTables.bootstrap5.css"
@@ -37,17 +34,24 @@
         integrity="sha384-cDXquhvkdBprgcpTQsrhfhxXRN4wfwmWauQ3wR5ZTyYtGrET2jd68wvJ1LlDqlQG" crossorigin="anonymous"></script>
     <script src="https://cdn.datatables.net/2.1.8/js/dataTables.bootstrap5.js"
         integrity="sha384-ytWx70TEZNWKvhA4mV4nQPHLRzPJeBf42voNnsXOSCv7ZxlBWQIceO1G8bJirjxl" crossorigin="anonymous"></script>
+    {{ end }}
 
+    {{ if eq .title "Graphs" }}
     <!-- ApexCharts -->
     <script src="https://cdn.jsdelivr.net/npm/apexcharts@5.3.6/dist/apexcharts.min.js"
         integrity="sha384-mrR3K8Jvv+o9bZ6Yu9HWI0M8tuzo5VWNi4fWcmmbFq3NbB+WvjW/tF/wnELivEnc" crossorigin="anonymous"></script>
+    {{ end }}
 
+    {{ if eq .title "Red Team" }}
     <!-- GoJS -->
     <script src="/static/assets/go-debug.js"></script>
     <script src="/static/assets/Datainspector.js"></script>
+    {{ end }}
 
+    {{ if or (eq .title "Announcements") (eq .title "Injects") (eq .title "Red Team") }}
     <!-- Markdown Processing -->
     <script src="/static/assets/markdown/marked.min.js"></script>
+    {{ end }}
 
     <!-- Custom -->
     <script src="/static/assets/custom.js"></script>

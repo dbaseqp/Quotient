@@ -1,20 +1,22 @@
 {{ define "page" }}
-<div class="inject-layout d-flex w-100 h-100">
-    <div class="nav-pills d-flex flex-column h-100 overflow-y-scroll justify-content-start align-items-center bg-body-secondary"
-        role="tablist" id="tab-container">
+<div class="inject-layout d-flex flex-column flex-md-row w-100 h-100 overflow-hidden">
+    <div class="nav-pills d-flex flex-column overflow-y-auto justify-content-start align-items-stretch bg-body-secondary border-bottom border-end-md flex-shrink-0"
+        role="tablist" aria-label="Injects list" id="tab-container">
         <button class="btn btn-warning rounded-0 w-100 d-none" onclick="refreshInjects()" id="refresh--btn">
-            Refresh
+            <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>New updates available — Refresh
         </button>
         {{ if or (contains .roles "admin") (contains .roles "inject") }}
-        <button class="btn btn-primary rounded-0 w-100" data-bs-toggle="modal" data-bs-target="#create__form">
-            Create Inject
-        </button>
-        <button class="btn btn-outline-primary rounded-0 w-100" data-bs-toggle="modal"
-            data-bs-target="#import__form">
-            Import Injects
-        </button>
+        <div class="p-2 d-flex flex-column gap-2 border-bottom">
+            <button class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#create__form">
+                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Create Inject
+            </button>
+            <button class="btn btn-outline-primary w-100" data-bs-toggle="modal"
+                data-bs-target="#import__form">
+                <i class="bi bi-file-earmark-zip me-1" aria-hidden="true"></i>Import Injects
+            </button>
+        </div>
 
-        <div class="modal fade" id="import__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+        <div class="modal fade" id="import__form" data-bs-backdrop="static" tabindex="-1"
             aria-labelledby="import__form--label" aria-hidden="true">
             <div class="modal-dialog modal-xl modal-fullscreen-lg-down">
                 <div class="modal-content">
@@ -142,7 +144,7 @@
             IMPORT_SUBMIT_BUTTON.addEventListener("click", () => sendInjectImport(false))
         </script>
 
-        <div class="modal fade" id="create__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+        <div class="modal fade" id="create__form" data-bs-backdrop="static" tabindex="-1"
             aria-labelledby="create__form--label" aria-hidden="true">
             <div class="modal-dialog modal-xl modal-fullscreen-lg-down">
                 <div class="modal-content">
@@ -151,6 +153,7 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
+                        <div id="create-inject-error" class="alert alert-danger d-none" role="alert"></div>
                         <form id="create-inject-form" onsubmit="return formCreate(event)">
                             <div class="mb-3">
                                 <label for="inject-title" class="form-label required">Title</label>
@@ -158,19 +161,23 @@
                             </div>
                             <div class="mb-3">
                                 <label for="inject-description" class="form-label required">Description</label>
-                                <textarea class="form-control" id="inject-description" rows="3" required></textarea>
+                                <textarea class="form-control" id="inject-description" rows="4"
+                                    aria-describedby="inject-description-help" required></textarea>
+                                <div id="inject-description-help" class="form-text">Markdown formatting is supported.</div>
                             </div>
-                            <div class="mb-3">
-                                <label for="inject-opentime" class="form-label required">Inject Release Time</label>
-                                <input type="datetime-local" class="form-control" id="inject-opentime" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="inject-duetime" class="form-label required">Inject Due Time</label>
-                                <input type="datetime-local" class="form-control" id="inject-duetime" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="inject-closetime" class="form-label required">Inject Close Time</label>
-                                <input type="datetime-local" class="form-control" id="inject-closetime" required>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-4">
+                                    <label for="inject-opentime" class="form-label required">Release Time</label>
+                                    <input type="datetime-local" class="form-control" id="inject-opentime" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="inject-duetime" class="form-label required">Due Time</label>
+                                    <input type="datetime-local" class="form-control" id="inject-duetime" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="inject-closetime" class="form-label required">Close Time</label>
+                                    <input type="datetime-local" class="form-control" id="inject-closetime" required>
+                                </div>
                             </div>
                             <div class="mb-3">
                                 <label for="inject-files" class="form-label">Files</label>
@@ -180,7 +187,13 @@
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" form="create-inject-form">Create</button>
+                        <button type="submit" class="btn btn-primary" id="create-inject-submit" form="create-inject-form">
+                            <span class="btn-text">Create</span>
+                            <span class="btn-loading d-none">
+                                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                Creating...
+                            </span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -195,15 +208,27 @@
                 const DUETIME = FORM.querySelector("#inject-duetime");
                 const CLOSETIME = FORM.querySelector("#inject-closetime");
                 const FILES = FORM.querySelector("#inject-files");
+                const ERROR_BOX = document.getElementById("create-inject-error");
+                const SUBMIT_BTN = document.getElementById("create-inject-submit");
+
+                const showCreateError = (msg) => {
+                    ERROR_BOX.textContent = msg;
+                    ERROR_BOX.classList.remove("d-none");
+                };
+                ERROR_BOX.classList.add("d-none");
 
                 if (new Date(OPENTIME.value) > new Date(DUETIME.value)) {
-                    alert("Open time must be before or equal to due time.");
+                    showCreateError("Release time must be before or equal to due time.");
                     return false;
                 }
                 if (new Date(DUETIME.value) > new Date(CLOSETIME.value)) {
-                    alert("Due time must be before or equal to close time.");
+                    showCreateError("Due time must be before or equal to close time.");
                     return false;
                 }
+
+                SUBMIT_BTN.disabled = true;
+                SUBMIT_BTN.querySelector(".btn-text")?.classList.add("d-none");
+                SUBMIT_BTN.querySelector(".btn-loading")?.classList.remove("d-none");
 
                 const PAYLOAD = new FormData();
                 PAYLOAD.append("title", TITLE.value);
@@ -218,22 +243,39 @@
                 fetch("/api/injects/create", {
                     method: "POST",
                     body: PAYLOAD,
-                }).then((response) => {
-                    return response.json();
-                }).then((data) => {
-                    if (data.error) {
-                        console.error(data.error);
-                        return;
-                    } else {
-                        console.log(data);
-                        bootstrap.Modal.getInstance(document.getElementById('create__form')).hide();
-                        refreshInjects();
+                })
+                .then((response) => {
+                    return response.json()
+                        .catch(() => ({ error: `Request failed (HTTP ${response.status})` }))
+                        .then((data) => {
+                            if (!response.ok || data.error) {
+                                throw new Error(data.error || `Request failed (HTTP ${response.status})`);
+                            }
+                            return data;
+                        });
+                })
+                .then((data) => {
+                    if (data && data.ID) {
+                        activeInjectID = String(data.ID);
                     }
+                    FORM.reset();
+                    bootstrap.Modal.getInstance(document.getElementById('create__form'))?.hide();
+                    showPageBanner("Inject created successfully.", "success");
+                    refreshInjects();
+                })
+                .catch((err) => {
+                    console.error(err);
+                    showCreateError(err.message || "Failed to create inject.");
+                })
+                .finally(() => {
+                    SUBMIT_BTN.disabled = false;
+                    SUBMIT_BTN.querySelector(".btn-text")?.classList.remove("d-none");
+                    SUBMIT_BTN.querySelector(".btn-loading")?.classList.add("d-none");
                 });
             };
         </script>
 
-        <div class="modal fade" id="edit__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+        <div class="modal fade" id="edit__form" data-bs-backdrop="static" tabindex="-1"
             aria-labelledby="edit__form--label" aria-hidden="true">
             <div class="modal-dialog modal-xl modal-fullscreen-lg-down">
                 <div class="modal-content">
@@ -242,6 +284,7 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
+                        <div id="edit-inject-error" class="alert alert-danger d-none" role="alert"></div>
                         <form id="edit-inject-form" onsubmit="return formEdit(event)">
                             <div class="mb-3">
                                 <label for="edit-inject-title" class="form-label required">Title</label>
@@ -249,73 +292,72 @@
                             </div>
                             <div class="mb-3">
                                 <label for="edit-inject-description" class="form-label required">Description</label>
-                                <textarea class="form-control" id="edit-inject-description" rows="3"
-                                    required></textarea>
+                                <textarea class="form-control" id="edit-inject-description" rows="4"
+                                    aria-describedby="edit-inject-description-help" required></textarea>
+                                <div id="edit-inject-description-help" class="form-text">Markdown formatting is supported.</div>
                             </div>
-                            <div class="mb-3">
-                                <label for="edit-inject-opentime" class="form-label required">Inject Release
-                                    Time</label>
-                                <input type="datetime-local" class="form-control" id="edit-inject-opentime" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="edit-inject-duetime" class="form-label required">Inject Due Time</label>
-                                <input type="datetime-local" class="form-control" id="edit-inject-duetime" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="edit-inject-closetime" class="form-label required">Inject Close Time</label>
-                                <input type="datetime-local" class="form-control" id="edit-inject-closetime" required>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-4">
+                                    <label for="edit-inject-opentime" class="form-label required">Release Time</label>
+                                    <input type="datetime-local" class="form-control" id="edit-inject-opentime" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="edit-inject-duetime" class="form-label required">Due Time</label>
+                                    <input type="datetime-local" class="form-control" id="edit-inject-duetime" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="edit-inject-closetime" class="form-label required">Close Time</label>
+                                    <input type="datetime-local" class="form-control" id="edit-inject-closetime" required>
+                                </div>
                             </div>
                             <div class="mb-3">
                                 <label for="edit-inject-files" class="form-label">New Files</label>
                                 <input type="file" class="form-control" id="edit-inject-files" multiple>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Existing Files</label>
+                                <label class="form-label">Existing Files (uncheck to remove)</label>
                                 <ul id="existing-files-list" class="list-group">
                                     <!-- Existing files will be populated here -->
                                 </ul>
                             </div>
                             <script>
-                                // when the modal is opened, call this function to populate the existing files
                                 document.getElementById('edit__form').addEventListener('show.bs.modal', function (event) {
                                     const pane = event.relatedTarget.closest(".tab-pane");
-                                    // get pane's id number
-
                                     const id = pane.id.split("--")[1];
-                                    const title = document.getElementById(`tab__title--${id}`);
-                                    const description = document.getElementById(`pane__description--${id}`);
-                                    const opentime = document.getElementById(`tab__time--${id}`);
-                                    const duetime = document.getElementById(`pane__due--${id}`);
-                                    const closetime = document.getElementById(`pane__close--${id}`);
-                                    const existingFiles = pane.querySelectorAll("a[href^='/injects/']");
+                                    const existingFiles = pane.querySelectorAll("a[data-inject-attachment='true']");
                                     const existingFilesList = document.getElementById("existing-files-list");
 
-                                    document.getElementById("edit-inject-title").value = title.textContent;
-                                    document.getElementById("edit-inject-description").value = description.firstElementChild.firstElementChild.textContent;
-                                    const formatDateTimeLocal = (dateString) => {
-                                        const date = new Date(dateString);
+                                    document.getElementById("edit-inject-error")?.classList.add("d-none");
+                                    document.getElementById("edit-inject-title").value = pane.dataset.rawTitle || "";
+                                    document.getElementById("edit-inject-description").value = pane.dataset.rawDescription || "";
+
+                                    const formatDateTimeLocal = (isoString) => {
+                                        const date = new Date(isoString);
+                                        if (isNaN(date.getTime())) return "";
                                         const tzOffset = date.getTimezoneOffset() * 60000;
-                                        const localISOTime = (new Date(date - tzOffset)).toISOString().slice(0, 16);
-                                        return localISOTime;
+                                        return (new Date(date - tzOffset)).toISOString().slice(0, 16);
                                     };
 
-                                    document.getElementById("edit-inject-opentime").value = formatDateTimeLocal(opentime.textContent);
-                                    document.getElementById("edit-inject-duetime").value = formatDateTimeLocal(duetime.textContent);
-                                    document.getElementById("edit-inject-closetime").value = formatDateTimeLocal(closetime.textContent);
+                                    document.getElementById("edit-inject-opentime").value = formatDateTimeLocal(pane.dataset.openTimeIso);
+                                    document.getElementById("edit-inject-duetime").value = formatDateTimeLocal(pane.dataset.dueTimeIso);
+                                    document.getElementById("edit-inject-closetime").value = formatDateTimeLocal(pane.dataset.closeTimeIso);
 
                                     existingFilesList.innerHTML = "";
 
-                                    existingFiles.forEach((fileLink) => {
+                                    existingFiles.forEach((fileLink, idx) => {
                                         const li = document.createElement("li");
                                         li.className = "list-group-item d-flex justify-content-between align-items-center";
                                         const a = document.createElement("a");
                                         a.href = fileLink.href;
                                         a.textContent = fileLink.textContent;
                                         a.target = "_blank";
+                                        a.rel = "noopener noreferrer";
                                         li.appendChild(a);
                                         const checkbox = document.createElement("input");
                                         checkbox.type = "checkbox";
                                         checkbox.className = "form-check-input";
+                                        checkbox.id = `keep-file-${id}-${idx}`;
+                                        checkbox.setAttribute("aria-label", `Keep ${fileLink.textContent}`);
                                         checkbox.checked = true;
                                         li.appendChild(checkbox);
                                         existingFilesList.appendChild(li);
@@ -328,7 +370,13 @@
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" form="edit-inject-form">Save Changes</button>
+                        <button type="submit" class="btn btn-primary" id="edit-inject-submit" form="edit-inject-form">
+                            <span class="btn-text">Save Changes</span>
+                            <span class="btn-loading d-none">
+                                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                Saving...
+                            </span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -344,18 +392,28 @@
                 const CLOSETIME = FORM.querySelector("#edit-inject-closetime");
                 const FILES = FORM.querySelector("#edit-inject-files");
                 const EXISTING_FILES_LIST = FORM.querySelector("#existing-files-list");
+                const ERROR_BOX = document.getElementById("edit-inject-error");
+                const SUBMIT_BTN = document.getElementById("edit-inject-submit");
 
-                // get id from event
                 const ID = FORM.getAttribute("data-inject-id");
+                const showEditError = (msg) => {
+                    ERROR_BOX.textContent = msg;
+                    ERROR_BOX.classList.remove("d-none");
+                };
+                ERROR_BOX.classList.add("d-none");
 
                 if (new Date(OPENTIME.value) > new Date(DUETIME.value)) {
-                    alert("Open time must be before or equal to due time.");
+                    showEditError("Release time must be before or equal to due time.");
                     return false;
                 }
                 if (new Date(DUETIME.value) > new Date(CLOSETIME.value)) {
-                    alert("Due time must be before or equal to close time.");
+                    showEditError("Due time must be before or equal to close time.");
                     return false;
                 }
+
+                SUBMIT_BTN.disabled = true;
+                SUBMIT_BTN.querySelector(".btn-text")?.classList.add("d-none");
+                SUBMIT_BTN.querySelector(".btn-loading")?.classList.remove("d-none");
 
                 const PAYLOAD = new FormData();
                 PAYLOAD.append("title", TITLE.value);
@@ -375,37 +433,52 @@
                     }
                 });
 
-                fetch(`/api/injects/${ID}`, {
+                fetch(`/api/injects/${encodeURIComponent(ID)}`, {
                     method: "POST",
                     body: PAYLOAD,
-                }).then((response) => {
-                    return response.json();
-                }).then((data) => {
-                    if (data.error) {
-                        console.error(data.error);
-                        return;
-                    } else {
-                        console.log(data);
-                        bootstrap.Modal.getInstance(document.getElementById('edit__form')).hide();
-                        refreshInjects();
-                    }
+                })
+                .then((response) => {
+                    return response.json()
+                        .catch(() => ({ error: `Update failed (HTTP ${response.status})` }))
+                        .then((data) => {
+                            if (!response.ok || data.error) {
+                                throw new Error(data.error || `Update failed (HTTP ${response.status})`);
+                            }
+                            return data;
+                        });
+                })
+                .then(() => {
+                    activeInjectID = String(ID);
+                    bootstrap.Modal.getInstance(document.getElementById('edit__form'))?.hide();
+                    showPageBanner("Inject updated successfully.", "success");
+                    refreshInjects();
+                })
+                .catch((err) => {
+                    console.error(err);
+                    showEditError(err.message || "Failed to update inject.");
+                })
+                .finally(() => {
+                    SUBMIT_BTN.disabled = false;
+                    SUBMIT_BTN.querySelector(".btn-text")?.classList.remove("d-none");
+                    SUBMIT_BTN.querySelector(".btn-loading")?.classList.add("d-none");
                 });
             };
         </script>
-        <div class="modal fade" id="delete__form" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+        <div class="modal fade" id="delete__form" data-bs-backdrop="static" tabindex="-1"
             aria-labelledby="delete__form--label" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title" id="delete__form--label">Delete Inject</h5>
+                        <h2 class="modal-title fs-5" id="delete__form--label">Delete Inject</h2>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                        <p>This action cannot be undone.</p>
+                        <div id="delete-inject-error" class="alert alert-danger d-none" role="alert"></div>
+                        <p class="mb-0">Permanently delete this inject and its files? This action cannot be undone.</p>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-danger" onclick="deleteInject(event)">Delete</button>
+                        <button type="button" class="btn btn-danger" id="delete-inject-submit" onclick="deleteInject(event)">Delete Inject</button>
                     </div>
                 </div>
             </div>
@@ -413,37 +486,58 @@
         <script>
             document.getElementById('delete__form').addEventListener('show.bs.modal', function (event) {
                 const pane = event.relatedTarget.closest(".tab-pane");
-                // get pane's id number
                 const id = pane.id.split("--")[1];
+                document.getElementById("delete-inject-error")?.classList.add("d-none");
                 document.getElementById("delete__form").setAttribute("data-inject-id", id);
             });
 
-            const deleteInject = (event) => {
+            const deleteInject = () => {
                 const ID = document.getElementById("delete__form").getAttribute("data-inject-id");
-                fetch(`/api/injects/${ID}`, {
+                const ERROR_BOX = document.getElementById("delete-inject-error");
+                const DELETE_BTN = document.getElementById("delete-inject-submit");
+
+                ERROR_BOX.classList.add("d-none");
+                DELETE_BTN.disabled = true;
+
+                fetch(`/api/injects/${encodeURIComponent(ID)}`, {
                     method: "DELETE",
-                }).then((response) => {
-                    return response.json();
-                }).then((data) => {
-                    if (data.error) {
-                        console.error(data.error);
-                        return;
-                    } else {
-                        console.log(data);
-                        bootstrap.Modal.getInstance(document.getElementById('delete__form')).hide();
-                        refreshInjects();
+                })
+                .then((response) => {
+                    return response.json()
+                        .catch(() => ({ error: `Delete failed (HTTP ${response.status})` }))
+                        .then((data) => {
+                            if (!response.ok || data.error) {
+                                throw new Error(data.error || `Delete failed (HTTP ${response.status})`);
+                            }
+                            return data;
+                        });
+                })
+                .then(() => {
+                    if (activeInjectID === String(ID)) {
+                        activeInjectID = null;
                     }
+                    bootstrap.Modal.getInstance(document.getElementById('delete__form'))?.hide();
+                    showPageBanner("Inject deleted.", "info");
+                    refreshInjects();
+                })
+                .catch((err) => {
+                    console.error(err);
+                    ERROR_BOX.textContent = err.message || "Failed to delete inject.";
+                    ERROR_BOX.classList.remove("d-none");
+                })
+                .finally(() => {
+                    DELETE_BTN.disabled = false;
                 });
             };
         </script>
         {{ end }}
-        <button class="inject-tab active nav-link w-100 text-start bg-body rounded-0 border placeholder-glow" id="tab--placeholder"
+        <button class="inject-tab nav-link w-100 text-start bg-body rounded-0 border-bottom placeholder-glow" id="tab--placeholder"
             data-bs-toggle="pill" data-bs-target="#pane--placeholder" type="button" role="tab"
-            aria-controls="pane--placeholder" aria-selected="true">
-            <div class="container-fluid px-0">
+            aria-controls="pane--placeholder" aria-selected="false">
+            <div class="container-fluid px-1 py-1">
                 <div class="d-flex justify-content-between align-items-start gap-2">
                     <div class="inject-tab-title flex-grow-1">
-                        <span class="d-block text-nowrap overflow-hidden text-truncate">
+                        <span class="d-block text-nowrap overflow-hidden text-truncate fw-semibold">
                             <span id="tab__title--placeholder" class="placeholder placeholder-xs col-12"></span>
                         </span>
                     </div>
@@ -458,102 +552,80 @@
             </div>
         </button>
     </div>
-    <div class="tab-content d-flex flex-column flex-grow-1 justify-content-start align-items-center overflow-y-scroll"
+
+    <div class="tab-content d-flex flex-column flex-grow-1 justify-content-start align-items-stretch overflow-y-auto"
         id="pane-container">
-        <div class="active placeholder-glow w-100 tab-pane p-4 show position-relative h-100" tabindex="0"
-            role="tabpanel" data-bs-toggle="pill" id="pane--placeholder">
+        <div id="injects-banner" class="mx-4 mt-3 d-none" role="status" aria-live="polite"></div>
+
+        <div id="injects-empty" class="d-none text-center my-auto p-5">
+            <i class="bi bi-envelope-open fs-1 text-body-secondary" aria-hidden="true"></i>
+            <h1 class="h5 mt-3 mb-1">No Active Injects</h1>
+            <p class="text-body-secondary mb-0">Assigned injects and submission portals will appear here once released.</p>
+        </div>
+
+        <div class="placeholder-glow w-100 tab-pane p-4 position-relative h-100" tabindex="0"
+            role="tabpanel" id="pane--placeholder">
             <div class="d-flex flex-column h-100">
-                <div class="d-flex flex-column">
-                    <span id="pane__from--placeholder" class="placeholder col-4"></span>
-                    <span id="pane__subject--placeholder" class="placeholder col-6"></span>
-                    <hr class="my-4">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                    <div>
+                        <h1 class="h4 mb-1 d-flex flex-wrap align-items-center gap-2">
+                            <span id="pane__subject--placeholder" class="placeholder col-6"></span>
+                            <span id="pane__countdown--placeholder" class="inject-countdown-detail"></span>
+                        </h1>
+                    </div>
                     {{ if or (contains .roles "admin") (contains .roles "inject") }}
-                    <div class="d-flex">
-                        <button class="btn btn-outline-secondary rounded-1 m-2" data-bs-toggle="modal"
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-sm btn-outline-secondary rounded-1" data-bs-toggle="modal"
                             data-bs-target="#edit__form">
-                            Edit
+                            <i class="bi bi-pencil me-1" aria-hidden="true"></i>Edit
                         </button>
-                        <button class="btn btn-outline-danger rounded-1 m-2" data-bs-toggle="modal"
+                        <button class="btn btn-sm btn-outline-danger rounded-1" data-bs-toggle="modal"
                             data-bs-target="#delete__form">
-                            Delete
+                            <i class="bi bi-trash me-1" aria-hidden="true"></i>Delete
                         </button>
-                        <a id="download-all-submissions--placeholder" class="btn btn-outline-primary rounded-1 m-2" href="/api/injects/placeholder/submissions/download">
-                            Download All Submissions
+                        <a id="download-all-submissions--placeholder" class="btn btn-sm btn-outline-primary rounded-1" href="/api/injects/placeholder/submissions/download">
+                            <i class="bi bi-download me-1" aria-hidden="true"></i>Download All Submissions
                         </a>
                     </div>
                     {{ end }}
-                    <div class="h-100 p-4 overflow-auto">
-                        <div>
-                            <div id="pane__description--placeholder" class="placeholder col-12"></div>
-                        </div>
-                        {{ if contains .roles "team" }}
-                        <div class="d-flex flex-column mb-3">
-                            <h5>Submit Inject</h5>
-                            <form id="submit-inject-form" onsubmit="return formSubmit(event)">
+                </div>
+                <hr class="my-3">
+                <div class="flex-grow-1 overflow-auto">
+                    <div id="pane__description--placeholder" class="mb-4">
+                        <div class="placeholder col-12"></div>
+                    </div>
+                    {{ if contains .roles "team" }}
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h2 class="h5 mb-3">Submit Deliverable</h2>
+                            <form class="submit-inject-form" onsubmit="return formSubmit(event)">
                                 <div class="mb-3">
-                                    <label for="submit-inject-files" class="form-label">Files</label>
-                                    <input type="file" class="form-control" id="submit-inject-files">
+                                    <label for="submit-inject-files--placeholder" class="form-label required">Submission File</label>
+                                    <input type="file" class="form-control submit-inject-files" id="submit-inject-files--placeholder" required>
                                 </div>
-                                <button type="submit" class="btn btn-primary">Submit</button>
-                                <div id="submit-inject-error" class="alert alert-danger mt-3 d-none" role="alert"></div>
+                                <button type="submit" class="btn btn-primary submit-inject-btn">
+                                    <span class="btn-text"><i class="bi bi-upload me-1" aria-hidden="true"></i>Submit Inject</span>
+                                    <span class="btn-loading d-none">
+                                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                        Uploading...
+                                    </span>
+                                </button>
+                                <div class="submit-inject-error alert alert-danger mt-3 mb-0 d-none" role="alert"></div>
                             </form>
-                            <script>
-                                const formSubmit = (event) => {
-                                    event.preventDefault();
-                                    const FORM = event.target.closest("form");
-                                    const FILES = FORM.querySelector("#submit-inject-files");
-
-                                    const ID = FORM.closest(".tab-pane").id.split("--")[1];
-
-                                    const PAYLOAD = new FormData();
-                                    PAYLOAD.append("file", FILES.files[0]);
-
-                                    const ERROR_BOX = FORM.querySelector("#submit-inject-error");
-                                    const showSubmitError = (message) => {
-                                        console.error(message);
-                                        ERROR_BOX.textContent = message;
-                                        ERROR_BOX.classList.remove("d-none");
-                                    };
-                                    ERROR_BOX.classList.add("d-none");
-
-                                    fetch(`/api/injects/${ID}/submit`, {
-                                        method: "POST",
-                                        body: PAYLOAD,
-                                    }).then((response) => {
-                                        // A non-JSON body still needs a message.
-                                        return response.json()
-                                            .catch(() => ({ error: `HTTP ${response.status}` }));
-                                    }).then((data) => {
-                                        if (data.error) {
-                                            showSubmitError(data.error);
-                                            return;
-                                        }
-                                        refreshInjects();
-                                    }).catch((error) => {
-                                        showSubmitError(error.message);
-                                    });
-                                };
-                            </script>
                         </div>
-                        {{ end }}
-                        <div class="d-flex flex-column">
-                            <h5>Submissions</h5>
+                    </div>
+                    {{ end }}
+                    <div class="d-flex flex-column">
+                        <h2 class="h5 mb-3">Submissions</h2>
+                        <div class="table-responsive">
                             <table id="pane__submissions--placeholder"
-                                class="table table-bordered w-100 display submission-table">
+                                class="table table-bordered table-striped w-100 display submission-table">
                                 <thead>
                                     <tr>
-                                        <th>
-                                            Team
-                                        </th>
-                                        <th>
-                                            Submisssion Number
-                                        </th>
-                                        <th>
-                                            Submission Time
-                                        </th>
-                                        <th>
-                                            Attachment
-                                        </th>
+                                        <th scope="col">Team</th>
+                                        <th scope="col">Submission Number</th>
+                                        <th scope="col">Submission Time</th>
+                                        <th scope="col">Attachment</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -572,7 +644,7 @@
     <div class="offcanvas-header border-bottom">
         <h2 class="offcanvas-title fs-5 text-truncate" id="inject-pdf-viewer-title">Inject PDF</h2>
         <a class="btn btn-outline-primary ms-auto me-2 flex-shrink-0" id="inject-pdf-download" href="#" download>
-            <i class="bi bi-download me-1"></i>Download
+            <i class="bi bi-download me-1" aria-hidden="true"></i>Download
         </a>
         <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="offcanvas" aria-label="Close"></button>
     </div>
@@ -587,7 +659,7 @@
     }
 
     .inject-countdown-badge {
-        font-size: .7rem;
+        font-size: .75rem;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
     }
@@ -596,20 +668,23 @@
         vertical-align: middle;
     }
 
-    .inject-layout #tab-container {
-        flex: 0 0 clamp(260px, 24vw, 300px);
-        min-width: 260px;
-        max-width: 300px;
+    @media (min-width: 768px) {
+        .inject-layout #tab-container {
+            flex: 0 0 clamp(260px, 24vw, 300px);
+            min-width: 260px;
+            max-width: 300px;
+        }
     }
 
     .inject-layout .inject-tab {
         height: auto;
         overflow: visible;
-        padding: .375rem .5rem;
+        padding: .5rem .625rem;
     }
 
     .inject-layout .inject-tab.active {
         color: var(--bs-nav-pills-link-active-color);
+        background-color: var(--bs-nav-pills-link-active-bg) !important;
     }
 
     .inject-layout .inject-tab.active .inject-tab-time,
@@ -634,7 +709,7 @@
 
     .inject-tab-time {
         color: var(--bs-secondary-color);
-        font-size: .7rem;
+        font-size: .75rem;
         white-space: nowrap;
     }
 
@@ -642,18 +717,7 @@
         .inject-pdf-viewer {
             --bs-offcanvas-width: 100vw;
         }
-
-        .inject-layout #tab-container {
-            flex-basis: 210px;
-            min-width: 210px;
-            max-width: 210px;
-        }
-
-        .inject-tab-time {
-            display: none;
-        }
     }
-
 </style>
 
 <script src="/static/assets/inject-countdown.js"></script>
@@ -663,12 +727,79 @@
     const PLACEHOLDER_TAB = document.getElementById("tab--placeholder")
     const PLACEHOLDER_PANE = document.getElementById("pane--placeholder")
     const REFRESH_BTN = document.getElementById("refresh--btn")
+    const EMPTY_STATE = document.getElementById("injects-empty")
+    const BANNER_BOX = document.getElementById("injects-banner")
     const PDF_VIEWER = document.getElementById("inject-pdf-viewer")
     const PDF_VIEWER_TITLE = document.getElementById("inject-pdf-viewer-title")
     const PDF_FRAME = document.getElementById("inject-pdf-frame")
     const PDF_DOWNLOAD = document.getElementById("inject-pdf-download")
 
     let prevData;
+    let activeInjectID = null;
+
+    function showPageBanner(message, type = "success") {
+        if (!BANNER_BOX) return;
+        BANNER_BOX.className = `alert alert-${type} alert-dismissible fade show mx-4 mt-3 mb-0`;
+        BANNER_BOX.textContent = message;
+        const closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "btn-close";
+        closeBtn.setAttribute("data-bs-dismiss", "alert");
+        closeBtn.setAttribute("aria-label", "Close");
+        BANNER_BOX.appendChild(closeBtn);
+    }
+
+    const formSubmit = (event) => {
+        event.preventDefault();
+        const FORM = event.target.closest("form");
+        const FILES = FORM.querySelector(".submit-inject-files");
+        const SUBMIT_BTN = FORM.querySelector(".submit-inject-btn");
+        const ERROR_BOX = FORM.querySelector(".submit-inject-error");
+        const ID = FORM.closest(".tab-pane").id.split("--")[1];
+
+        const showSubmitError = (message) => {
+            console.error(message);
+            ERROR_BOX.textContent = message;
+            ERROR_BOX.classList.remove("d-none");
+        };
+        ERROR_BOX.classList.add("d-none");
+
+        if (!FILES || !FILES.files || FILES.files.length === 0) {
+            showSubmitError("Please choose a file to upload before submitting.");
+            return false;
+        }
+
+        const PAYLOAD = new FormData();
+        PAYLOAD.append("file", FILES.files[0]);
+
+        SUBMIT_BTN.disabled = true;
+        SUBMIT_BTN.querySelector(".btn-text")?.classList.add("d-none");
+        SUBMIT_BTN.querySelector(".btn-loading")?.classList.remove("d-none");
+
+        fetch(`/api/injects/${encodeURIComponent(ID)}/submit`, {
+            method: "POST",
+            body: PAYLOAD,
+        }).then((response) => {
+            return response.json()
+                .catch(() => ({ error: `Upload failed (HTTP ${response.status})` }))
+                .then((data) => {
+                    if (!response.ok || data.error) {
+                        throw new Error(data.error || `Upload failed (HTTP ${response.status})`);
+                    }
+                    return data;
+                });
+        }).then(() => {
+            activeInjectID = String(ID);
+            showPageBanner("Submission uploaded successfully!", "success");
+            refreshInjects();
+        }).catch((error) => {
+            showSubmitError(error.message || "Failed to submit inject.");
+        }).finally(() => {
+            SUBMIT_BTN.disabled = false;
+            SUBMIT_BTN.querySelector(".btn-text")?.classList.remove("d-none");
+            SUBMIT_BTN.querySelector(".btn-loading")?.classList.add("d-none");
+        });
+    };
 
     function injectFileURL(injectID, fileName) {
         return `/injects/${encodeURIComponent(injectID)}/${encodeURIComponent(fileName)}`
@@ -689,19 +820,18 @@
 
     // Function to refresh injects without full page reload
     function refreshInjects() {
-        // Clear existing tabs and panes (except placeholder)
+        const currentActiveTab = TAB_CONTAINER.querySelector('.inject-tab.active:not(#tab--placeholder)');
+        if (currentActiveTab) {
+            activeInjectID = currentActiveTab.id.split("--")[1];
+        }
+
         const existingTabs = TAB_CONTAINER.querySelectorAll('[id^="tab--"]:not(#tab--placeholder)');
         const existingPanes = PANE_CONTAINER.querySelectorAll('[id^="pane--"]:not(#pane--placeholder)');
         existingTabs.forEach(tab => tab.remove());
         existingPanes.forEach(pane => pane.remove());
 
-        // Reset prevData to force re-render
         prevData = undefined;
-
-        // Hide refresh button
         REFRESH_BTN.classList.add("d-none");
-
-        // Fetch and update
         fetchAndUpdateInjects();
     }
 
@@ -710,7 +840,7 @@
         fetch("/api/injects")
         .then((response) => {
             if (!response.ok) {
-                Promise.reject(response)
+                return Promise.reject(new Error(`Failed to load injects (HTTP ${response.status})`))
             }
             return response.json()
         })
@@ -718,73 +848,110 @@
             PLACEHOLDER_TAB.classList.add("d-none")
             PLACEHOLDER_PANE.classList.add("d-none")
             if (!data || data.length === 0) {
+                EMPTY_STATE.classList.remove("d-none")
                 return
             }
+            EMPTY_STATE.classList.add("d-none")
+
             if (prevData === undefined) {
                 prevData = data
             } else if (JSON.stringify(prevData) != JSON.stringify(data)) {
                 REFRESH_BTN.classList.remove("d-none")
                 return
             }
-            let tabs = [];
-            let panes = [];
+
+            if (!activeInjectID || !data.some(inj => String(inj.ID) === String(activeInjectID))) {
+                activeInjectID = String(data[0].ID)
+            }
+
+            const tabs = []
+            const panes = []
             for (const inject of data) {
-                inject.OpenTime = (new Date(inject.OpenTime))
-                inject.DueTime = (new Date(inject.DueTime))
-                inject.CloseTime = (new Date(inject.CloseTime))
-                let tab = PLACEHOLDER_TAB.cloneNode(true)
-                let pane = PLACEHOLDER_PANE.cloneNode(true)
-                tab.classList.remove("active", "placeholder-glow", "d-none")
-                pane.classList.remove("active", "placeholder-glow", "d-none")
+                const injectID = String(inject.ID)
+                const isSelected = injectID === String(activeInjectID)
 
+                inject.OpenTime = new Date(inject.OpenTime)
+                inject.DueTime = new Date(inject.DueTime)
+                inject.CloseTime = new Date(inject.CloseTime)
 
-                let title = tab.querySelector("#tab__title--placeholder")
-                let time = tab.querySelector("#tab__time--placeholder")
-                let status = tab.querySelector("#tab__status--placeholder")
+                const tab = PLACEHOLDER_TAB.cloneNode(true)
+                const pane = PLACEHOLDER_PANE.cloneNode(true)
+                tab.classList.remove("placeholder-glow", "d-none")
+                pane.classList.remove("placeholder-glow", "d-none")
+                tab.classList.toggle("active", isSelected)
+                tab.setAttribute("aria-selected", isSelected ? "true" : "false")
+                pane.classList.toggle("active", isSelected)
+                pane.classList.toggle("show", isSelected)
+
+                tab.id = `tab--${injectID}`
+                tab.setAttribute("data-bs-target", `#pane--${injectID}`)
+                tab.setAttribute("aria-controls", `pane--${injectID}`)
+                tab.addEventListener("shown.bs.tab", () => {
+                    activeInjectID = injectID
+                })
+
+                pane.id = `pane--${injectID}`
+                pane.setAttribute("aria-labelledby", `tab--${injectID}`)
+                pane.dataset.rawTitle = inject.Title
+                pane.dataset.rawDescription = inject.Description
+                pane.dataset.openTimeIso = inject.OpenTime.toISOString()
+                pane.dataset.dueTimeIso = inject.DueTime.toISOString()
+                pane.dataset.closeTimeIso = inject.CloseTime.toISOString()
+
+                const title = tab.querySelector("#tab__title--placeholder")
+                const time = tab.querySelector("#tab__time--placeholder")
+                const status = tab.querySelector("#tab__status--placeholder")
+                const tabCountdown = tab.querySelector("#tab__countdown--placeholder")
+
+                title.id = `tab__title--${injectID}`
+                time.id = `tab__time--${injectID}`
+                status.id = `tab__status--${injectID}`
+                tabCountdown.id = `tab__countdown--${injectID}`
 
                 title.className = ""
-                time.className = ""
+                time.className = "inject-tab-time"
+
                 if (inject.OpenTime > new Date()) {
-                    status.innerHTML = `<i class="bi bi-clock text-body-secondary" data-bs-toggle="tooltip"
+                    status.innerHTML = `<i class="bi bi-clock text-body-secondary" role="img" aria-label="Scheduled" data-bs-toggle="tooltip"
                         data-bs-title="Scheduled"></i>`
                 } else if (inject.Submissions && inject.Submissions.length > 0) {
-                    status.innerHTML = `<i class="bi bi-check2-circle text-success-emphasis" data-bs-toggle="tooltip"
+                    status.innerHTML = `<i class="bi bi-check2-circle text-success-emphasis" role="img" aria-label="Submitted" data-bs-toggle="tooltip"
                         data-bs-title="Submitted"></i>`
 
-                    let table = pane.querySelector("#pane__submissions--placeholder")
-                    let tbody = table.querySelector("tbody")
+                    const table = pane.querySelector("#pane__submissions--placeholder")
+                    const tbody = table.querySelector("tbody")
                     for (const submission of inject.Submissions) {
-                        let tr = document.createElement("tr")
-                        let team = document.createElement("td")
-                        let number = document.createElement("td")
-                        let time = document.createElement("td")
-                        let attachment = document.createElement("td")
-                        let a = document.createElement("a")
-                        a.href = `/injects/${inject.ID}/submissions/${submission.Team.ID}/${submission.Version}`
+                        const tr = document.createElement("tr")
+                        const team = document.createElement("td")
+                        const number = document.createElement("td")
+                        const subTime = document.createElement("td")
+                        const attachment = document.createElement("td")
+                        const a = document.createElement("a")
+                        a.href = `/injects/${encodeURIComponent(injectID)}/submissions/${encodeURIComponent(submission.Team.ID)}/${encodeURIComponent(submission.Version)}`
                         a.textContent = submission.SubmissionFileName
                         a.target = "_blank"
+                        a.rel = "noopener noreferrer"
                         attachment.appendChild(a)
                         team.textContent = submission.Team.Name
                         number.textContent = submission.Version
-                        time.textContent = new Date(submission.SubmissionTime).toLocaleString()
+                        subTime.textContent = new Date(submission.SubmissionTime).toLocaleString()
                         tr.appendChild(team)
                         tr.appendChild(number)
-                        tr.appendChild(time)
+                        tr.appendChild(subTime)
                         tr.appendChild(attachment)
                         tbody.appendChild(tr)
                     }
                 } else if (inject.CloseTime < new Date()) {
-                    status.innerHTML = `<i class="bi bi-lock text-danger-emphasis" data-bs-toggle="tooltip"
+                    status.innerHTML = `<i class="bi bi-lock text-danger-emphasis" role="img" aria-label="Closed from submissions" data-bs-toggle="tooltip"
                         data-bs-title="Closed from submissions"></i>`
                 } else if (inject.DueTime < new Date()) {
-                    status.innerHTML = `<i class="bi bi-alarm text-warning" data-bs-toggle="tooltip"
+                    status.innerHTML = `<i class="bi bi-alarm text-warning" role="img" aria-label="Accepting late submissions" data-bs-toggle="tooltip"
                         data-bs-title="Accepting late submissions"></i>`
                 } else {
-                    status.innerHTML = `<i class="bi bi-unlock text-success-emphasis" data-bs-toggle="tooltip"
+                    status.innerHTML = `<i class="bi bi-unlock text-success-emphasis" role="img" aria-label="Open for submissions" data-bs-toggle="tooltip"
                         data-bs-title="Open for submissions"></i>`
                 }
                 title.textContent = inject.Title
-                time.className = "inject-tab-time"
                 time.textContent = inject.OpenTime.toLocaleString(undefined, {
                     month: "short",
                     day: "numeric",
@@ -792,78 +959,94 @@
                     minute: "2-digit",
                 })
 
-                let from = pane.querySelector("#pane__from--placeholder")
-                let subject = pane.querySelector("#pane__subject--placeholder")
-                let description = pane.querySelector("#pane__description--placeholder")
+                const subject = pane.querySelector("#pane__subject--placeholder")
+                const paneCountdown = pane.querySelector("#pane__countdown--placeholder")
+                const description = pane.querySelector("#pane__description--placeholder")
+                const submissionsTable = pane.querySelector("#pane__submissions--placeholder")
+                const downloadAllBtn = pane.querySelector("#download-all-submissions--placeholder")
+                const fileInput = pane.querySelector("#submit-inject-files--placeholder")
+                const fileLabel = pane.querySelector("label[for='submit-inject-files--placeholder']")
 
-                
-                from.className = ""
+                subject.id = `pane__subject--${injectID}`
                 subject.className = ""
-                description.className = ""
-                
-                from.textContent = inject.Title
                 subject.textContent = inject.Title
-                                
-                let descTemp = document.createElement("div")
 
-                let descPara = document.createElement("p")
-                descPara.textContent = inject.Description
-                descTemp.appendChild(descPara)
+                paneCountdown.id = `pane__countdown--${injectID}`
+                description.id = `pane__description--${injectID}`
+                description.className = "mb-4"
+                submissionsTable.id = `pane__submissions--${injectID}`
 
-                descTemp.innerHTML += `
-                <h5>Inject Details <span id="pane__countdown--${inject.ID}" class="inject-countdown-detail"></span></h5>
-                <ul>
-                    <li><p><strong>Release Time:</strong> <span id="pane__open--${inject.ID}">${inject.OpenTime.toLocaleString()}</span></p></li>
-                    <li><p><strong>Due Time:</strong> <span id="pane__due--${inject.ID}">${inject.DueTime.toLocaleString()}</span></p></li>
-                    <li><p><strong>Close Time:</strong> <span id="pane__close--${inject.ID}">${inject.CloseTime.toLocaleString()}</span></p></li>
-                    </ul>
-                    `
-                    description.appendChild(descTemp)
-                    
+                if (downloadAllBtn) {
+                    downloadAllBtn.id = `download-all-submissions--${injectID}`
+                    downloadAllBtn.href = `/api/injects/${encodeURIComponent(injectID)}/submissions/download`
+                }
+                if (fileInput && fileLabel) {
+                    fileInput.id = `submit-inject-files--${injectID}`
+                    fileLabel.setAttribute("for", `submit-inject-files--${injectID}`)
+                }
+
+                const descTemp = document.createElement("div")
+                const renderedMarkdown = window.renderSafeMarkdown(inject.Description)
+                renderedMarkdown.className = "mb-3"
+                descTemp.appendChild(renderedMarkdown)
+
+                const scheduleCard = document.createElement("div")
+                scheduleCard.className = "bg-body-secondary rounded p-3 mb-3"
+                scheduleCard.innerHTML = `
+                    <h2 class="h6 fw-semibold mb-2">Schedule</h2>
+                    <div class="row g-2 small">
+                        <div class="col-sm-4"><strong>Release:</strong> <span id="pane__open--${injectID}"></span></div>
+                        <div class="col-sm-4"><strong>Due:</strong> <span id="pane__due--${injectID}"></span></div>
+                        <div class="col-sm-4"><strong>Closes:</strong> <span id="pane__close--${injectID}"></span></div>
+                    </div>
+                `
+                scheduleCard.querySelector(`#pane__open--${injectID}`).textContent = inject.OpenTime.toLocaleString()
+                scheduleCard.querySelector(`#pane__due--${injectID}`).textContent = inject.DueTime.toLocaleString()
+                scheduleCard.querySelector(`#pane__close--${injectID}`).textContent = inject.CloseTime.toLocaleString()
+                descTemp.appendChild(scheduleCard)
+
+                description.replaceChildren(descTemp)
+
                 if (inject.InjectFileNames != null && inject.InjectFileNames.length > 0) {
-                    let files = document.createElement("div")
-                    files.className = "d-flex flex-column"
-                    let header = document.createElement("h5")
+                    const files = document.createElement("div")
+                    files.className = "d-flex flex-column mt-3"
+                    const header = document.createElement("h2")
+                    header.className = "h6 fw-semibold mb-2"
                     header.textContent = "Inject Attachments"
                     files.appendChild(header)
-                    let ul = document.createElement("ul")
+                    const ul = document.createElement("ul")
+                    ul.className = "list-unstyled mb-0"
                     files.appendChild(ul)
                     for (const file of inject.InjectFileNames) {
-                        let li = document.createElement("li")
+                        const li = document.createElement("li")
                         li.className = "d-flex align-items-center gap-2 mb-2"
-                        let a = document.createElement("a")
-                        a.href = injectFileURL(inject.ID, file)
+                        const a = document.createElement("a")
+                        a.href = injectFileURL(injectID, file)
                         a.textContent = file
+                        a.dataset.injectAttachment = "true"
                         li.appendChild(a)
 
                         if (file.toLowerCase().endsWith(".pdf")) {
-                            a.dataset.pdfInjectId = inject.ID
+                            a.dataset.pdfInjectId = injectID
                             a.dataset.pdfFileName = file
-                            let viewButton = document.createElement("button")
+                            const viewButton = document.createElement("button")
                             viewButton.type = "button"
                             viewButton.className = "btn btn-sm btn-outline-primary"
-                            viewButton.innerHTML = `<i class="bi bi-eye me-1"></i>View`
-                            viewButton.dataset.pdfInjectId = inject.ID
+                            viewButton.innerHTML = `<i class="bi bi-eye me-1" aria-hidden="true"></i>View`
+                            viewButton.dataset.pdfInjectId = injectID
                             viewButton.dataset.pdfFileName = file
                             li.appendChild(viewButton)
+                        } else {
+                            a.target = "_blank"
+                            a.rel = "noopener noreferrer"
                         }
                         ul.appendChild(li)
                     }
                     description.appendChild(files)
                 }
-                
-                // Update IDs and attributes
-                tab.id = `tab--${inject.ID}`
-                tab.setAttribute('data-bs-target', `#pane--${inject.ID}`)
-                tab.setAttribute('aria-controls', `pane--${inject.ID}`)
-                pane.id = `pane--${inject.ID}`
 
-                // Replace placeholder in innerHTML
-                tab.innerHTML = tab.innerHTML.replaceAll("placeholder", inject.ID)
-                pane.innerHTML = pane.innerHTML.replaceAll("placeholder", inject.ID)
-
-                InjectCountdown.bind(tab.querySelector(`#tab__countdown--${inject.ID}`), inject)
-                InjectCountdown.bind(pane.querySelector(`#pane__countdown--${inject.ID}`), inject)
+                InjectCountdown.bind(tabCountdown, inject)
+                InjectCountdown.bind(paneCountdown, inject)
 
                 pane.querySelectorAll("[data-pdf-file-name]").forEach((viewerTrigger) => {
                     viewerTrigger.addEventListener("click", (event) => {
@@ -875,28 +1058,29 @@
                 tabs.push(tab)
                 panes.push(pane)
             }
-            PLACEHOLDER_TAB.classList.add("d-none")
-            PLACEHOLDER_PANE.classList.add("d-none")
+
             for (let i = 0; i < tabs.length; i++) {
                 TAB_CONTAINER.appendChild(tabs[i])
                 PANE_CONTAINER.appendChild(panes[i])
             }
         })
         .then(() => {
-            const TOOLTIPS = new bootstrap.Tooltip(document.body, {
+            new bootstrap.Tooltip(document.body, {
                 selector: '[data-bs-toggle="tooltip"]'
             });
-            // Only initialize DataTables on elements that aren't already initialized
             document.querySelectorAll('.submission-table').forEach(table => {
-                if (!table.classList.contains('dataTable')) {
+                if (table.id !== 'pane__submissions--placeholder' && !table.classList.contains('dataTable')) {
                     new DataTable(table, {
-                        order: [[2, 'desc']], // Sort by the third column (Submission Time) in descending order
+                        order: [[2, 'desc']],
                     });
                 }
             });
         })
         .catch((error) => {
             console.error(error)
+            PLACEHOLDER_TAB.classList.add("d-none")
+            PLACEHOLDER_PANE.classList.add("d-none")
+            showPageBanner(error.message || "Failed to load injects.", "danger")
         });
     }
 
@@ -904,7 +1088,7 @@
     fetchAndUpdateInjects();
 
     // Set up auto-refresh every 30 seconds
-    const REFRESH_INTERVAL = 30000; // 30 seconds
+    const REFRESH_INTERVAL = 30000;
     setInterval(fetchAndUpdateInjects, REFRESH_INTERVAL);
 </script>
 {{ end }}

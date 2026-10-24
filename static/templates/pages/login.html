@@ -7,13 +7,13 @@
     <div class="d-flex h-100 w-100 bg-primary-subtle" id="splash__container">
         <div class="d-none d-md-flex flex-column justify-content-center align-items-center h-100 w-100"
             id="splash__spread">
-            <img class="h-50 w-50" src="{{ .config.MiscSettings.LogoImage }}">
-            <h3>{{ .config.RequiredSettings.EventName }}</h3>
+            <img class="h-50 w-50" src="{{ .config.MiscSettings.LogoImage }}" alt="{{ .config.RequiredSettings.EventName }} logo">
+            <h2 class="h3 mt-3">{{ .config.RequiredSettings.EventName }}</h2>
         </div>
         <div class="d-flex flex-column h-100 w-100 rounded-start-4 bg-body p-4" id="splash__login">
             <div>
                 <h1 class="splash__title my-4 text-center">QUOTIENT</h1>
-                <h6 class="text-center">Welcome to the Quotient Scoring Engine</h6>
+                <p class="h6 text-center text-body-secondary">Welcome to the Quotient Scoring Engine</p>
             </div>
             <div>
                 {{ if not .config.OIDCSettings.OIDCDisableLocalLogin }}
@@ -21,17 +21,17 @@
                     <div class="mb-3">
                         <label for="default-form__username" class="form-label">Username</label>
                         <input type="text" class="form-control" id="default-form__username" name="username"
-                            placeholder="Username" aria-placeholder="Username">
+                            placeholder="Username" autocomplete="username" required>
                     </div>
                     <div class="mb-3">
                         <label for="default-form__password" class="form-label">Password</label>
                         <input type="password" class="form-control" id="default-form__password" name="password"
-                            placeholder="Password" aria-placeholder="Password">
-                        <div class="invalid-feedback">
+                            placeholder="Password" autocomplete="current-password" required>
+                        <div class="invalid-feedback" id="login__error">
                             Invalid credentials.
                         </div>
                     </div>
-                    <button type="submit" class="btn w-100 btn-primary">Submit</button>
+                    <button type="submit" class="btn w-100 btn-primary" id="login__submit">Sign In</button>
                 </form>
                 {{ end }}
                 {{ if .config.OIDCSettings.OIDCEnabled }}
@@ -61,6 +61,10 @@
         const FORM = event.target.closest('form')
         const USERNAME = FORM.querySelector("[name='username']")
         const PASSWORD = FORM.querySelector("[name='password']")
+        const SUBMIT = FORM.querySelector("#login__submit")
+        PASSWORD.classList.remove("is-invalid")
+        if (SUBMIT) SUBMIT.disabled = true
+
         const PAYLOAD = {
             username: USERNAME.value,
             password: PASSWORD.value,
@@ -74,15 +78,14 @@
             credentials: "include",
         }).then(response => {
             if (!response.ok) {
-                return response.json()
-                    .catch((err) => {
-                        throw new Error(response.status)
-                    })
-                    .then((data) => {
-                        PASSWORD.classList.add("is-invalid")
-                    })
+                PASSWORD.classList.add("is-invalid")
+                return
             }
             window.location = "/"
+        }).catch(() => {
+            PASSWORD.classList.add("is-invalid")
+        }).finally(() => {
+            if (SUBMIT) SUBMIT.disabled = false
         })
     }
 </script>

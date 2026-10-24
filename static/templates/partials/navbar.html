@@ -1,22 +1,22 @@
 {{ define "navbar" }}
-<div id="navbar" class="d-flex flex-column w-100 h-md-100 bg-body border-bottom sticky-top">
-    <nav class="navbar flex-row flex-md-column navbar-expand-md bg-body h-md-100 p-0">
+<div id="navbar" class="d-flex flex-column w-100 h-md-100 bg-body border-bottom border-end-md sticky-top" style="width: auto;">
+    <nav class="navbar flex-row flex-md-column navbar-expand-md bg-body h-md-100 p-0" aria-label="Main navigation">
         <button class="navbar-toggler p-2 border-0" type="button" data-bs-toggle="offcanvas"
             data-bs-target="#navbarOffcanvasLg" aria-controls="navbarOffcanvasLg" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="d-flex justify-content-center align-items-center w-md-100 py-md-2 bg-primary">
-            <a class="navbar-brand m-2" href="/">
-                <img src="/static/assets/quotient.svg" width="40px" height="40px">
+            <a class="navbar-brand m-2" href="/" aria-label="Quotient Home">
+                <img src="/static/assets/quotient.svg" width="40" height="40" alt="Quotient">
             </a>
         </div>
         <div class="offcanvas offcanvas-start" style="width: 100% !important;" tabindex="-1" id="navbarOffcanvasLg"
             aria-labelledby="navbarOffcanvasLgLabel">
             <div class="d-flex d-md-none align-items-center">
                 <button type="button" class="btn p-4" data-bs-dismiss="offcanvas" aria-label="Close">
-                    <i class="bi bi-arrow-left"></i>
+                    <i class="bi bi-arrow-left" aria-hidden="true"></i>
                 </button>
-                <h1 class="m-0 fs-3">Navigation</h1>
+                <h1 class="m-0 fs-3" id="navbarOffcanvasLgLabel">Navigation</h1>
             </div>
             {{ template "themeswitcher" . }}
             {{ if not (and (contains .roles "red") (not .config.UISettings.ShowAnnouncementsForRedTeam)) }}
@@ -38,23 +38,31 @@
         </div>
         <div class="d-none d-md-block mt-auto"></div>
         <div class="d-flex justify-content-center align-items-center mb-md-3">
-            {{ $role := ""}}
+            {{ $role := "" }}
+            {{ $roleLabel := "User" }}
             {{ if contains .roles "admin" }}
             {{ $role = "text-success" }}
+            {{ $roleLabel = "Admin" }}
             {{ else if contains .roles "inject" }}
             {{ $role = "text-warning" }}
+            {{ $roleLabel = "Inject Manager" }}
             {{ else if contains .roles "red" }}
             {{ $role = "text-danger" }}
+            {{ $roleLabel = "Red Team" }}
             {{ else if contains .roles "team" }}
             {{ $role = "text-info" }}
+            {{ $roleLabel = "Blue Team" }}
             {{ end }}
             <div class="btn-group dropup-md">
                 <button type="button" class="btn dropdown-toggle d-flex justify-content-center align-items-center" data-bs-toggle="dropdown"
-                    aria-expanded="false">
-                        <i class="bi bi-circle-fill me-2 {{ $role }}"></i>
-                        <p class="m-0">{{ .username }}</p>
+                    aria-expanded="false" title="Signed in as {{ .username }} ({{ $roleLabel }})">
+                        <i class="bi bi-circle-fill me-2 {{ $role }}" aria-hidden="true"></i>
+                        <span class="m-0">{{ .username }}</span>
+                        <span class="visually-hidden">({{ $roleLabel }})</span>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end dropdown-menu-md-start">
+                    <li><span class="dropdown-item-text small text-muted">{{ $roleLabel }}</span></li>
+                    <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item" href="/logout">Logout</a></li>
                 </ul>
             </div>

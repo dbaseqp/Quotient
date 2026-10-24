@@ -1,38 +1,60 @@
 {{ define "page" }}
+<style>
+    .service-drilldown-drawer {
+        --bs-offcanvas-width: min(68vw, 960px);
+    }
+    @media (max-width: 767.98px) {
+        .service-drilldown-drawer {
+            --bs-offcanvas-width: 100vw;
+        }
+    }
+    .service-round-icons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+    }
+</style>
 <div class="d-flex w-100 h-100">
     <div class="pt-4 w-100 h-100 overflow-y-scroll">
         <div class="container">
-            <div class="row mb-3">
-                <div class="d-flex p-0">
-                    <div>
-                        <select class="form-select" id="team-select">
-                        </select>
-                    </div>
+            <header class="d-flex flex-wrap justify-content-between align-items-end mb-4 gap-3">
+                <div>
+                    <h1 class="h3 mb-1">Service Status</h1>
+                    <p class="text-body-secondary mb-0">Inspect service uptime, SLA violations, and round-by-round check results.</p>
                 </div>
-            </div>
+                <div class="d-flex align-items-center gap-2">
+                    <label for="team-select" class="form-label fw-semibold mb-0 text-nowrap">Team</label>
+                    <select class="form-select" id="team-select" aria-label="Select team">
+                    </select>
+                </div>
+            </header>
+
+            <div id="services-error" class="alert alert-danger d-none" role="alert"></div>
+
             <div class="row" id="service-container">
                 <button
-                    class="d-none d-flex flex-grow-1 nav-link service-button text-start border rounded-1 mb-3 p-4 w-100"
+                    class="d-none d-flex flex-grow-1 nav-link service-button text-start border rounded-2 mb-3 p-4 w-100 bg-body"
                     type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvas" data-service-id="placeholder"
                     aria-controls="offcanvas" id="service--placeholder">
-                    <div class="container">
-                        <div class="row">
-                            <div class="col">
+                    <div class="container-fluid px-0">
+                        <div class="row g-3 align-items-center">
+                            <div class="col-12 col-md-3">
                                 <div class="d-flex flex-column h-100">
-                                    <b>Name</b>
-                                    <div class="d-flex flex-grow-1 align-items-center w-100"
+                                    <span class="small text-body-secondary fw-semibold">Service</span>
+                                    <div class="d-flex flex-grow-1 align-items-center w-100 fw-semibold fs-5"
                                         id="service__name--placeholder">
                                         Template
                                     </div>
                                 </div>
                             </div>
-                            <div class="d-block d-md-none w-100"></div>
-                            <div class="col">
-                                <div class="d-flex flex-column h-100 ">
-                                    <b>Uptime</b>
+                            <div class="col-8 col-md-3">
+                                <div class="d-flex flex-column h-100">
+                                    <span class="small text-body-secondary fw-semibold mb-1">Uptime</span>
                                     <div class="d-flex flex-grow-1 align-items-center w-100">
-                                        <div class="progress text-center w-100 position-relative" role="progressbar">
-                                            <div class="position-absolute d-flex w-100 justify-content-center"
+                                        <div class="progress text-center w-100 position-relative" role="progressbar"
+                                            id="service__progress--placeholder" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                                            <div class="position-absolute d-flex w-100 justify-content-center fw-semibold"
                                                 id="service__uptime__text--placeholder">
                                             </div>
                                             <div class="progress-bar" id="service__uptime--placeholder"
@@ -42,20 +64,18 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="d-block d-md-none w-100"></div>
-                            <div class="col-1">
-                                <div class="d-flex flex-column h-100 ">
-                                    <b>SLAs</b>
+                            <div class="col-4 col-md-2">
+                                <div class="d-flex flex-column h-100">
+                                    <span class="small text-body-secondary fw-semibold mb-1">SLA Violations</span>
                                     <div class="d-flex flex-grow-1 align-items-center w-100">
                                         <span class="badge text-bg-secondary" id="service__slas--placeholder"></span>
                                     </div>
                                 </div>
                             </div>
-                            <div class="d-block d-md-none w-100"></div>
-                            <div class="col">
+                            <div class="col-12 col-md-4">
                                 <div class="d-flex flex-column h-100">
-                                    <b> Last 10 Rounds</b>
-                                    <div class="d-flex flex-grow-1 align-items-center w-100"
+                                    <span class="small text-body-secondary fw-semibold mb-1">Last 10 Rounds</span>
+                                    <div class="service-round-icons"
                                         id="service__checks--placeholder">
                                     </div>
                                 </div>
@@ -68,35 +88,40 @@
     </div>
 </div>
 
-<div class="offcanvas offcanvas-bottom" tabindex="-1" id="offcanvas" aria-labelledby="drilldown__label"
-    style="height:100vh">
-    <div class="offcanvas-header">
-        <button type="button" class="btn p-4" data-bs-dismiss="offcanvas" aria-label="Close">
-            <i class="bi bi-arrow-left"></i>
-        </button>
-        <h5 class="offcanvas-title" id="drilldown__label">Title</h5>
+<div class="offcanvas offcanvas-end service-drilldown-drawer" tabindex="-1" id="offcanvas" aria-labelledby="drilldown__label">
+    <div class="offcanvas-header border-bottom">
+        <h2 class="offcanvas-title h5 mb-0" id="drilldown__label">Service History</h2>
+        <div class="d-flex align-items-center gap-2 ms-auto">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="drilldown-refresh-btn" title="Refresh check history">
+                <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>Refresh
+            </button>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
     </div>
     <div class="offcanvas-body small">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Round</th>
-                    <th>Time</th>
-                    <th>Result</th>
-                    <th>Debug</th>
-                    <th>Error</th>
-                </tr>
-            </thead>
-            <tbody id="drilldown__list">
-                <tr class="placeholder-glow" id="drilldown__row--placeholder">
-                    <td width="10%"><span class="placeholder col-12"></span></td>
-                    <td width="20%"><span class="placeholder col-12"></span></td>
-                    <td width="10%"><span class="placeholder col-12"></span></td>
-                    <td width="30%"><span class="placeholder col-12"></span></td>
-                    <td width="30%"><span class="placeholder col-12"></span></td>
-                </tr>
-            </tbody>
-        </table>
+        <div id="drilldown-error" class="alert alert-danger d-none" role="alert"></div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th scope="col">Round</th>
+                        <th scope="col">Time</th>
+                        <th scope="col">Result</th>
+                        <th scope="col">Debug</th>
+                        <th scope="col">Error</th>
+                    </tr>
+                </thead>
+                <tbody id="drilldown__list">
+                    <tr class="placeholder-glow" id="drilldown__row--placeholder">
+                        <td width="10%"><span class="placeholder col-12"></span></td>
+                        <td width="20%"><span class="placeholder col-12"></span></td>
+                        <td width="10%"><span class="placeholder col-12"></span></td>
+                        <td width="30%"><span class="placeholder col-12"></span></td>
+                        <td width="30%"><span class="placeholder col-12"></span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -106,6 +131,10 @@
     const DRILLDOWN_TITLE = document.getElementById("drilldown__label")
     const DRILLDOWN_PLACEHOLDER = document.getElementById("drilldown__row--placeholder")
     const DRILLDOWN_LIST = document.getElementById("drilldown__list")
+    const DRILLDOWN_ERROR = document.getElementById("drilldown-error")
+    const SERVICES_ERROR = document.getElementById("services-error")
+    let currentDrilldownService = null
+    let currentHighlightRound = null
 
     function updateUrlParams(params) {
         const url = new URL(window.location)
@@ -120,27 +149,94 @@
     }
 
     document.getElementById('offcanvas').addEventListener('hidden.bs.offcanvas', () => {
+        currentDrilldownService = null
+        currentHighlightRound = null
         updateUrlParams({ service: null, round: null })
     })
+
+    document.getElementById('drilldown-refresh-btn').addEventListener('click', () => {
+        if (currentDrilldownService) {
+            const teamId = document.getElementById("team-select").value
+            loadServiceDrilldown(teamId, currentDrilldownService, currentHighlightRound)
+        }
+    })
+
+    function loadServiceDrilldown(teamId, serviceId, highlightRound = null) {
+        currentDrilldownService = serviceId
+        currentHighlightRound = highlightRound
+        DRILLDOWN_TITLE.textContent = "Service: " + serviceId
+        DRILLDOWN_ERROR.classList.add("d-none")
+        DRILLDOWN_LIST.textContent = ""
+        DRILLDOWN_LIST.appendChild(DRILLDOWN_PLACEHOLDER.cloneNode(true))
+
+        fetch(`/api/services/${encodeURIComponent(teamId)}/${encodeURIComponent(serviceId)}`)
+            .then((response) => {
+                if (!response.ok) {
+                    return Promise.reject(new Error(`Failed to load check history (HTTP ${response.status})`))
+                }
+                return response.json()
+            })
+            .then((data) => {
+                DRILLDOWN_LIST.textContent = ""
+                if (!data || data.length === 0) {
+                    const emptyRow = document.createElement("tr")
+                    const emptyCell = document.createElement("td")
+                    emptyCell.colSpan = 5
+                    emptyCell.className = "text-center text-body-secondary py-4"
+                    emptyCell.textContent = "No check rounds recorded yet for this service."
+                    emptyRow.appendChild(emptyCell)
+                    DRILLDOWN_LIST.appendChild(emptyRow)
+                    return
+                }
+                for (const a of data) {
+                    const row = DRILLDOWN_PLACEHOLDER.cloneNode(true)
+                    row.id = ""
+                    row.classList.remove("placeholder-glow")
+                    row.childNodes[1].textContent = a.Round.ID
+                    row.childNodes[3].textContent = (new Date(a.Round.StartTime)).toLocaleString()
+
+                    const resultBadge = document.createElement("span")
+                    resultBadge.className = a.Result ? "badge text-bg-success" : "badge text-bg-danger"
+                    resultBadge.textContent = a.Result ? "UP" : "DOWN"
+                    row.childNodes[5].replaceChildren(resultBadge)
+
+                    row.childNodes[7].textContent = a.Debug || "—"
+                    if (!a.Debug) row.childNodes[7].classList.add("text-body-secondary")
+
+                    row.childNodes[9].textContent = a.Error || "—"
+                    if (!a.Error) row.childNodes[9].classList.add("text-body-secondary")
+
+                    if (highlightRound && parseInt(highlightRound) === a.Round.ID) {
+                        row.classList.add('table-primary')
+                    }
+                    DRILLDOWN_LIST.appendChild(row)
+                }
+            })
+            .catch((err) => {
+                console.error(err)
+                DRILLDOWN_LIST.textContent = ""
+                DRILLDOWN_ERROR.textContent = err.message || "Failed to load service check history."
+                DRILLDOWN_ERROR.classList.remove("d-none")
+            })
+    }
 
     fetch("/api/teams")
         .then((response) => {
             if (!response.ok) {
-                Promise.reject(response)
+                return Promise.reject(new Error(`Failed to load teams (HTTP ${response.status})`))
             }
             return response.json()
         })
         .then((data) => {
-            let teams = data
-            let team_select = document.getElementById("team-select")
-            for (const i in teams) {
-                let team = teams[i]
-                let option = document.createElement("option")
+            const teams = data || []
+            const teamSelect = document.getElementById("team-select")
+            for (const team of teams) {
+                const option = document.createElement("option")
                 option.value = team.ID
                 option.textContent = team.Name
-                team_select.appendChild(option)
+                teamSelect.appendChild(option)
             }
-            team_select.addEventListener("change", (source) => {
+            teamSelect.addEventListener("change", (source) => {
                 SERVICE_CONTAINER.innerHTML = ""
                 const TEAM_ID = source.currentTarget.value
                 updateUrlParams({ team: TEAM_ID, service: null, round: null })
@@ -148,76 +244,88 @@
             })
         })
         .then(() => {
-            // Check URL parameters for team and service
-            const urlParams = new URLSearchParams(window.location.search);
-            const teamParam = urlParams.get('team');
-            const serviceParam = urlParams.get('service');
-            const roundParam = urlParams.get('round');
+            const urlParams = new URLSearchParams(window.location.search)
+            const teamParam = urlParams.get('team')
+            const serviceParam = urlParams.get('service')
+            const roundParam = urlParams.get('round')
 
             if (teamParam) {
-                // Set the team dropdown to the team from URL, but only if it's a valid option
-                const teamSelect = document.getElementById("team-select");
-                // Check if teamParam is a valid option
-                const isValidOption = Array.from(teamSelect.options).some(option => option.value === teamParam);
+                const teamSelect = document.getElementById("team-select")
+                const isValidOption = Array.from(teamSelect.options).some(option => option.value === teamParam)
                 if (isValidOption) {
-                    teamSelect.value = teamParam;
+                    teamSelect.value = teamParam
                 }
             }
 
-            const TEAM_ID = document.getElementById("team-select").value;
-            // We'll validate serviceParam inside fetchServices after we have the list of services
-            fetchServices(TEAM_ID, serviceParam, roundParam);
+            const TEAM_ID = document.getElementById("team-select").value
+            if (TEAM_ID) {
+                fetchServices(TEAM_ID, serviceParam, roundParam)
+            }
+        })
+        .catch((err) => {
+            console.error(err)
+            SERVICES_ERROR.textContent = err.message || "Failed to load teams."
+            SERVICES_ERROR.classList.remove("d-none")
         })
 
     function fetchServices(team_id, highlightServiceName = null, highlightRound = null) {
-        fetch(`/api/services/${team_id}`)
+        SERVICES_ERROR.classList.add("d-none")
+        fetch(`/api/services/${encodeURIComponent(team_id)}`)
             .then((response) => {
                 if (!response.ok) {
-                    Promise.reject(response)
+                    return Promise.reject(new Error(`Failed to load services (HTTP ${response.status})`))
                 }
                 return response.json()
             })
             .then((data) => {
-                let services = [];
-                if (data === null) {
+                const services = []
+                if (!data || data.length === 0) {
                     const message = document.createElement("div")
                     message.classList.add("alert", "alert-warning")
                     message.textContent = "No services found for this team."
                     SERVICE_CONTAINER.appendChild(message)
                     return
                 }
-                // Validate highlightServiceName against available services
-                let validServiceName = null;
+
+                let validServiceName = null
                 if (highlightServiceName) {
-                    // Check if highlightServiceName exists in the data
-                    const serviceExists = data.some(summary => summary.ServiceName === highlightServiceName);
+                    const serviceExists = data.some(summary => summary.ServiceName === highlightServiceName)
                     if (serviceExists) {
-                        validServiceName = highlightServiceName;
+                        validServiceName = highlightServiceName
                     }
                 }
 
                 for (const SUMMARY of data) {
                     const SERVICENAME = SUMMARY.ServiceName
                     const SLACOUNT = SUMMARY.SlaCount
-                    const LAST10ROUNDS = SUMMARY.Last10Rounds
+                    const LAST10ROUNDS = SUMMARY.Last10Rounds || []
                     const UPTIME = Math.round(SUMMARY.Uptime * 100)
 
-                    let service = PLACEHOLDER_SERVICE.cloneNode(true)
+                    const service = PLACEHOLDER_SERVICE.cloneNode(true)
+                    service.id = `service--${SERVICENAME}`
                     service.classList.remove("placeholder-glow", "d-none")
 
-                    let name = service.querySelector("#service__name--placeholder")
-                    let uptime = service.querySelector("#service__uptime--placeholder")
-                    let uptime_text = service.querySelector("#service__uptime__text--placeholder")
-                    let slas = service.querySelector("#service__slas--placeholder")
-                    let checks = service.querySelector("#service__checks--placeholder")
+                    const name = service.querySelector("#service__name--placeholder")
+                    const progress = service.querySelector("#service__progress--placeholder")
+                    const uptime = service.querySelector("#service__uptime--placeholder")
+                    const uptimeText = service.querySelector("#service__uptime__text--placeholder")
+                    const slas = service.querySelector("#service__slas--placeholder")
+                    const checks = service.querySelector("#service__checks--placeholder")
 
-                    name.className = ""
-                    // uptime.className = ""
-                    checks.className = ""
+                    name.id = `service__name--${SERVICENAME}`
+                    progress.id = `service__progress--${SERVICENAME}`
+                    uptime.id = `service__uptime--${SERVICENAME}`
+                    uptimeText.id = `service__uptime__text--${SERVICENAME}`
+                    slas.id = `service__slas--${SERVICENAME}`
+                    checks.id = `service__checks--${SERVICENAME}`
+
+                    progress.setAttribute("aria-valuenow", String(UPTIME))
+                    progress.setAttribute("aria-label", `${SERVICENAME} uptime ${UPTIME}%`)
 
                     slas.textContent = SLACOUNT
+                    slas.className = SLACOUNT > 0 ? "badge text-bg-danger" : "badge text-bg-secondary"
                     name.textContent = SERVICENAME
-                    uptime_text.textContent = UPTIME + "%"
+                    uptimeText.textContent = UPTIME + "%"
                     uptime.style.width = UPTIME + "%"
                     if (UPTIME >= 80) {
                         uptime.classList.add("bg-success")
@@ -229,49 +337,49 @@
 
                     for (const round of LAST10ROUNDS) {
                         let checkFoundInRound = false
-                        for (const check of round.Checks) {
+                        const roundTime = (new Date(round.StartTime)).toLocaleString()
+                        for (const check of (round.Checks || [])) {
                             if (SERVICENAME == check.ServiceName) {
                                 checkFoundInRound = true
-                                let icon = document.createElement("img")
+                                const icon = document.createElement("img")
                                 if (check.Result) {
                                     icon.src = "/static/assets/services/up.png"
+                                    icon.alt = `Round ${round.ID}: Up (${roundTime})`
                                 } else {
                                     icon.src = "/static/assets/services/down.png"
+                                    icon.alt = `Round ${round.ID}: Down (${roundTime})`
                                 }
                                 icon.height = 25
                                 icon.width = 25
                                 icon.setAttribute("data-bs-toggle", "tooltip")
-                                icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString())
+                                icon.setAttribute("data-bs-title", `Round ${round.ID}: ${check.Result ? 'UP' : 'DOWN'} (${roundTime})`)
                                 checks.appendChild(icon)
                             }
                         }
                         if (!checkFoundInRound) {
-                            let icon = document.createElement("img")
+                            const icon = document.createElement("img")
                             icon.src = "/static/assets/services/pending.png"
+                            icon.alt = `Round ${round.ID}: Pending (${roundTime})`
                             icon.height = 25
                             icon.width = 25
                             icon.setAttribute("data-bs-toggle", "tooltip")
-                            icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString())
+                            icon.setAttribute("data-bs-title", `Round ${round.ID}: Pending (${roundTime})`)
                             checks.appendChild(icon)
                         }
                     }
 
-                    // Set the data-service-id attribute (this is what's actually used in the click handler)
                     service.setAttribute("data-service-id", SERVICENAME)
 
-                    // If this is the service we want to highlight (from task card click)
                     if (validServiceName && SERVICENAME === validServiceName) {
-                        // Add a highlight class to this service
                         service.classList.add('border-primary', 'border-2')
 
                         if (highlightRound) {
                             service.dataset.highlightRound = highlightRound
                         }
 
-                        // Auto-click this service to show details
                         setTimeout(() => {
                             service.click()
-                        }, 500)
+                        }, 300)
                     }
 
                     services.push(service)
@@ -283,44 +391,24 @@
             })
             .then(() => {
                 const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
-                const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
+                ;[...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
             })
             .then(() => {
-                document.querySelectorAll(".service-button").forEach((button) => {
+                document.querySelectorAll(".service-button:not(#service--placeholder)").forEach((button) => {
                     button.addEventListener("click", (source) => {
                         const SERVICE_ID = source.currentTarget.getAttribute("data-service-id")
                         const TEAM_ID = document.getElementById("team-select").value
                         const HIGHLIGHT_ROUND = source.currentTarget.getAttribute("data-highlight-round")
                         updateUrlParams({ team: TEAM_ID, service: SERVICE_ID, round: HIGHLIGHT_ROUND })
-                        DRILLDOWN_TITLE.textContent = "Service: " + SERVICE_ID
-                        DRILLDOWN_LIST.textContent = ""
-                        DRILLDOWN_LIST.appendChild(DRILLDOWN_PLACEHOLDER.cloneNode(true))
-                        fetch(`/api/services/${TEAM_ID}/${SERVICE_ID}`)
-                            .then((response) => {
-                                if (!response.ok) {
-                                    Promise.reject(response)
-                                }
-                                return response.json()
-                            })
-                            .then((data) => {
-                                for (const a of data) {
-                                    let row = DRILLDOWN_PLACEHOLDER.cloneNode(true)
-                                    row.id = ""
-                                    row.childNodes[1].textContent = a.Round.ID
-                                    row.childNodes[3].textContent = (new Date(a.Round.StartTime)).toLocaleString()
-                                    row.childNodes[5].textContent = a.Result
-                                    row.childNodes[7].textContent = a.Debug
-                                    row.childNodes[9].textContent = a.Error
-                                    if (HIGHLIGHT_ROUND && parseInt(HIGHLIGHT_ROUND) === a.Round.ID) {
-                                        row.classList.add('table-primary')
-                                    }
-                                    DRILLDOWN_LIST.appendChild(row)
-                                }
-                                DRILLDOWN_LIST.removeChild(DRILLDOWN_LIST.childNodes[0])
-                                if (source.currentTarget) source.currentTarget.removeAttribute('data-highlight-round')
-                            })
+                        loadServiceDrilldown(TEAM_ID, SERVICE_ID, HIGHLIGHT_ROUND)
+                        if (source.currentTarget) source.currentTarget.removeAttribute('data-highlight-round')
                     })
                 })
+            })
+            .catch((err) => {
+                console.error(err)
+                SERVICES_ERROR.textContent = err.message || "Failed to load services."
+                SERVICES_ERROR.classList.remove("d-none")
             })
     }
 </script>

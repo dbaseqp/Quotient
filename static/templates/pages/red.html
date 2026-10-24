@@ -4,7 +4,7 @@
         <div class="d-flex h-100 w-100 flex-row">
             <div id="graph" class="d-flex bg-body-secondary h-100 w-100"></div>
             <div>
-                <div class="modal fade" id="modal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+                <div class="modal fade" id="modal" data-bs-backdrop="static" tabindex="-1"
                     aria-labelledby="modalLabel" aria-hidden="true">
                     <div class="modal-dialog modal-lg modal-fullscreen-md-down">
                         <div class="modal-content">
@@ -28,9 +28,7 @@
 </div>
 <script>
     var myDiagram;
-    const myModal = new bootstrap.Modal('#modal', {
-        keyboard: false
-    })
+    const myModal = new bootstrap.Modal('#modal')
     let vulns;
     let teams;
     let boxes;
@@ -445,6 +443,17 @@
             const form = document.createElement('form');
             form.onsubmit = postSaveObject;
 
+            const submitFormButton = document.getElementById('submitFormButton');
+            const isReadOnly = ["Vulnerability", "Team"].includes(node.category);
+            if (isReadOnly) {
+                submitFormButton.classList.add('d-none');
+                submitFormButton.onclick = null;
+            } else {
+                submitFormButton.classList.remove('d-none');
+                submitFormButton.textContent = 'Save';
+                submitFormButton.onclick = () => form.requestSubmit();
+            }
+
             const header = document.getElementById('modalLabel');
             if (node.category === 'Vulnerability') {
                 header.textContent = 'Vulnerability (read-only)'
@@ -470,13 +479,13 @@
                     const markdown = document.createElement('div');
                     markdown.name = key;
                     markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
-                    markdown.innerHTML = marked.parse(data[key]);
+                    markdown.replaceChildren(window.renderSafeMarkdown(data[key]));
 
                     const textarea = document.createElement('textarea');
                     textarea.name = key;
                     textarea.classList.add('border', 'border-1', 'mb-2', 'w-100');
 
-                    if (!["Vulnerability", "Team"].includes(node.category)) {
+                    if (!isReadOnly) {
                         const button = document.createElement('button');
                         button.type = 'button';
                         button.classList.add('btn', 'btn-link', 'mb-2');
@@ -489,7 +498,7 @@
                             } else if (button.textContent === 'Preview') {
                                 button.textContent = 'Edit';
                                 data[key] = textarea.value;
-                                markdown.innerHTML = marked.parse(data[key]);
+                                markdown.replaceChildren(window.renderSafeMarkdown(data[key]));
                                 container.replaceChildren(markdown);
                             }
                         });
@@ -503,7 +512,7 @@
                     input.name = key;
                     input.value = data[key];
                     input.classList.add('form-control', 'mb-2');
-                    if (["Vulnerability", "Team"].includes(node.category)) {
+                    if (isReadOnly) {
                         input.readOnly = true;
                     }
                     form.appendChild(input);
@@ -733,11 +742,12 @@
         formContainer.innerHTML = ''
 
         const submitFormButton = document.getElementById('submitFormButton');
+        submitFormButton.classList.remove('d-none');
         submitFormButton.textContent = 'Create Box';
         submitFormButton.onclick = () => { postNewObject("/api/red/box") };
 
         const newObjectForm = document.createElement('form');
-        newObjectForm.onsubmit = postNewObject;
+        newObjectForm.onsubmit = (ev) => { ev.preventDefault(); postNewObject("/api/red/box"); };
         const title = document.getElementById('modalLabel');
 
         title.textContent = 'New Box'
@@ -773,6 +783,9 @@
         const formContainer = document.getElementById('formContainer');
         formContainer.innerHTML = ''
         const newObjectForm = document.createElement('form');
+        const submitFormButton = document.getElementById('submitFormButton');
+        submitFormButton.classList.remove('d-none');
+        submitFormButton.textContent = 'Create Vector';
         submitFormButton.onclick = () => { postNewObject("/api/red/vector") };
 
         const title = document.getElementById('modalLabel');
@@ -855,7 +868,7 @@
 
         const markdown = document.createElement('div');
         markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
-        markdown.innerHTML = marked.parse(textarea.value);
+        markdown.replaceChildren(window.renderSafeMarkdown(textarea.value));
 
         const button = document.createElement('button');
         button.type = 'button';
@@ -870,7 +883,7 @@
             } else if (button.textContent === 'Preview') {
                 button.textContent = 'Edit';
                 content = textarea.value;
-                markdown.innerHTML = marked.parse(content);
+                markdown.replaceChildren(window.renderSafeMarkdown(content));
                 container.replaceChildren(markdown);
             }
         });
@@ -886,6 +899,9 @@
         const formContainer = document.getElementById('formContainer');
         formContainer.innerHTML = ''
         const newObjectForm = document.createElement('form');
+        const submitFormButton = document.getElementById('submitFormButton');
+        submitFormButton.classList.remove('d-none');
+        submitFormButton.textContent = 'Create Attack';
         submitFormButton.onclick = () => { postNewObject("/api/red/attack") };
 
         const title = document.getElementById('modalLabel');
@@ -937,7 +953,7 @@
 
         const markdown = document.createElement('div');
         markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
-        markdown.innerHTML = marked.parse(textarea.value);
+        markdown.replaceChildren(window.renderSafeMarkdown(textarea.value));
 
         const button = document.createElement('button');
         button.type = 'button';
@@ -952,7 +968,7 @@
             } else if (button.textContent === 'Preview') {
                 button.textContent = 'Edit';
                 content = textarea.value;
-                markdown.innerHTML = marked.parse(content);
+                markdown.replaceChildren(window.renderSafeMarkdown(content));
                 container.replaceChildren(markdown);
             }
         });

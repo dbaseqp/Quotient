@@ -6,11 +6,11 @@
 <div class="d-flex flex-grow-1 flex-column justify-content-center align-items-center w-100 h-100" style="height:0px;">
     <div class="d-flex h-100 w-100 bg-primary-subtle justify-content-center align-items-center" id="countdown__container">
         <div class="d-flex flex-column justify-content-center align-items-center text-center p-4">
-            <img class="mb-4" style="max-width: 300px; max-height: 200px;" src="{{ .config.MiscSettings.LogoImage }}">
-            <h2 class="mb-3">{{ .config.RequiredSettings.EventName }}</h2>
-            <h3 class="mb-4">Competition Not Started</h3>
-            <p class="text-muted">The competition has not been started by the administrators yet.</p>
-            <p class="text-muted">This page will automatically refresh every 10 seconds.</p>
+            <img class="mb-4" style="max-width: 300px; max-height: 200px;" src="{{ .config.MiscSettings.LogoImage }}" alt="{{ .config.RequiredSettings.EventName }} logo">
+            <h1 class="h2 mb-3">{{ .config.RequiredSettings.EventName }}</h1>
+            <h2 class="h4 mb-4">Competition Not Started</h2>
+            <p class="text-body-secondary">The competition has not been started by the administrators yet.</p>
+            <p class="text-body-secondary mb-0">This page will automatically refresh every 10 seconds.</p>
         </div>
     </div>
 </div>

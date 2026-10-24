@@ -2,20 +2,50 @@
 <div class="d-flex w-100 h-100">
     <div class="pt-4 w-100 h-100 overflow-y-scroll">
         <div class="container">
-            <div class="row">
-                <div class="row mb-3">
-                    <div class="mb-3">
-                        <span class="fs-3 fw-bold">Admin Area</span>
-                    </div>
+            <header class="mb-4">
+                <h1 class="h3 mb-1">Admin Console</h1>
+                <p class="text-body-secondary mb-0">Manage scoring engine state, active check runners, and team configurations.</p>
+            </header>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <a class="card h-100 text-decoration-none border-hover" href="/admin/engine">
+                        <div class="card-body">
+                            <h2 class="h5 card-title d-flex align-items-center gap-2">
+                                <i class="bi bi-cpu text-primary" aria-hidden="true"></i>
+                                Engine &amp; Scoring Data
+                            </h2>
+                            <p class="card-text text-body-secondary small mb-0">
+                                Start or stop the competition, pause/resume scoring rounds, reset scores, and export JSON or CSV score reports.
+                            </p>
+                        </div>
+                    </a>
                 </div>
-            </div>
-            <div class="row">
-                <nav class="nav flex-column">
-                    <a class="nav-link border" href="/admin/engine">Engine/Scoring Data</a>
-                    <a class="nav-link border" href="/admin/runners">Runner Tasks</a>
-                    <a class="nav-link border" href="/admin/teams">Team Configurations</a>
-                    <!-- <a class="nav-link border" href="/admin/appearance">Appearance/Roles Settings</a> -->
-                  </nav>
+                <div class="col-md-4">
+                    <a class="card h-100 text-decoration-none border-hover" href="/admin/runners">
+                        <div class="card-body">
+                            <h2 class="h5 card-title d-flex align-items-center gap-2">
+                                <i class="bi bi-activity text-primary" aria-hidden="true"></i>
+                                Runner Tasks
+                            </h2>
+                            <p class="card-text text-body-secondary small mb-0">
+                                Monitor active runner containers, live round progress, and in-flight service check tasks.
+                            </p>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-md-4">
+                    <a class="card h-100 text-decoration-none border-hover" href="/admin/teams">
+                        <div class="card-body">
+                            <h2 class="h5 card-title d-flex align-items-center gap-2">
+                                <i class="bi bi-people text-primary" aria-hidden="true"></i>
+                                Team Configurations
+                            </h2>
+                            <p class="card-text text-body-secondary small mb-0">
+                                Set per-team IP/DNS identifiers, activate or deactivate teams, and toggle individual service checks.
+                            </p>
+                        </div>
+                    </a>
+                </div>
             </div>
         </div>
     </div>

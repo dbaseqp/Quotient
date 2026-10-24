@@ -103,10 +103,22 @@
                                         aria-describedby="credentials-help"
                                         required
                                     ></textarea>
-                                    <div id="credentials-help" class="form-text">
+                                    <div id="credentials-help" class="form-text d-flex justify-content-between align-items-center">
                                         <span id="line-count">0 credentials entered</span>
                                     </div>
                                 </div>
+
+                                <details class="mb-3" id="quick-usernames-details">
+                                    <summary class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-person-badge me-1" aria-hidden="true"></i>Show Valid Usernames (<span id="quick-usernames-count">0</span>)
+                                    </summary>
+                                    <div class="mt-2 p-3 bg-body-secondary rounded">
+                                        <p class="small text-body-secondary mb-2">Click a username to insert <code>username,</code> into the editor:</p>
+                                        <div id="quick-usernames-list" class="d-flex flex-wrap gap-1">
+                                            <span class="text-body-secondary small">Select a credential list above.</span>
+                                        </div>
+                                    </div>
+                                </details>
 
                                 <details class="mb-3">
                                     <summary class="btn btn-sm btn-outline-secondary">
@@ -186,7 +198,7 @@
                                         <caption id="credentials-caption" class="visually-hidden">
                                             {{ if .IsAdmin }}Current credentials{{ else }}Available usernames{{ end }}
                                         </caption>
-                                        <thead class="table-light">
+                                        <thead class="table-secondary">
                                             <tr>
                                                 <th scope="col">Username</th>
                                                 {{ if .IsAdmin }}<th scope="col">Password</th>{{ end }}
@@ -248,7 +260,7 @@
                                         <caption id="history-caption" class="visually-hidden">
                                             History of credential changes
                                         </caption>
-                                        <thead class="table-light">
+                                        <thead class="table-secondary">
                                             <tr>
                                                 <th scope="col">Username</th>
                                                 <th scope="col">Old Password</th>
@@ -426,6 +438,7 @@ john.doe,SecurePassword!
                     option.textContent = credlist.name;
                     select.appendChild(option);
                 });
+                updateQuickUsernames();
             })
             .catch(err => {
                 console.error("Error loading credential lists:", err);
@@ -470,6 +483,7 @@ john.doe,SecurePassword!
 
         // Auto-refresh active tab when dropdowns change
         const refreshActiveTab = () => {
+            updateQuickUsernames();
             const viewTab = document.getElementById("view-tab");
             if (viewTab.classList.contains("active")) {
                 loadCredentials();
@@ -479,6 +493,41 @@ john.doe,SecurePassword!
         };
         document.getElementById("team-select").addEventListener("change", refreshActiveTab);
         document.getElementById("credlist-select").addEventListener("change", refreshActiveTab);
+    }
+
+    function updateQuickUsernames() {
+        const credlist = document.getElementById("credlist-select").value;
+        const container = document.getElementById("quick-usernames-list");
+        const countEl = document.getElementById("quick-usernames-count");
+        if (!container || !countEl) return;
+
+        const credlistInfo = credlistData.find(c => c.path === credlist);
+        const usernames = credlistInfo && Array.isArray(credlistInfo.usernames) ? credlistInfo.usernames : [];
+        countEl.textContent = String(usernames.length);
+        container.innerHTML = "";
+
+        if (usernames.length === 0) {
+            const empty = document.createElement("span");
+            empty.className = "text-body-secondary small";
+            empty.textContent = "No usernames found for this credential list.";
+            container.appendChild(empty);
+            return;
+        }
+
+        const textarea = document.getElementById("pcr-credentials");
+        usernames.forEach(u => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "btn btn-sm btn-outline-secondary font-monospace py-0 px-2";
+            chip.textContent = u;
+            chip.addEventListener("click", () => {
+                const prefix = textarea.value.trim().length > 0 && !textarea.value.endsWith("\n") ? "\n" : "";
+                textarea.value += `${prefix}${u},`;
+                textarea.focus();
+                textarea.dispatchEvent(new Event("input"));
+            });
+            container.appendChild(chip);
+        });
     }
 
     // ========================================
@@ -536,20 +585,24 @@ john.doe,SecurePassword!
             if (result.count === 0) {
                 showAlert("No credentials were updated. Verify usernames exist in the selected list.", "warning");
             } else if (hasSkipped) {
+                const skippedSet = new Set(result.skipped);
                 const skippedText = result.skipped.join(", ");
                 showAlert(
                     `${result.count} credential${result.count !== 1 ? 's' : ''} updated. ` +
-                    `${result.skipped.length} skipped (not found): ${skippedText}`,
+                    `${result.skipped.length} skipped (not found): ${skippedText}. Skipped lines have been kept in the editor.`,
                     "warning"
                 );
-                textarea.value = "";
+                const remainingLines = lines.filter((_, idx) => skippedSet.has(usernames[idx]));
+                textarea.value = remainingLines.join("\n");
             } else {
                 showAlert(`${result.count} credential${result.count !== 1 ? 's' : ''} updated successfully!`, "success");
                 textarea.value = "";
             }
 
             // Update line count
-            document.getElementById("line-count").textContent = "0 credentials entered";
+            const remainingCount = textarea.value.split("\n").filter(l => l.trim() !== "").length;
+            document.getElementById("line-count").textContent =
+                `${remainingCount} credential${remainingCount !== 1 ? 's' : ''} entered`;
         })
         .catch(err => {
             console.error("Error submitting PCR:", err);
