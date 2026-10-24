@@ -312,13 +312,10 @@ func (a *API) OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	a.storeOIDCUserInfo(username, groups, roles, expiresAt, refreshToken)
 
-	// Create session cookie with auth source and verified claims fallback
+	// Create session cookie with auth source
 	cookieData := map[string]interface{}{
 		"username":   username,
 		"authSource": "oidc",
-		"groups":     groups,
-		"roles":      roles,
-		"expiresAt":  expiresAt.Unix(),
 	}
 
 	encodedCookie, err := CookieEncoder.Encode(COOKIENAME, cookieData)
@@ -564,42 +561,6 @@ func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
 	}
 
 	return &info, true
-}
-
-// oidcUserInfoFromCookie reconstructs OidcUserInfo from a verified session
-// cookie when Redis has been restarted or flushed, repopulating Redis on a
-// best-effort basis.
-func (a *API) oidcUserInfoFromCookie(username string, cookieValue map[string]any) (*OidcUserInfo, bool) {
-	if cookieValue == nil {
-		return nil, false
-	}
-
-	expUnix, ok := cookieValue["expiresAt"].(int64)
-	if !ok || expUnix <= 0 {
-		return nil, false
-	}
-	expiresAt := time.Unix(expUnix, 0)
-	if time.Now().After(expiresAt) {
-		return nil, false
-	}
-
-	roles, _ := cookieValue["roles"].([]string)
-	groups, _ := cookieValue["groups"].([]string)
-	if len(roles) == 0 && len(groups) > 0 {
-		roles = a.mapGroupsToRoles(groups)
-	}
-	if len(roles) == 0 {
-		return nil, false
-	}
-
-	a.storeOIDCUserInfo(username, groups, roles, expiresAt, "")
-
-	return &OidcUserInfo{
-		Username:  username,
-		Groups:    groups,
-		Roles:     roles,
-		ExpiresAt: expiresAt,
-	}, true
 }
 
 // tryRefreshOIDCSession attempts to refresh an OIDC session using the refresh token

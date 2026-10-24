@@ -3,7 +3,6 @@ package api
 import (
 	"bufio"
 	"encoding/base64"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,7 +38,6 @@ func (a *API) cookieSecure() bool {
 }
 
 func init() {
-	gob.Register([]string{})
 	if _, err := os.Stat("config/COOKIEKEY"); err != nil {
 		// Ensure config directory exists
 		if err := os.MkdirAll("config", 0750); err != nil { // #nosec G301 -- config dir needs group read for deployment
@@ -174,7 +172,7 @@ func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bo
 		authSource = source
 	}
 
-	id, err := a.resolveIdentity(username, authSource, value)
+	id, err := a.resolveIdentity(username, authSource)
 	if err != nil {
 		slog.Error(err.Error())
 		http.SetCookie(w, &http.Cookie{
@@ -189,22 +187,10 @@ func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bo
 		return Identity{}, false
 	}
 
-	cookieValue := token.Value
-	if authSource == "oidc" && value["roles"] == nil {
-		if userInfo, exists := a.GetOIDCUserInfo(username); exists {
-			value["groups"] = userInfo.Groups
-			value["roles"] = userInfo.Roles
-			value["expiresAt"] = userInfo.ExpiresAt.Unix()
-			if encoded, err := CookieEncoder.Encode(COOKIENAME, value); err == nil {
-				cookieValue = encoded
-			}
-		}
-	}
-
 	// cookie refresh while still have value
 	http.SetCookie(w, &http.Cookie{
 		Name:     COOKIENAME,
-		Value:    cookieValue,
+		Value:    token.Value,
 		MaxAge:   int((time.Hour * 24).Seconds()),
 		HttpOnly: true,
 		Secure:   a.cookieSecure(),
