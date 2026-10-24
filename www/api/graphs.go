@@ -84,7 +84,7 @@ func (a *API) GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 			series[i].Name = "Team"
 			series[i].ID = 0
 		}
-		rand.Shuffle(len(series), func(i, j int) {
+		rand.Shuffle(len(series), func(i, j int) { // #nosec G404 -- non-crypto randomization of anonymized graph series
 			series[i], series[j] = series[j], series[i]
 		})
 	}
@@ -142,7 +142,7 @@ func (a *API) GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 		for i := range series {
 			series[i].Name = "Team"
 		}
-		rand.Shuffle(len(series), func(i, j int) {
+		rand.Shuffle(len(series), func(i, j int) { // #nosec G404 -- non-crypto randomization of anonymized graph series
 			series[i], series[j] = series[j], series[i]
 		})
 	}
@@ -221,7 +221,7 @@ func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 		for i := range series {
 			series[i].Name = "Team"
 		}
-		rand.Shuffle(len(series), func(i, j int) {
+		rand.Shuffle(len(series), func(i, j int) { // #nosec G404 -- non-crypto randomization of anonymized graph series
 			series[i], series[j] = series[j], series[i]
 		})
 	}
