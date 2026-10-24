@@ -366,12 +366,12 @@ func (a *API) createImportedInjects(prepared []preparedInject) ([]db.InjectSchem
 
 	for i, inject := range created {
 		createdIDs[i] = inject.ID
-		subDir := fmt.Sprintf("%d", inject.ID)
-		if err := SafeMkdirAll("config/injects", subDir, 0750); err != nil {
+		subDir := filepath.Join("injects", fmt.Sprintf("%d", inject.ID))
+		if err := SafeMkdirAll("config", subDir, 0750); err != nil {
 			cleanup()
 			return nil, err
 		}
-		uploadDir := filepath.Join("config/injects", subDir)
+		uploadDir := filepath.Join("config", subDir)
 		createdDirs = append(createdDirs, uploadDir)
 		for fileName, contents := range prepared[i].Files {
 			destination, err := SafeCreate(uploadDir, fileName)
