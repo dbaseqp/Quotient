@@ -79,7 +79,7 @@ func requireOwnTeam(w http.ResponseWriter, r *http.Request, teamID uint, bypassR
 
 // resolveIdentity turns an authenticated username and auth source into roles
 // and a team.
-func (a *API) resolveIdentity(username string, authSource string) (Identity, error) {
+func (a *API) resolveIdentity(username string, authSource string, cookieValue map[string]any) (Identity, error) {
 	id := Identity{Username: username}
 
 	// teamFor carries what this auth source needs to pick the team: the OIDC
@@ -89,6 +89,9 @@ func (a *API) resolveIdentity(username string, authSource string) (Identity, err
 	switch authSource {
 	case "oidc":
 		userInfo, exists := a.GetOIDCUserInfo(username)
+		if !exists {
+			userInfo, exists = a.oidcUserInfoFromCookie(username, cookieValue)
+		}
 		if !exists {
 			return Identity{}, errors.New("OIDC session expired - please login again")
 		}

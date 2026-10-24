@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/dbaseqp/Quotient/engine/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -75,6 +77,58 @@ func TestLogoutEndpoint(t *testing.T) {
 		cookies := rr.Result().Cookies()
 		require.Len(t, cookies, 1)
 		assert.Equal(t, COOKIENAME, cookies[0].Name)
+		assert.Equal(t, -1, cookies[0].MaxAge)
+	})
+}
+
+func TestOIDCCookieFallbackWhenRedisUnavailable(t *testing.T) {
+	a := &API{conf: &config.ConfigSettings{
+		OIDCSettings: config.OIDCAuthConfig{
+			OIDCEnabled:    true,
+			OIDCAdminGroups: []string{"WCComps_Quotient_Admin"},
+		},
+	}}
+
+	t.Run("valid OIDC cookie authenticates when Redis is unavailable", func(t *testing.T) {
+		cookieData := map[string]any{
+			"username":   "hypernova",
+			"authSource": "oidc",
+			"groups":     []string{"WCComps_Quotient_Admin"},
+			"roles":      []string{"admin"},
+			"expiresAt":  time.Now().Add(time.Hour).Unix(),
+		}
+		encoded, err := CookieEncoder.Encode(COOKIENAME, cookieData)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/announcements", nil)
+		req.AddCookie(&http.Cookie{Name: COOKIENAME, Value: encoded})
+		rr := httptest.NewRecorder()
+
+		id, ok := a.Authenticate(rr, req)
+		require.True(t, ok, "should authenticate using verified cookie claims when Redis is unavailable")
+		assert.Equal(t, "hypernova", id.Username)
+		assert.Equal(t, []string{"admin"}, id.Roles)
+	})
+
+	t.Run("expired OIDC cookie fails and clears cookie when Redis is unavailable", func(t *testing.T) {
+		cookieData := map[string]any{
+			"username":   "hypernova",
+			"authSource": "oidc",
+			"groups":     []string{"WCComps_Quotient_Admin"},
+			"roles":      []string{"admin"},
+			"expiresAt":  time.Now().Add(-time.Hour).Unix(),
+		}
+		encoded, err := CookieEncoder.Encode(COOKIENAME, cookieData)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/announcements", nil)
+		req.AddCookie(&http.Cookie{Name: COOKIENAME, Value: encoded})
+		rr := httptest.NewRecorder()
+
+		_, ok := a.Authenticate(rr, req)
+		assert.False(t, ok, "expired OIDC cookie should fail authentication")
+		cookies := rr.Result().Cookies()
+		require.Len(t, cookies, 1)
 		assert.Equal(t, -1, cookies[0].MaxAge)
 	})
 }
