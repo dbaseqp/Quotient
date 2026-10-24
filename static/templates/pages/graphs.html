@@ -10,6 +10,13 @@
                     <div class="card overflow-y-scroll">
                         <div class="card-img-top graph" id="service-status"></div>
                         <script>
+                            function shuffleSeries(arr) {
+                                for (let i = arr.length - 1; i > 0; i--) {
+                                    const j = Math.floor(Math.random() * (i + 1));
+                                    [arr[i], arr[j]] = [arr[j], arr[i]];
+                                }
+                                return arr;
+                            }
                             let TEAMMAP = {}
                             let ROUNDID = 0
                             let options = {
@@ -98,7 +105,9 @@
                                         console.log(data)
                                         ROUNDID = data.roundID
                                         series = data.series.map((service) => {
-                                            TEAMMAP[service.Name] = service.ID
+                                            if (service.Name !== "Team" && service.ID) {
+                                                TEAMMAP[service.Name] = service.ID
+                                            }
                                             return {
                                                 name: service.Name,
                                                 data: service.Data.map((status) => {
@@ -110,9 +119,12 @@
                                                     return a.x.localeCompare(b.x)
                                                 })
                                             }
-                                        }).sort((a, b) => {
-                                            return b.name.localeCompare(a.name)
                                         })
+                                        if (series.every((s) => s.name === "Team")) {
+                                            shuffleSeries(series)
+                                        } else {
+                                            series.sort((a, b) => b.name.localeCompare(a.name))
+                                        }
                                     })
                                 categories = series[0].data.map((status) => {
                                     return status.x
@@ -146,7 +158,7 @@
 
                                         const teamID = TEAMMAP[series[i].name]
                                         const serviceName = status.x
-                                        const pointID = `status-${teamID}-${j}`
+                                        const pointID = `status-${i}-${j}`
                                         const rowHeight = STATUSCHART.w.globals.gridHeight / series.length;
                                         
                                         let point = {
@@ -298,9 +310,12 @@
                                                     }
                                                 })
                                             }
-                                        }).sort((a, b) => {
-                                            return b.name.localeCompare(a.name)
                                         })
+                                        if (series.every((s) => s.name === "Team")) {
+                                            shuffleSeries(series)
+                                        } else {
+                                            series.sort((a, b) => b.name.localeCompare(a.name))
+                                        }
                                     })
 
                                 categories = series[0].data.map((status) => {
