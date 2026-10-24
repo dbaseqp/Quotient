@@ -69,6 +69,9 @@ func SafeCreate(baseDir, relativePath string) (*os.File, error) {
 // SafeMkdirAll creates nested directories within baseDir safely,
 // preventing directory traversal attacks using os.Root.
 func SafeMkdirAll(baseDir, relativePath string, perm os.FileMode) error {
+	if err := os.MkdirAll(baseDir, perm); err != nil { // #nosec G301 -- baseDir is a trusted application directory
+		return err
+	}
 	root, err := os.OpenRoot(baseDir)
 	if err != nil {
 		return err

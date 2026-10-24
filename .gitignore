@@ -23,6 +23,8 @@ runner/runner
 !/custom-checks/requirements.txt
 
 /submissions/*
+!/submissions/**/
+/submissions/*/**
 !.gitkeep
 dump.rdb
 
