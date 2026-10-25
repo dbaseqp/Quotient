@@ -21,7 +21,7 @@ func TestCredentialsUnknownTeam(t *testing.T) {
 		credentialsMutex: map[uint]*sync.Mutex{1: {}},
 	}
 
-	if _, _, err := se.UpdateCredentials(99, "linux.credlist", []string{"u"}, []string{"p"}); !errors.Is(err, errNoCredentialLock) {
+	if _, _, err := se.UpdateCredentials(99, "linux.credlist", []string{"u"}, []string{"p"}, "admin"); !errors.Is(err, errNoCredentialLock) {
 		t.Errorf("UpdateCredentials: want errNoCredentialLock, got %v", err)
 	}
 	if err := se.ResetCredentials(99, "linux.credlist", "admin"); !errors.Is(err, errNoCredentialLock) {

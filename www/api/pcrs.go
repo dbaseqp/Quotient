@@ -3,12 +3,23 @@ package api
 import (
 	"encoding/json"
 	"log/slog"
+	"mime"
 	"net/http"
 	"slices"
 	"strconv"
 
 	"github.com/dbaseqp/Quotient/engine/db"
 )
+
+// requireJSONContentType blocks cross-origin simple requests (CSRF) by forcing a CORS preflight.
+func requireJSONContentType(w http.ResponseWriter, r *http.Request) bool {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		WriteJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "Content-Type must be application/json"})
+		return false
+	}
+	return true
+}
 
 func (a *API) GetCredlists(w http.ResponseWriter, r *http.Request) {
 	req_roles := r.Context().Value("roles").([]string)
@@ -27,6 +38,12 @@ func (a *API) GetCredlists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetPcrs(w http.ResponseWriter, r *http.Request) {
+	reqRoles, _ := r.Context().Value("roles").([]string)
+	if !slices.Contains(reqRoles, "admin") {
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
+		return
+	}
+
 	// Get query parameters
 	teamIDStr := r.URL.Query().Get("team_id")
 	credlistName := r.URL.Query().Get("credlist")
@@ -52,6 +69,12 @@ func (a *API) GetPcrs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetPcrHistory(w http.ResponseWriter, r *http.Request) {
+	reqRoles, _ := r.Context().Value("roles").([]string)
+	if !slices.Contains(reqRoles, "admin") {
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
+		return
+	}
+
 	// Get query parameters
 	teamIDStr := r.URL.Query().Get("team_id")
 	credlistName := r.URL.Query().Get("credlist")
@@ -128,6 +151,10 @@ func (a *API) pcrTeamID(w http.ResponseWriter, r *http.Request, formTeamID strin
 }
 
 func (a *API) CreatePcr(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
+
 	// get teamid from request
 	// get username,password from request
 	// somehow determine which credlist to change
@@ -140,6 +167,7 @@ func (a *API) CreatePcr(w http.ResponseWriter, r *http.Request) {
 
 	var form Form
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&form)
 	if err != nil {
@@ -153,7 +181,12 @@ func (a *API) CreatePcr(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedCount, skippedUsernames, err := a.eng.UpdateCredentials(teamID, form.CredlistPath, form.Usernames, form.Passwords)
+	id, _ := IdentityFrom(r.Context())
+	changedBy := id.Username
+	if changedBy == "" {
+		changedBy, _ = r.Context().Value("username").(string)
+	}
+	updatedCount, skippedUsernames, err := a.eng.UpdateCredentials(teamID, form.CredlistPath, form.Usernames, form.Passwords, changedBy)
 	if err != nil {
 		WriteInternalError(w, r, "Error updating PCR", err)
 		return
@@ -170,6 +203,10 @@ func (a *API) CreatePcr(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) ResetPcr(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
+
 	// get teamid from request
 	// somehow determine which credlist to change
 	type Form struct {
@@ -178,6 +215,7 @@ func (a *API) ResetPcr(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var form Form
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&form)
 	if err != nil {
@@ -190,7 +228,11 @@ func (a *API) ResetPcr(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	changedBy := r.Context().Value("username").(string)
+	id, _ := IdentityFrom(r.Context())
+	changedBy := id.Username
+	if changedBy == "" {
+		changedBy, _ = r.Context().Value("username").(string)
+	}
 	if err := a.eng.ResetCredentials(teamID, form.CredlistPath, changedBy); err != nil {
 		WriteInternalError(w, r, "Error resetting PCR", err)
 		return

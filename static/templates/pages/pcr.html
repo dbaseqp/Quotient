@@ -2,14 +2,19 @@
 <style>
     .pcr-container { max-width: 900px; }
     .pcr-empty-icon { font-size: 3rem; }
+    #pcr-tabs .nav-link.active {
+        background-image: none;
+        color: var(--bs-emphasis-color);
+        font-weight: 600;
+    }
 </style>
 <div class="d-flex w-100 h-100">
-    <div class="pt-4 w-100 h-100 overflow-y-scroll">
+    <div class="pt-4 w-100 h-100 overflow-y-auto">
         <div class="container pcr-container">
             <!-- Page Header with Context -->
             <header class="mb-4">
                 <h1 class="h3 mb-2">Password Change Request (PCR)</h1>
-                <p class="text-muted mb-0">Update service credentials for your team's scored systems.</p>
+                <p class="text-body-secondary mb-0">Update service credentials for your team's scored systems.</p>
             </header>
 
             <!-- Global Alert Container - for status messages -->
@@ -18,18 +23,18 @@
             <!-- Selection Controls - Always Visible -->
             <section class="card mb-4" aria-labelledby="selection-heading">
                 <div class="card-body">
-                    <h2 class="visually-hidden" id="selection-heading">Select Team and Credential List</h2>
+                    <h2 class="visually-hidden" id="selection-heading">{{ if .IsAdmin }}Select Team and Credential List{{ else }}Select Credential List{{ end }}</h2>
                     <div class="row g-3">
-                        <div class="col-sm-6">
+                        <div class="{{ if .IsAdmin }}col-sm-6{{ else }}d-none{{ end }}">
                             <label for="team-select" class="form-label fw-semibold">
                                 <i class="bi bi-people me-1" aria-hidden="true"></i>Team
                             </label>
                             <select class="form-select" id="team-select" aria-describedby="team-help">
                                 <option value="" disabled selected>Loading teams...</option>
                             </select>
-                            <div id="team-help" class="form-text">{{ if .IsAdmin }}Select the team to modify credentials for.{{ else }}Your team.{{ end }}</div>
+                            <div id="team-help" class="form-text">Select the team to modify credentials for.</div>
                         </div>
-                        <div class="col-sm-6">
+                        <div class="{{ if .IsAdmin }}col-sm-6{{ else }}col-12{{ end }}">
                             <label for="credlist-select" class="form-label fw-semibold">
                                 <i class="bi bi-list-ul me-1" aria-hidden="true"></i>Credential List
                             </label>
@@ -84,16 +89,11 @@
                     <div class="tab-pane fade show active" id="update-panel" role="tabpanel"
                          aria-labelledby="update-tab" tabindex="0">
                         <div class="card-body">
-                            <form id="pcr-form" aria-describedby="form-instructions">
-                                <div id="form-instructions" class="alert alert-info mb-3" role="note">
-                                    <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
-                                    Enter credentials in <code>username,password</code> format, one per line.
-                                </div>
-
+                            <form id="pcr-form" aria-describedby="credentials-help" novalidate>
                                 <div class="mb-3">
                                     <label for="pcr-credentials" class="form-label fw-semibold">
                                         Credentials
-                                        <span class="text-muted fw-normal ms-1">(required)</span>
+                                        <span class="text-body-secondary fw-normal ms-1">(<code>username,password</code>, one per line)</span>
                                     </label>
                                     <textarea
                                         class="form-control font-monospace"
@@ -103,27 +103,18 @@
                                         aria-describedby="credentials-help"
                                         required
                                     ></textarea>
-                                    <div id="credentials-help" class="form-text">
+                                    <div id="credentials-help" class="form-text d-flex flex-wrap align-items-center gap-2">
                                         <span id="line-count">0 credentials entered</span>
+                                        <span id="validation-summary" class="d-flex flex-wrap gap-1 d-none"></span>
                                     </div>
                                 </div>
 
-                                <details class="mb-3">
-                                    <summary class="btn btn-sm btn-outline-secondary">
-                                        <i class="bi bi-gear me-1" aria-hidden="true"></i>Advanced Options
-                                    </summary>
-                                    <div class="mt-2 p-3 bg-body-secondary rounded">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="strip-quotes" checked>
-                                            <label class="form-check-label" for="strip-quotes">
-                                                Strip surrounding quotes from values
-                                            </label>
-                                            <div class="form-text">
-                                                Automatically removes <code>"quotes"</code> or <code>'quotes'</code> from usernames and passwords.
-                                            </div>
-                                        </div>
-                                    </div>
-                                </details>
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="strip-quotes" checked>
+                                    <label class="form-check-label" for="strip-quotes">
+                                        Strip surrounding quotes from values
+                                    </label>
+                                </div>
 
                                 <div class="d-flex flex-wrap gap-2">
                                     <button type="submit" class="btn btn-primary" id="submit-btn">
@@ -148,10 +139,10 @@
                          aria-labelledby="view-tab" tabindex="0">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-center mb-3">
-                                <p class="mb-0 text-muted">
+                                <p class="mb-0 text-body-secondary">
                                     {{ if .IsAdmin }}View current credentials for the selected team.{{ else }}Available usernames for this credential list.{{ end }}
                                 </p>
-                                <button class="btn btn-sm btn-outline-primary" id="refresh-credentials-btn">
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="refresh-credentials-btn">
                                     <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>Refresh
                                 </button>
                             </div>
@@ -161,20 +152,20 @@
                                 <div class="spinner-border text-primary" role="status">
                                     <span class="visually-hidden">Loading...</span>
                                 </div>
-                                <p class="mt-2 text-muted">Loading...</p>
+                                <p class="mt-2 text-body-secondary">Loading...</p>
                             </div>
 
                             <!-- Empty State -->
                             <div id="credentials-empty" class="text-center py-4 d-none">
-                                <i class="bi bi-inbox text-muted pcr-empty-icon" aria-hidden="true"></i>
-                                <p class="mt-2 text-muted">No usernames found for this selection.</p>
+                                <i class="bi bi-inbox text-body-secondary pcr-empty-icon" aria-hidden="true"></i>
+                                <p class="mt-2 text-body-secondary">No usernames found for this selection.</p>
                             </div>
 
                             <!-- Error State -->
                             <div id="credentials-error" class="alert alert-danger d-none" role="alert">
                                 <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
                                 <span id="credentials-error-msg">Failed to load data.</span>
-                                <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="loadCredentials()">
+                                <button type="button" class="btn btn-sm btn-outline-danger ms-2" id="retry-credentials-btn">
                                     Retry
                                 </button>
                             </div>
@@ -186,7 +177,7 @@
                                         <caption id="credentials-caption" class="visually-hidden">
                                             {{ if .IsAdmin }}Current credentials{{ else }}Available usernames{{ end }}
                                         </caption>
-                                        <thead class="table-light">
+                                        <thead>
                                             <tr>
                                                 <th scope="col">Username</th>
                                                 {{ if .IsAdmin }}<th scope="col">Password</th>{{ end }}
@@ -196,7 +187,7 @@
                                         </tbody>
                                     </table>
                                 </div>
-                                <p class="text-muted small mt-2">
+                                <p class="text-body-secondary small mt-2">
                                     <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
                                     <span id="credentials-count">0</span> {{ if .IsAdmin }}credentials{{ else }}usernames{{ end }} shown
                                 </p>
@@ -210,10 +201,10 @@
                          aria-labelledby="history-tab" tabindex="0">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-center mb-3">
-                                <p class="mb-0 text-muted">
+                                <p class="mb-0 text-body-secondary">
                                     Audit log of all credential changes.
                                 </p>
-                                <button class="btn btn-sm btn-outline-primary" id="refresh-history-btn">
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="refresh-history-btn">
                                     <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>Refresh
                                 </button>
                             </div>
@@ -223,20 +214,20 @@
                                 <div class="spinner-border text-primary" role="status">
                                     <span class="visually-hidden">Loading history...</span>
                                 </div>
-                                <p class="mt-2 text-muted">Loading change history...</p>
+                                <p class="mt-2 text-body-secondary">Loading change history...</p>
                             </div>
 
                             <!-- Empty State -->
                             <div id="history-empty" class="text-center py-4 d-none">
-                                <i class="bi bi-clock text-muted pcr-empty-icon" aria-hidden="true"></i>
-                                <p class="mt-2 text-muted">No changes recorded for this selection.</p>
+                                <i class="bi bi-clock text-body-secondary pcr-empty-icon" aria-hidden="true"></i>
+                                <p class="mt-2 text-body-secondary">No changes recorded for this selection.</p>
                             </div>
 
                             <!-- Error State -->
                             <div id="history-error" class="alert alert-danger d-none" role="alert">
                                 <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
                                 <span id="history-error-msg">Failed to load history.</span>
-                                <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="loadHistory()">
+                                <button type="button" class="btn btn-sm btn-outline-danger ms-2" id="retry-history-btn">
                                     Retry
                                 </button>
                             </div>
@@ -248,7 +239,7 @@
                                         <caption id="history-caption" class="visually-hidden">
                                             History of credential changes
                                         </caption>
-                                        <thead class="table-light">
+                                        <thead>
                                             <tr>
                                                 <th scope="col">Username</th>
                                                 <th scope="col">Old Password</th>
@@ -261,7 +252,7 @@
                                         </tbody>
                                     </table>
                                 </div>
-                                <p class="text-muted small mt-2">
+                                <p class="text-body-secondary small mt-2">
                                     <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
                                     <span id="history-count">0</span> changes shown (most recent first)
                                 </p>
@@ -286,11 +277,10 @@
                                     </h4>
                                     <div id="help-basics" class="accordion-collapse collapse show" data-bs-parent="#help-accordion">
                                         <div class="accordion-body">
-                                            <ol>
-                                                <li><strong>Verify your team</strong> is selected at the top.</li>
-                                                <li><strong>Choose a credential list</strong> (e.g., SSH users, web admin).</li>
-                                                <li><strong>Enter credentials</strong> in <code>username,password</code> format.</li>
-                                                <li><strong>Click Submit</strong> to save your changes.</li>
+                                            <ol class="mb-0">
+                                                <li><strong>Choose a credential list</strong> at the top.</li>
+                                                <li><strong>Enter credentials</strong> in <code>username,password</code> format (one per line).</li>
+                                                <li><strong>Click Submit Changes</strong> to save your changes.</li>
                                             </ol>
                                         </div>
                                     </div>
@@ -311,8 +301,8 @@
                                             <pre class="bg-body-secondary p-2 rounded"><code>administrator,MyNewP@ss123
 john.doe,SecurePassword!
 "quoted_user","quoted,password"</code></pre>
-                                            <p class="text-muted small mb-0">
-                                                Tip: Enable "Strip quotes" to automatically remove surrounding quotes.
+                                            <p class="text-body-secondary small mb-0">
+                                                Tip: Enable "Strip surrounding quotes from values" to automatically remove outer quotes.
                                             </p>
                                         </div>
                                     </div>
@@ -382,7 +372,6 @@ john.doe,SecurePassword!
     let credlistData = [];
     let resetModal;
 
-    // Initialize on page load
     document.addEventListener('DOMContentLoaded', () => {
         resetModal = new bootstrap.Modal(document.getElementById('reset-modal'));
         initializeSelects();
@@ -390,12 +379,7 @@ john.doe,SecurePassword!
         initializeAdminTabs();
     });
 
-    // ========================================
-    // Initialization Functions
-    // ========================================
-
     function initializeSelects() {
-        // Load teams
         fetch("/api/teams")
             .then(handleResponse)
             .then(teams => {
@@ -413,63 +397,129 @@ john.doe,SecurePassword!
                 showAlert("Failed to load teams. Please refresh the page.", "danger");
             });
 
-        // Load credential lists
         fetch("/api/credlists")
             .then(handleResponse)
             .then(credlists => {
-                credlistData = credlists;
+                credlistData = Array.isArray(credlists) ? credlists : [];
                 const select = document.getElementById("credlist-select");
                 select.innerHTML = '';
-                credlists.forEach(credlist => {
+                credlistData.forEach(credlist => {
                     const option = document.createElement("option");
                     option.value = credlist.path;
                     option.textContent = credlist.name;
                     select.appendChild(option);
                 });
+                updateEditorStatus();
             })
             .catch(err => {
                 console.error("Error loading credential lists:", err);
                 showAlert("Failed to load credential lists. Please refresh the page.", "danger");
             });
+    }
 
+    function parseCredentialLines(rawText, stripQuotes) {
+        const maybeUnquote = (str) => {
+            if (!stripQuotes) return str;
+            const trimmed = str.trim();
+            if (trimmed.length >= 2 &&
+                ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+                 (trimmed.startsWith("'") && trimmed.endsWith("'")))) {
+                return trimmed.slice(1, -1);
+            }
+            return str;
+        };
+
+        const rawLines = rawText.split("\n");
+        const parsed = [];
+        const invalidLines = [];
+
+        rawLines.forEach((rawLine, index) => {
+            if (rawLine.trim() === "") return;
+
+            const commaIndex = rawLine.indexOf(",");
+            if (commaIndex === -1) {
+                invalidLines.push({ lineNumber: index + 1, reason: "missing comma" });
+                return;
+            }
+
+            const username = maybeUnquote(rawLine.slice(0, commaIndex).trim());
+            const password = maybeUnquote(rawLine.slice(commaIndex + 1).replace(/\r$/, ""));
+
+            if (username === "" && password === "") {
+                invalidLines.push({ lineNumber: index + 1, reason: "empty line" });
+                return;
+            }
+
+            parsed.push({ lineNumber: index + 1, raw: rawLine, username, password });
+        });
+
+        return { parsed, invalidLines };
+    }
+
+    function updateEditorStatus() {
+        const textarea = document.getElementById("pcr-credentials");
+        const stripQuotes = document.getElementById("strip-quotes").checked;
+        const { parsed, invalidLines } = parseCredentialLines(textarea.value, stripQuotes);
+        const credlistPath = document.getElementById("credlist-select").value;
+        const info = credlistData.find(c => c.path === credlistPath);
+        const validSet = new Set(Array.isArray(info?.usernames) ? info.usernames : []);
+
+        document.getElementById("line-count").textContent =
+            `${parsed.length} credential${parsed.length !== 1 ? 's' : ''} entered`;
+
+        const unrecognized = validSet.size > 0
+            ? [...new Set(parsed.map(p => p.username).filter(u => !validSet.has(u)))]
+            : [];
+
+        const summaryEl = document.getElementById("validation-summary");
+        summaryEl.innerHTML = "";
+
+        if (invalidLines.length > 0) {
+            const badge = document.createElement("span");
+            badge.className = "badge text-bg-danger";
+            badge.textContent = `Line ${invalidLines[0].lineNumber}: ${invalidLines[0].reason}`;
+            summaryEl.appendChild(badge);
+        }
+
+        if (unrecognized.length > 0) {
+            const badge = document.createElement("span");
+            badge.className = "badge text-bg-warning";
+            const preview = unrecognized.slice(0, 3).map(u => u || "(empty)").join(", ") + (unrecognized.length > 3 ? "..." : "");
+            badge.textContent = `Not in ${info?.name || 'list'}: ${preview}`;
+            summaryEl.appendChild(badge);
+        }
+
+        summaryEl.classList.toggle("d-none", invalidLines.length === 0 && unrecognized.length === 0);
     }
 
     function initializeForm() {
         const form = document.getElementById("pcr-form");
         const textarea = document.getElementById("pcr-credentials");
 
-        // Live line count
-        textarea.addEventListener("input", () => {
-            const lines = textarea.value.split("\n").filter(l => l.trim() !== "").length;
-            document.getElementById("line-count").textContent =
-                `${lines} credential${lines !== 1 ? 's' : ''} entered`;
-        });
-
-        // Form submission
+        textarea.addEventListener("input", updateEditorStatus);
+        document.getElementById("strip-quotes").addEventListener("change", updateEditorStatus);
         form.addEventListener("submit", handleFormSubmit);
 
-        // Reset button
         document.getElementById("reset-btn").addEventListener("click", () => {
             resetModal.show();
         });
 
-        // Confirm reset
         document.getElementById("confirm-reset-btn").addEventListener("click", handleReset);
     }
 
     function initializeAdminTabs() {
-        // View tab available to everyone
         document.getElementById("view-tab").addEventListener("shown.bs.tab", loadCredentials);
         document.getElementById("refresh-credentials-btn").addEventListener("click", loadCredentials);
+        document.getElementById("retry-credentials-btn").addEventListener("click", loadCredentials);
 
-        // History tab admin-only
         if (isAdmin) {
             document.getElementById("history-tab").addEventListener("shown.bs.tab", loadHistory);
             document.getElementById("refresh-history-btn").addEventListener("click", loadHistory);
+            document.getElementById("retry-history-btn").addEventListener("click", loadHistory);
         }
 
-        // Auto-refresh active tab when dropdowns change
         const refreshActiveTab = () => {
+            updateEditorStatus();
             const viewTab = document.getElementById("view-tab");
             if (viewTab.classList.contains("active")) {
                 loadCredentials();
@@ -481,45 +531,37 @@ john.doe,SecurePassword!
         document.getElementById("credlist-select").addEventListener("change", refreshActiveTab);
     }
 
-    // ========================================
-    // Form Handlers
-    // ========================================
-
     function handleFormSubmit(event) {
         event.preventDefault();
 
         const textarea = document.getElementById("pcr-credentials");
-        const lines = textarea.value.split("\n").filter(l => l.trim() !== "");
+        const stripQuotes = document.getElementById("strip-quotes").checked;
+        const { parsed, invalidLines } = parseCredentialLines(textarea.value, stripQuotes);
 
-        if (lines.length === 0) {
+        if (invalidLines.length > 0) {
+            const details = invalidLines
+                .slice(0, 3)
+                .map(item => `Line ${item.lineNumber} (${item.reason})`)
+                .join("; ");
+            showAlert(
+                `Please fix ${invalidLines.length} invalid line${invalidLines.length !== 1 ? 's' : ''} before submitting: ${details}. Format must be username,password.`,
+                "warning"
+            );
+            textarea.focus();
+            return;
+        }
+
+        if (parsed.length === 0) {
             showAlert("Please enter at least one credential.", "warning");
             textarea.focus();
             return;
         }
 
-        const stripQuotes = document.getElementById("strip-quotes").checked;
-        const maybeUnquote = (str) => {
-            if (!stripQuotes) return str;
-            if ((str.startsWith('"') && str.endsWith('"')) ||
-                (str.startsWith("'") && str.endsWith("'"))) {
-                return str.slice(1, -1);
-            }
-            return str;
-        };
-
-        const usernames = [];
-        const passwords = [];
-        for (const line of lines) {
-            const parts = line.split(/,(.+)/);
-            usernames.push(maybeUnquote(parts[0] ?? ""));
-            passwords.push(maybeUnquote(parts[1] ?? ""));
-        }
-
         const data = {
             team_id: document.getElementById("team-select").value,
             credlist_id: document.getElementById("credlist-select").value,
-            usernames,
-            passwords
+            usernames: parsed.map(item => item.username),
+            passwords: parsed.map(item => item.password)
         };
 
         setButtonLoading("submit-btn", true);
@@ -531,25 +573,27 @@ john.doe,SecurePassword!
         })
         .then(handleResponse)
         .then(result => {
-            const hasSkipped = result.skipped && result.skipped.length > 0;
+            const skippedList = Array.isArray(result.skipped) ? result.skipped : [];
 
             if (result.count === 0) {
                 showAlert("No credentials were updated. Verify usernames exist in the selected list.", "warning");
-            } else if (hasSkipped) {
-                const skippedText = result.skipped.join(", ");
+            } else if (skippedList.length > 0) {
+                const skippedSet = new Set(skippedList);
+                textarea.value = parsed
+                    .filter(item => skippedSet.has(item.username))
+                    .map(item => item.raw)
+                    .join("\n");
                 showAlert(
                     `${result.count} credential${result.count !== 1 ? 's' : ''} updated. ` +
-                    `${result.skipped.length} skipped (not found): ${skippedText}`,
+                    `${skippedList.length} skipped (not found): ${skippedList.join(", ")}.`,
                     "warning"
                 );
-                textarea.value = "";
             } else {
                 showAlert(`${result.count} credential${result.count !== 1 ? 's' : ''} updated successfully!`, "success");
                 textarea.value = "";
             }
 
-            // Update line count
-            document.getElementById("line-count").textContent = "0 credentials entered";
+            updateEditorStatus();
         })
         .catch(err => {
             console.error("Error submitting PCR:", err);
@@ -587,18 +631,12 @@ john.doe,SecurePassword!
         });
     }
 
-    // ========================================
-    // Admin Functions
-    // ========================================
-
     function loadCredentials() {
         const credlist = document.getElementById("credlist-select").value;
 
-        // Show loading, hide others
         setAdminPanelState("credentials", "loading");
 
         if (isAdmin) {
-            // Admin: fetch full credentials from API
             const teamId = document.getElementById("team-select").value;
             fetch(`/api/pcrs?team_id=${encodeURIComponent(teamId)}&credlist=${encodeURIComponent(credlist)}`)
                 .then(handleResponse)
@@ -616,7 +654,6 @@ john.doe,SecurePassword!
                     setAdminPanelState("credentials", "error");
                 });
         } else {
-            // Non-admin: show usernames from already-loaded credlist data
             const credlistInfo = credlistData.find(c => c.path === credlist);
             if (!credlistInfo || !credlistInfo.usernames || credlistInfo.usernames.length === 0) {
                 setAdminPanelState("credentials", "empty");
@@ -710,13 +747,8 @@ john.doe,SecurePassword!
             });
     }
 
-    // ========================================
-    // Utility Functions
-    // ========================================
-
     function handleResponse(response) {
         if (!response.ok) {
-            // Reject with the reason from the body, or the status code.
             return response.json()
                 .catch(() => null)
                 .then(body => {
@@ -757,7 +789,6 @@ john.doe,SecurePassword!
 
         container.appendChild(alert);
 
-        // Auto-dismiss after 6 seconds
         setTimeout(() => {
             if (alert.parentNode) {
                 const bsAlert = new bootstrap.Alert(alert);
@@ -794,6 +825,5 @@ john.doe,SecurePassword!
             }
         });
     }
-
 </script>
 {{ end }}
