@@ -10,10 +10,17 @@
                     </div>
                 </div>
             </div>
+            <div class="row mb-3 d-none" id="service-summary-row">
+                <div class="col col-12 p-0">
+                    <div class="card overflow-y-scroll">
+                        <div class="card-img-top graph" id="service-status"></div>
+                    </div>
+                </div>
+            </div>
             <div class="row" id="service-container">
                 <button
                     class="d-none d-flex flex-grow-1 nav-link service-button text-start border rounded-1 mb-3 p-4 w-100"
-                    type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvas" data-service-id="placeholder"
+                    type="button" data-service-id="placeholder"
                     aria-controls="offcanvas" id="service--placeholder">
                     <div class="container">
                         <div class="row">
@@ -132,6 +139,7 @@
 
 <script>
     const SERVICE_CONTAINER = document.getElementById("service-container")
+    const SERVICE_SUMMARY_ROW = document.getElementById("service-summary-row")
     const PLACEHOLDER_SERVICE = document.getElementById("service--placeholder")
     const DRILLDOWN_TITLE = document.getElementById("drilldown__label")
     const DRILLDOWN_PLACEHOLDER = document.getElementById("drilldown__row--placeholder")
@@ -270,6 +278,184 @@
     }
     {{ end }}
 
+    const UPIMG = "/static/assets/services/up.png"
+    const DOWNIMG = "/static/assets/services/down.png"
+    const UNKIMG = "/static/assets/services/pending.png"
+    const STATUS_IMGS = [UNKIMG, UPIMG, DOWNIMG]
+    const getChartTheme = () => document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'light'
+    let currentChartTeamId = ""
+    let currentChartRoundId = 0
+    let fetchServicesSeq = 0
+
+    function showServiceDrilldown(teamId, serviceName, highlightRound = null) {
+        bootstrap.Offcanvas.getOrCreateInstance(document.getElementById("offcanvas")).show()
+        updateUrlParams({ team: teamId, service: serviceName, round: highlightRound })
+        DRILLDOWN_TITLE.textContent = "Service: " + serviceName
+        DRILLDOWN_LIST.textContent = ""
+        DRILLDOWN_LIST.appendChild(DRILLDOWN_PLACEHOLDER.cloneNode(true))
+        fetch(`/api/services/${teamId}/${serviceName}`)
+            .then((response) => {
+                if (!response.ok) {
+                    return Promise.reject(response)
+                }
+                return response.json()
+            })
+            .then((data) => {
+                for (const a of data) {
+                    let row = DRILLDOWN_PLACEHOLDER.cloneNode(true)
+                    row.id = ""
+                    row.childNodes[1].textContent = a.Round.ID
+                    row.childNodes[3].textContent = (new Date(a.Round.StartTime)).toLocaleString()
+                    row.childNodes[5].textContent = a.Result
+                    row.childNodes[7].textContent = a.Debug
+                    row.childNodes[9].textContent = a.Error
+                    if (highlightRound && parseInt(highlightRound) === a.Round.ID) {
+                        row.classList.add('table-primary')
+                    }
+                    DRILLDOWN_LIST.appendChild(row)
+                }
+                DRILLDOWN_LIST.removeChild(DRILLDOWN_LIST.childNodes[0])
+            })
+    }
+
+    const statusChartOptions = {
+        series: [],
+        chart: {
+            type: 'heatmap',
+            height: 187,
+            background: 'transparent',
+            events: {
+                dataPointSelection: function(event, chartContext, config) {
+                    const serviceName = chartContext.w.globals.categoryLabels[config.dataPointIndex]
+                    if (serviceName && currentChartTeamId) {
+                        showServiceDrilldown(currentChartTeamId, serviceName, currentChartRoundId || null)
+                    }
+                }
+            }
+        },
+        stroke: {
+            width: 1
+        },
+        legend: {
+            show: false,
+        },
+        tooltip: {
+            enabled: false,
+        },
+        plotOptions: {
+            heatmap: {
+                enableShades: true,
+                colorScale: {
+                    ranges: [
+                        {
+                            from: 0,
+                            to: 0,
+                            color: '#777777'
+                        },
+                        {
+                            from: 1,
+                            to: 1,
+                            color: '#3D9970'
+                        },
+                        {
+                            from: 2,
+                            to: 2,
+                            color: '#AA0707'
+                        },
+                    ],
+                },
+            }
+        },
+        theme: {
+            mode: getChartTheme(),
+        },
+        dataLabels: {
+            enabled: false
+        },
+        xaxis: {
+            labels: {
+                rotate: -55,
+                rotateAlways: true,
+            }
+        },
+        title: {
+            text: 'Service Status',
+        },
+    }
+
+    const STATUSCHART = new ApexCharts(document.querySelector("#service-status"), statusChartOptions)
+    let statusChartReadyPromise = null
+
+    new MutationObserver(() => {
+        if (statusChartReadyPromise) {
+            statusChartReadyPromise.then(() => {
+                STATUSCHART.updateOptions({ theme: { mode: getChartTheme() } })
+            })
+        }
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-bs-theme'] })
+
+    async function updateStatusSummaryChart(data, teamId, teamName, seq) {
+        if (!data || data.length === 0) {
+            SERVICE_SUMMARY_ROW.classList.add("d-none")
+            return
+        }
+
+        SERVICE_SUMMARY_ROW.classList.remove("d-none")
+        if (!statusChartReadyPromise) {
+            statusChartReadyPromise = STATUSCHART.render()
+        }
+        await statusChartReadyPromise
+        if (seq !== fetchServicesSeq) return
+
+        let roundId = 0
+        const points = data.map((summary) => {
+            let y = 0
+            const latestRound = summary.Last10Rounds?.[0]
+            if (latestRound) {
+                if (latestRound.ID > roundId) {
+                    roundId = latestRound.ID
+                }
+                const check = latestRound.Checks?.find((c) => c.ServiceName === summary.ServiceName)
+                if (check) {
+                    y = check.Result ? 1 : 2
+                }
+            }
+            return {
+                x: summary.ServiceName,
+                y: y,
+            }
+        })
+
+        await STATUSCHART.updateOptions({
+            series: [{ name: teamName, data: points }],
+            xaxis: {
+                categories: points.map((p) => p.x),
+            }
+        })
+        if (seq !== fetchServicesSeq) return
+
+        currentChartTeamId = teamId
+        currentChartRoundId = roundId
+        STATUSCHART.clearAnnotations()
+        const offsetY = STATUSCHART.w.globals.gridHeight / 2
+        for (let j = 0; j < points.length; j++) {
+            const status = points[j]
+            STATUSCHART.addPointAnnotation({
+                x: status.x,
+                y: STATUSCHART.w.globals.yRange[0],
+                seriesIndex: 0,
+                id: `status-0-${j}`,
+                image: {
+                    path: STATUS_IMGS[status.y],
+                    offsetY: offsetY,
+                },
+                click: () => {
+                    showServiceDrilldown(teamId, status.x, roundId || null)
+                }
+            })
+        }
+    }
+
     function updateUrlParams(params) {
         const url = new URL(window.location)
         for (const [key, value] of Object.entries(params)) {
@@ -333,22 +519,29 @@
         })
 
     function fetchServices(team_id, highlightServiceName = null, highlightRound = null) {
+        const seq = ++fetchServicesSeq
+        const teamSelect = document.getElementById("team-select")
+        const teamName = teamSelect.selectedOptions[0]?.textContent || "Team"
         fetch(`/api/services/${team_id}`)
             .then((response) => {
                 if (!response.ok) {
-                    Promise.reject(response)
+                    return Promise.reject(response)
                 }
                 return response.json()
             })
             .then((data) => {
+                if (seq !== fetchServicesSeq) return
                 let services = [];
                 if (data === null) {
+                    updateStatusSummaryChart(null, team_id, teamName, seq)
                     const message = document.createElement("div")
                     message.classList.add("alert", "alert-warning")
                     message.textContent = "No services found for this team."
                     SERVICE_CONTAINER.appendChild(message)
                     return
                 }
+                data.sort((a, b) => a.ServiceName.localeCompare(b.ServiceName))
+                updateStatusSummaryChart(data, team_id, teamName, seq)
                 // Validate highlightServiceName against available services
                 let validServiceName = null;
                 if (highlightServiceName) {
@@ -396,11 +589,7 @@
                             if (SERVICENAME == check.ServiceName) {
                                 checkFoundInRound = true
                                 let icon = document.createElement("img")
-                                if (check.Result) {
-                                    icon.src = "/static/assets/services/up.png"
-                                } else {
-                                    icon.src = "/static/assets/services/down.png"
-                                }
+                                icon.src = check.Result ? UPIMG : DOWNIMG
                                 icon.height = 25
                                 icon.width = 25
                                 icon.setAttribute("data-bs-toggle", "tooltip")
@@ -410,7 +599,7 @@
                         }
                         if (!checkFoundInRound) {
                             let icon = document.createElement("img")
-                            icon.src = "/static/assets/services/pending.png"
+                            icon.src = UNKIMG
                             icon.height = 25
                             icon.width = 25
                             icon.setAttribute("data-bs-toggle", "tooltip")
@@ -422,20 +611,13 @@
                     // Set the data-service-id attribute (this is what's actually used in the click handler)
                     service.setAttribute("data-service-id", SERVICENAME)
 
-                    // If this is the service we want to highlight (from task card click)
                     if (validServiceName && SERVICENAME === validServiceName) {
-                        // Add a highlight class to this service
                         service.classList.add('border-primary', 'border-2')
-
-                        if (highlightRound) {
-                            service.dataset.highlightRound = highlightRound
-                        }
-
-                        // Auto-click this service to show details
-                        setTimeout(() => {
-                            service.click()
-                        }, 500)
                     }
+
+                    service.addEventListener("click", () => {
+                        showServiceDrilldown(team_id, SERVICENAME)
+                    })
 
                     services.push(service)
                 }
@@ -443,50 +625,14 @@
                 for (let i = 0; i < services.length; i++) {
                     SERVICE_CONTAINER.appendChild(services[i])
                 }
+
+                if (validServiceName) {
+                    showServiceDrilldown(team_id, validServiceName, highlightRound)
+                }
             })
             .then(() => {
                 const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
                 const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
-            })
-            .then(() => {
-                document.querySelectorAll(".service-button").forEach((button) => {
-                    button.addEventListener("click", (source) => {
-                        const SERVICE_ID = source.currentTarget.getAttribute("data-service-id")
-                        const TEAM_ID = document.getElementById("team-select").value
-                        const HIGHLIGHT_ROUND = source.currentTarget.getAttribute("data-highlight-round")
-                        updateUrlParams({ team: TEAM_ID, service: SERVICE_ID, round: HIGHLIGHT_ROUND })
-                        DRILLDOWN_TITLE.textContent = "Service: " + SERVICE_ID
-                        {{ if contains .roles "admin" }}
-                        updateDrilldownCustomCheck(SERVICE_ID)
-                        {{ end }}
-                        DRILLDOWN_LIST.textContent = ""
-                        DRILLDOWN_LIST.appendChild(DRILLDOWN_PLACEHOLDER.cloneNode(true))
-                        fetch(`/api/services/${TEAM_ID}/${SERVICE_ID}`)
-                            .then((response) => {
-                                if (!response.ok) {
-                                    Promise.reject(response)
-                                }
-                                return response.json()
-                            })
-                            .then((data) => {
-                                for (const a of data) {
-                                    let row = DRILLDOWN_PLACEHOLDER.cloneNode(true)
-                                    row.id = ""
-                                    row.childNodes[1].textContent = a.Round.ID
-                                    row.childNodes[3].textContent = (new Date(a.Round.StartTime)).toLocaleString()
-                                    row.childNodes[5].textContent = a.Result
-                                    row.childNodes[7].textContent = a.Debug
-                                    row.childNodes[9].textContent = a.Error
-                                    if (HIGHLIGHT_ROUND && parseInt(HIGHLIGHT_ROUND) === a.Round.ID) {
-                                        row.classList.add('table-primary')
-                                    }
-                                    DRILLDOWN_LIST.appendChild(row)
-                                }
-                                DRILLDOWN_LIST.removeChild(DRILLDOWN_LIST.childNodes[0])
-                                if (source.currentTarget) source.currentTarget.removeAttribute('data-highlight-round')
-                            })
-                    })
-                })
             })
     }
 </script>
