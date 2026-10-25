@@ -77,6 +77,36 @@
         <h5 class="offcanvas-title" id="drilldown__label">Title</h5>
     </div>
     <div class="offcanvas-body small">
+        {{ if contains .roles "admin" }}
+        <div id="drilldown__custom-check" class="card mb-3 d-none">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 py-2">
+                <span class="fw-semibold">
+                    <i class="bi bi-file-earmark-code me-1 text-primary" aria-hidden="true"></i>Custom Check Definition
+                </span>
+                <div class="d-flex flex-wrap align-items-center gap-1">
+                    <span class="badge text-bg-secondary" id="drilldown__custom-box"></span>
+                    <span class="badge bg-body-tertiary text-body border" id="drilldown__custom-meta"></span>
+                    <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle d-none" id="drilldown__custom-credlist"></span>
+                </div>
+            </div>
+            <div class="card-body py-2">
+                <div class="mb-1"><strong>Command:</strong> <code id="drilldown__custom-command" class="text-break"></code></div>
+                <div class="mb-1 d-none" id="drilldown__custom-regex-row"><strong>Expected Regex:</strong> <code id="drilldown__custom-regex" class="text-break"></code></div>
+                <details id="drilldown__custom-script-details" class="mt-2 d-none">
+                    <summary class="fw-semibold user-select-none" id="drilldown__custom-script-summary">Script Source</summary>
+                    <div id="drilldown__custom-script-error" class="alert alert-warning py-2 mt-2 mb-0 d-none"></div>
+                    <div id="drilldown__custom-script-wrapper" class="mt-2 d-none">
+                        <div class="d-flex justify-content-between align-items-center bg-body-secondary border border-bottom-0 rounded-top px-3 py-1">
+                            <code class="text-body-secondary" id="drilldown__custom-script-path-label"></code>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" id="drilldown__custom-copy-btn" aria-live="polite">Copy</button>
+                        </div>
+                        <pre class="bg-body-tertiary p-3 rounded-bottom border mb-0" style="max-height: 400px; overflow: auto; tab-size: 4;"><code id="drilldown__custom-script-content"></code></pre>
+                    </div>
+                </details>
+                <div id="drilldown__custom-helpers"></div>
+            </div>
+        </div>
+        {{ end }}
         <table class="table">
             <thead>
                 <tr>
@@ -106,6 +136,139 @@
     const DRILLDOWN_TITLE = document.getElementById("drilldown__label")
     const DRILLDOWN_PLACEHOLDER = document.getElementById("drilldown__row--placeholder")
     const DRILLDOWN_LIST = document.getElementById("drilldown__list")
+    {{ if contains .roles "admin" }}
+    const DRILLDOWN_CUSTOM_CARD = document.getElementById("drilldown__custom-check")
+    const CUSTOM_CHECK_CACHE = new Map()
+    let drilldownCheckSeq = 0
+
+    function copyDrilldownText(text, btn) {
+        const writePromise = (navigator.clipboard && navigator.clipboard.writeText)
+            ? navigator.clipboard.writeText(text)
+            : new Promise((resolve, reject) => {
+                const ta = document.createElement("textarea")
+                ta.value = text
+                ta.setAttribute("readonly", "")
+                ta.style.position = "fixed"
+                ta.style.opacity = "0"
+                document.body.appendChild(ta)
+                try {
+                    ta.select()
+                    if (document.execCommand("copy")) resolve()
+                    else reject(new Error("copy failed"))
+                } catch (err) {
+                    reject(err)
+                } finally {
+                    document.body.removeChild(ta)
+                }
+            })
+        writePromise
+            .then(() => {
+                btn.textContent = "Copied"
+                clearTimeout(btn._timer)
+                btn._timer = setTimeout(() => { btn.textContent = "Copy" }, 1500)
+            })
+            .catch(() => {
+                btn.textContent = "Copy failed"
+                clearTimeout(btn._timer)
+                btn._timer = setTimeout(() => { btn.textContent = "Copy" }, 1500)
+            })
+    }
+
+    function renderDrilldownCustomCheck(info) {
+        if (!info) {
+            DRILLDOWN_CUSTOM_CARD.classList.add("d-none")
+            return
+        }
+        DRILLDOWN_CUSTOM_CARD.classList.remove("d-none")
+        document.getElementById("drilldown__custom-box").textContent = `${info.box_name} (${info.target})`
+        document.getElementById("drilldown__custom-meta").textContent = `Points: ${info.points} | Timeout: ${info.timeout}s`
+
+        const credBadge = document.getElementById("drilldown__custom-credlist")
+        if (info.credlists && info.credlists.length > 0) {
+            credBadge.classList.remove("d-none")
+            credBadge.textContent = `Credlist: ${info.credlists.join(", ")}`
+        } else {
+            credBadge.classList.add("d-none")
+        }
+
+        document.getElementById("drilldown__custom-command").textContent = info.command || ""
+
+        const regexRow = document.getElementById("drilldown__custom-regex-row")
+        if (info.regex) {
+            regexRow.classList.remove("d-none")
+            document.getElementById("drilldown__custom-regex").textContent = info.regex
+        } else {
+            regexRow.classList.add("d-none")
+        }
+
+        const scriptDetails = document.getElementById("drilldown__custom-script-details")
+        scriptDetails.open = false
+        if (info.script_path) {
+            scriptDetails.classList.remove("d-none")
+            document.getElementById("drilldown__custom-script-summary").textContent = `Script Source: ${info.script_path}`
+            const errEl = document.getElementById("drilldown__custom-script-error")
+            const wrapperEl = document.getElementById("drilldown__custom-script-wrapper")
+            if (info.script_error) {
+                errEl.textContent = info.script_error
+                errEl.classList.remove("d-none")
+                wrapperEl.classList.add("d-none")
+            } else {
+                errEl.classList.add("d-none")
+                wrapperEl.classList.remove("d-none")
+                document.getElementById("drilldown__custom-script-path-label").textContent = info.script_path
+                document.getElementById("drilldown__custom-script-content").textContent = info.script_content || ""
+                const copyBtn = document.getElementById("drilldown__custom-copy-btn")
+                copyBtn.textContent = "Copy"
+                copyBtn.onclick = () => copyDrilldownText(info.script_content || "", copyBtn)
+            }
+        } else {
+            scriptDetails.classList.add("d-none")
+        }
+
+        const helpersContainer = document.getElementById("drilldown__custom-helpers")
+        helpersContainer.textContent = ""
+        if (info.helpers && info.helpers.length > 0) {
+            info.helpers.forEach((h) => {
+                const hd = scriptDetails.cloneNode(true)
+                hd.id = ""
+                hd.classList.remove("d-none")
+                hd.open = false
+                hd.querySelector("summary").textContent = `Shared Module: ${h.path}`
+                hd.querySelector(".alert").classList.add("d-none")
+                const hw = hd.querySelector("#drilldown__custom-script-wrapper")
+                hw.id = ""
+                hw.classList.remove("d-none")
+                hw.querySelector("code").textContent = h.path
+                hw.querySelector("pre code").textContent = h.content || ""
+                const hBtn = hw.querySelector("button")
+                hBtn.id = ""
+                hBtn.textContent = "Copy"
+                hBtn.onclick = () => copyDrilldownText(h.content || "", hBtn)
+                helpersContainer.appendChild(hd)
+            })
+        }
+    }
+
+    function updateDrilldownCustomCheck(serviceName) {
+        if (!DRILLDOWN_CUSTOM_CARD) return
+        if (CUSTOM_CHECK_CACHE.has(serviceName)) {
+            renderDrilldownCustomCheck(CUSTOM_CHECK_CACHE.get(serviceName))
+            return
+        }
+        DRILLDOWN_CUSTOM_CARD.classList.add("d-none")
+        const seq = ++drilldownCheckSeq
+
+        fetch(`/api/admin/checks?service=${encodeURIComponent(serviceName)}`)
+            .then((res) => res.ok ? res.json() : [])
+            .then((checks) => {
+                const info = Array.isArray(checks) && checks.length > 0 ? checks[0] : null
+                CUSTOM_CHECK_CACHE.set(serviceName, info)
+                if (seq !== drilldownCheckSeq) return
+                renderDrilldownCustomCheck(info)
+            })
+            .catch(() => {})
+    }
+    {{ end }}
 
     function updateUrlParams(params) {
         const url = new URL(window.location)
@@ -293,6 +456,9 @@
                         const HIGHLIGHT_ROUND = source.currentTarget.getAttribute("data-highlight-round")
                         updateUrlParams({ team: TEAM_ID, service: SERVICE_ID, round: HIGHLIGHT_ROUND })
                         DRILLDOWN_TITLE.textContent = "Service: " + SERVICE_ID
+                        {{ if contains .roles "admin" }}
+                        updateDrilldownCustomCheck(SERVICE_ID)
+                        {{ end }}
                         DRILLDOWN_LIST.textContent = ""
                         DRILLDOWN_LIST.appendChild(DRILLDOWN_PLACEHOLDER.cloneNode(true))
                         fetch(`/api/services/${TEAM_ID}/${SERVICE_ID}`)

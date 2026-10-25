@@ -1,0 +1,266 @@
+{{ define "page" }}
+<div class="d-flex w-100 h-100">
+    <div class="pt-4 w-100 h-100 overflow-y-scroll">
+        <div class="container pb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <h3 class="mb-0">Custom Check Scripts</h3>
+                    <span class="badge text-bg-secondary" id="customChecksCount" aria-live="polite">0</span>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <input type="search" class="form-control form-control-sm" id="customChecksFilter"
+                        placeholder="Filter by service, box, or script..." aria-label="Filter custom checks" style="min-width: 240px;">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleAllScriptsBtn" disabled>Expand All</button>
+                </div>
+            </div>
+
+            <div id="customChecksStatus" class="alert alert-secondary d-none" role="status" aria-live="polite"></div>
+
+            <div class="card mb-3 d-none" id="customCheckCard--placeholder">
+                <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <strong class="check-name"></strong>
+                        <span class="badge text-bg-secondary check-box"></span>
+                        <span class="badge bg-body-tertiary text-body border check-meta"></span>
+                        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle check-credlist d-none"></span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <a class="btn btn-sm btn-outline-primary check-service-link" href="#">Open in Services</a>
+                    </div>
+                </div>
+                <div class="card-body small">
+                    <div class="mb-2">
+                        <div class="mb-1"><strong>Command: </strong><code class="check-command text-break"></code></div>
+                        <div class="mb-1 check-regex-row d-none"><strong>Expected Regex: </strong><code class="check-regex text-break"></code></div>
+                    </div>
+                    <details class="custom-script-details d-none">
+                        <summary class="fw-semibold user-select-none check-script-summary"></summary>
+                        <div class="alert alert-warning mt-2 mb-0 py-2 check-script-error d-none"></div>
+                        <div class="mt-2 check-script-wrapper d-none">
+                            <div class="d-flex justify-content-between align-items-center bg-body-secondary border border-bottom-0 rounded-top px-3 py-1">
+                                <code class="text-body-secondary check-script-path-label"></code>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 check-copy-btn" aria-live="polite">Copy</button>
+                            </div>
+                            <pre class="bg-body-tertiary p-3 rounded-bottom border mb-0" style="max-height: 500px; overflow: auto; tab-size: 4;"><code class="check-script-code"></code></pre>
+                        </div>
+                    </details>
+                    <div class="check-helpers-container"></div>
+                </div>
+            </div>
+
+            <div id="customChecksContainer">
+                <p class="text-body-secondary">Loading custom checks...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let allCustomChecks = [];
+    let allExpanded = false;
+
+    function copyTextToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise((resolve, reject) => {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            try {
+                ta.select();
+                if (document.execCommand("copy")) resolve();
+                else reject(new Error("copy failed"));
+            } catch (err) {
+                reject(err);
+            } finally {
+                document.body.removeChild(ta);
+            }
+        });
+    }
+
+    function bindCopyButton(btn, content, label) {
+        btn.setAttribute("aria-label", label);
+        btn.addEventListener("click", () => {
+            copyTextToClipboard(content || "")
+                .then(() => {
+                    btn.textContent = "Copied";
+                    clearTimeout(btn._timer);
+                    btn._timer = setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+                })
+                .catch(() => {
+                    btn.textContent = "Copy failed";
+                    clearTimeout(btn._timer);
+                    btn._timer = setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+                });
+        });
+    }
+
+    function getVisibleScriptDetails() {
+        return Array.from(
+            document.querySelectorAll("#customChecksContainer .custom-check-card:not(.d-none) .custom-script-details:not(.d-none)")
+        );
+    }
+
+    function syncToggleAllButton() {
+        const btn = document.getElementById("toggleAllScriptsBtn");
+        const visibleDetails = getVisibleScriptDetails();
+        btn.disabled = visibleDetails.length === 0;
+        allExpanded = visibleDetails.length > 0 && visibleDetails.every((el) => el.open);
+        btn.textContent = allExpanded ? "Collapse All" : "Expand All";
+    }
+
+    function populateScriptDetails(detailsEl, summaryText, path, content, error, copyLabel) {
+        detailsEl.classList.remove("d-none");
+        detailsEl.querySelector(".check-script-summary").textContent = summaryText;
+        const errAlert = detailsEl.querySelector(".check-script-error");
+        const wrapper = detailsEl.querySelector(".check-script-wrapper");
+        if (error) {
+            errAlert.classList.remove("d-none");
+            errAlert.textContent = error;
+            wrapper.classList.add("d-none");
+        } else {
+            errAlert.classList.add("d-none");
+            wrapper.classList.remove("d-none");
+            detailsEl.querySelector(".check-script-path-label").textContent = path;
+            detailsEl.querySelector(".check-script-code").textContent = content || "";
+            bindCopyButton(detailsEl.querySelector(".check-copy-btn"), content, copyLabel);
+        }
+    }
+
+    function buildCustomChecksList() {
+        const container = document.getElementById("customChecksContainer");
+        const template = document.getElementById("customCheckCard--placeholder");
+        container.textContent = "";
+
+        allCustomChecks.forEach((c) => {
+            const card = template.cloneNode(true);
+            card.id = "";
+            card.classList.remove("d-none");
+            card.classList.add("custom-check-card");
+            const helperPaths = (c.helpers || []).map((h) => h.path).join(" ");
+            card.dataset.search = [c.name, c.box_name, c.target, c.command, c.regex, c.script_path, helperPaths]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+
+            card.querySelector(".check-name").textContent = c.name;
+            card.querySelector(".check-box").textContent = `${c.box_name} (${c.target})`;
+            card.querySelector(".check-meta").textContent = `Points: ${c.points} | Timeout: ${c.timeout}s`;
+
+            if (c.credlists && c.credlists.length > 0) {
+                const credBadge = card.querySelector(".check-credlist");
+                credBadge.classList.remove("d-none");
+                credBadge.textContent = `Credlist: ${c.credlists.join(", ")}`;
+            }
+
+            card.querySelector(".check-service-link").href = `/services?service=${encodeURIComponent(c.name)}`;
+            card.querySelector(".check-command").textContent = c.command || "";
+
+            if (c.regex) {
+                card.querySelector(".check-regex-row").classList.remove("d-none");
+                card.querySelector(".check-regex").textContent = c.regex;
+            }
+
+            const details = card.querySelector(".custom-script-details");
+            const helperBase = details.cloneNode(true);
+
+            if (c.script_path) {
+                details.open = allExpanded;
+                details.addEventListener("toggle", syncToggleAllButton);
+                populateScriptDetails(
+                    details,
+                    `Script Source: ${c.script_path}`,
+                    c.script_path,
+                    c.script_content,
+                    c.script_error,
+                    `Copy script for ${c.name}`
+                );
+            }
+
+            if (c.helpers && c.helpers.length > 0) {
+                const helpersContainer = card.querySelector(".check-helpers-container");
+                c.helpers.forEach((h) => {
+                    const helperDetails = helperBase.cloneNode(true);
+                    helperDetails.classList.remove("custom-script-details");
+                    helperDetails.classList.add("mt-2");
+                    helperDetails.open = false;
+                    populateScriptDetails(
+                        helperDetails,
+                        `Shared Module: ${h.path}`,
+                        h.path,
+                        h.content,
+                        "",
+                        `Copy shared module ${h.path}`
+                    );
+                    helpersContainer.appendChild(helperDetails);
+                });
+            }
+
+            container.appendChild(card);
+        });
+
+        filterCustomChecks(document.getElementById("customChecksFilter").value);
+    }
+
+    function filterCustomChecks(filterText = "") {
+        const query = filterText.trim().toLowerCase();
+        const cards = document.querySelectorAll("#customChecksContainer .custom-check-card");
+        const statusEl = document.getElementById("customChecksStatus");
+        let visibleCount = 0;
+
+        cards.forEach((card) => {
+            const match = !query || (card.dataset.search && card.dataset.search.includes(query));
+            card.classList.toggle("d-none", !match);
+            if (match) visibleCount++;
+        });
+
+        document.getElementById("customChecksCount").textContent = `${visibleCount} / ${allCustomChecks.length}`;
+
+        if (visibleCount === 0) {
+            statusEl.className = "alert alert-secondary";
+            statusEl.textContent = allCustomChecks.length === 0
+                ? "No custom checks configured in event.conf."
+                : "No custom checks match your filter.";
+        } else {
+            statusEl.classList.add("d-none");
+        }
+
+        syncToggleAllButton();
+    }
+
+    document.getElementById("customChecksFilter").addEventListener("input", (e) => {
+        filterCustomChecks(e.target.value);
+    });
+
+    document.getElementById("toggleAllScriptsBtn").addEventListener("click", () => {
+        const visibleDetails = getVisibleScriptDetails();
+        const nextOpen = !allExpanded;
+        visibleDetails.forEach((el) => {
+            el.open = nextOpen;
+        });
+        syncToggleAllButton();
+    });
+
+    fetch("/api/admin/checks")
+        .then((res) => {
+            if (!res.ok) return Promise.reject(res);
+            return res.json();
+        })
+        .then((data) => {
+            allCustomChecks = data || [];
+            buildCustomChecksList();
+        })
+        .catch((err) => {
+            console.error("Error loading custom checks:", err);
+            document.getElementById("customChecksContainer").textContent = "";
+            const statusEl = document.getElementById("customChecksStatus");
+            statusEl.className = "alert alert-danger";
+            statusEl.textContent = "Failed to load custom checks.";
+            syncToggleAllButton();
+        });
+</script>
+{{ end }}

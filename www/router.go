@@ -169,6 +169,7 @@ func (router *Router) Start() {
 	mux.HandleFunc("POST /api/admin/teams", ADMINAUTH(a.UpdateTeams))
 	mux.HandleFunc("GET /api/admin/teamchecks", ADMINAUTH(a.GetTeamChecks))
 	mux.HandleFunc("POST /api/admin/teamchecks", ADMINAUTH(a.UpdateTeamChecks))
+	mux.HandleFunc("GET /api/admin/checks", ADMINAUTH(a.GetCustomChecks))
 
 	mux.HandleFunc("GET /api/engine/export/scores", ADMINAUTH(a.ExportScores))
 	mux.HandleFunc("GET /api/engine/export/config", ADMINAUTH(a.ExportConfig))
@@ -182,6 +183,7 @@ func (router *Router) Start() {
 	mux.HandleFunc("GET /admin/engine", ADMINAUTH(router.AdministrateEnginePage))
 	mux.HandleFunc("GET /admin/runners", ADMINAUTH(router.AdministrateRunnersPage))
 	mux.HandleFunc("GET /admin/teams", ADMINAUTH(router.AdministrateTeamsPage))
+	mux.HandleFunc("GET /admin/checks", ADMINAUTH(router.AdministrateChecksPage))
 	mux.HandleFunc("GET /admin/appearance", ADMINAUTH(router.AdministrateAppearancePage))
 
 	// start server with security headers middleware wrapping all routes

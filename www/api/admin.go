@@ -2,9 +2,15 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 var validIdentifierRegex = regexp.MustCompile(`^[0-9]{1,3}$`)
@@ -190,4 +196,172 @@ func (a *API) UpdateTeams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
+}
+
+const maxScriptBytes = 256 * 1024
+
+var pythonImportRegex = regexp.MustCompile(`(?m)^\s*(?:from\s+\.+\s+import|import|from)\s+\.*([a-zA-Z0-9_]+)`)
+
+type scriptHelper struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+type customCheckInfo struct {
+	Name          string         `json:"name"`
+	BoxName       string         `json:"box_name"`
+	Target        string         `json:"target"`
+	Command       string         `json:"command"`
+	Regex         string         `json:"regex"`
+	CredLists     []string       `json:"credlists"`
+	Points        int            `json:"points"`
+	Timeout       int            `json:"timeout"`
+	ScriptPath    string         `json:"script_path,omitempty"`
+	ScriptContent string         `json:"script_content,omitempty"`
+	ScriptError   string         `json:"script_error,omitempty"`
+	Helpers       []scriptHelper `json:"helpers,omitempty"`
+}
+
+func resolveChecksRoot() string {
+	if info, err := os.Stat("/app/checks"); err == nil && info.IsDir() {
+		return "/app/checks"
+	}
+	return "./custom-checks"
+}
+
+func extractScriptRelPath(command string) (string, string) {
+	prefixes := []string{"/app/checks/", "./custom-checks/", "custom-checks/"}
+	for _, rawToken := range strings.Fields(command) {
+		candidates := []string{rawToken}
+		if _, after, ok := strings.Cut(rawToken, "="); ok && after != "" {
+			candidates = append(candidates, after)
+		}
+		for _, cand := range candidates {
+			tok := strings.Trim(cand, "\"'();&|")
+			for _, prefix := range prefixes {
+				if rel, ok := strings.CutPrefix(tok, prefix); ok && rel != "" {
+					return tok, rel
+				}
+			}
+		}
+	}
+	return "", ""
+}
+
+func readSafeScriptFile(baseDir, rel string) (string, error) {
+	f, err := SafeOpen(baseDir, rel)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	if info, statErr := f.Stat(); statErr == nil && info.IsDir() {
+		return "", errors.New("script path is a directory")
+	}
+	data, readErr := io.ReadAll(io.LimitReader(f, maxScriptBytes+1))
+	if readErr != nil {
+		return "", readErr
+	}
+	if len(data) > maxScriptBytes {
+		return string(data[:maxScriptBytes]) + "\n\n# [Truncated at 256 KiB limit]", nil
+	}
+	return string(data), nil
+}
+
+func readCustomCheckScript(baseDir, command string) (string, string, string) {
+	scriptPath, rel := extractScriptRelPath(command)
+	if rel == "" {
+		return "", "", ""
+	}
+	content, err := readSafeScriptFile(baseDir, rel)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return scriptPath, "", "Script file not found in " + baseDir
+		}
+		return scriptPath, "", err.Error()
+	}
+	return scriptPath, content, ""
+}
+
+func readImportedHelpers(baseDir, scriptPath, scriptContent string) []scriptHelper {
+	_, rel := extractScriptRelPath(scriptPath)
+	if rel == "" || scriptContent == "" {
+		return nil
+	}
+	relDir := filepath.Dir(rel)
+	displayDir := filepath.ToSlash(filepath.Dir(scriptPath))
+	selfBase := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
+	seen := map[string]bool{selfBase: true}
+	var helpers []scriptHelper
+
+	for _, match := range pythonImportRegex.FindAllStringSubmatch(scriptContent, -1) {
+		mod := match[1]
+		if seen[mod] {
+			continue
+		}
+		seen[mod] = true
+		helperRel := filepath.ToSlash(filepath.Join(relDir, mod+".py"))
+		content, err := readSafeScriptFile(baseDir, helperRel)
+		if err != nil {
+			continue
+		}
+		helpers = append(helpers, scriptHelper{
+			Path:    filepath.ToSlash(filepath.Join(displayDir, mod+".py")),
+			Content: content,
+		})
+	}
+	return helpers
+}
+
+func (a *API) GetCustomChecks(w http.ResponseWriter, r *http.Request) {
+	serviceFilter := r.URL.Query().Get("service")
+	baseDir := resolveChecksRoot()
+	checks := make([]customCheckInfo, 0)
+
+	credLabelsByPath := make(map[string]string, len(a.conf.CredlistSettings.Credlist))
+	for _, cl := range a.conf.CredlistSettings.Credlist {
+		if cl.CredlistPath != "" && cl.CredlistName != "" && cl.CredlistName != cl.CredlistPath {
+			credLabelsByPath[cl.CredlistPath] = cl.CredlistName + " (" + cl.CredlistPath + ")"
+		}
+	}
+
+	for _, box := range a.conf.Box {
+		for _, c := range box.Custom {
+			if serviceFilter != "" && c.Name != serviceFilter {
+				continue
+			}
+			scriptPath, scriptContent, scriptErr := readCustomCheckScript(baseDir, c.Command)
+			helpers := readImportedHelpers(baseDir, scriptPath, scriptContent)
+			target := c.Target
+			if target == "" {
+				target = box.IP
+			}
+			var credlists []string
+			if len(c.CredLists) > 0 {
+				credlists = make([]string, len(c.CredLists))
+				for i, entry := range c.CredLists {
+					if label, ok := credLabelsByPath[entry]; ok {
+						credlists[i] = label
+					} else {
+						credlists[i] = entry
+					}
+				}
+			}
+			checks = append(checks, customCheckInfo{
+				Name:          c.Name,
+				BoxName:       box.Name,
+				Target:        target,
+				Command:       c.Command,
+				Regex:         c.Regex,
+				CredLists:     credlists,
+				Points:        c.Points,
+				Timeout:       c.Timeout,
+				ScriptPath:    scriptPath,
+				ScriptContent: scriptContent,
+				ScriptError:   scriptErr,
+				Helpers:       helpers,
+			})
+		}
+	}
+
+	WriteJSON(w, http.StatusOK, checks)
 }
