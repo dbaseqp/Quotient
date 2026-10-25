@@ -32,3 +32,36 @@ func TestSafeMkdirAllRejectsPathTraversal(t *testing.T) {
 	_, statErr := os.Stat(filepath.Join(tmp, "escape"))
 	assert.True(t, os.IsNotExist(statErr))
 }
+
+func TestReadCustomCheckScript(t *testing.T) {
+	checksDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(checksDir, "acme"), 0750))
+	require.NoError(t, os.WriteFile(filepath.Join(checksDir, "acme", "check.py"), []byte("print('ok')\n"), 0600))
+
+	scriptPath, content, errStr := readCustomCheckScript(checksDir, "python3 /app/checks/acme/check.py; exit 0")
+	assert.Equal(t, "/app/checks/acme/check.py", scriptPath)
+	assert.Equal(t, "print('ok')\n", content)
+	assert.Empty(t, errStr)
+
+	require.NoError(t, os.WriteFile(filepath.Join(checksDir, "acme", "browser.py"), []byte("def session(): pass\n"), 0600))
+	helpers := readImportedHelpers(checksDir, scriptPath, "import sys\nfrom . import browser\n")
+	require.Len(t, helpers, 1)
+	assert.Equal(t, "/app/checks/acme/browser.py", helpers[0].Path)
+	assert.Equal(t, "def session(): pass\n", helpers[0].Content)
+
+	scriptPath, content, errStr = readCustomCheckScript(checksDir, "python3 --script=./custom-checks/acme/check.py")
+	assert.Equal(t, "./custom-checks/acme/check.py", scriptPath)
+	assert.Equal(t, "print('ok')\n", content)
+	assert.Empty(t, errStr)
+
+	scriptPath, content, errStr = readCustomCheckScript(checksDir, "/app/checks/missing.sh")
+	assert.Equal(t, "/app/checks/missing.sh", scriptPath)
+	assert.Empty(t, content)
+	assert.Contains(t, errStr, "Script file not found in ")
+
+	scriptPath, content, errStr = readCustomCheckScript(checksDir, "/app/checks/../secret.txt")
+	assert.Equal(t, "/app/checks/../secret.txt", scriptPath)
+	assert.Empty(t, content)
+	assert.NotEmpty(t, errStr)
+	assert.NotContains(t, errStr, "Script file not found in ")
+}

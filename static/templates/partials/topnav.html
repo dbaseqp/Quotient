@@ -21,6 +21,11 @@
                     <i class="bi bi-people me-1" aria-hidden="true"></i>Team Configuration
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 small{{ if eq .path "/admin/checks" }} active{{ end }}" href="/admin/checks"{{ if eq .path "/admin/checks" }} aria-current="page"{{ end }}>
+                    <i class="bi bi-file-earmark-code me-1" aria-hidden="true"></i>Custom Checks
+                </a>
+            </li>
         </ul>
     </div>
 </nav>

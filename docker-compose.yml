@@ -38,6 +38,7 @@ services:
       - ./config:/app/config
       - ./engine:/app/engine
       - ./static:/app/static
+      - ./custom-checks:/app/checks:ro
 
   test-redis:
     extends:
