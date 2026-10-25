@@ -199,13 +199,13 @@ func (a *API) CreateInject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subDir := fmt.Sprintf("%d", inject.ID)
-	if err := SafeMkdirAll("config/injects", subDir, 0750); err != nil {
+	subDir := filepath.Join("injects", fmt.Sprintf("%d", inject.ID))
+	if err := SafeMkdirAll("config", subDir, 0750); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create directory"})
 		return
 	}
 
-	uploadDir := filepath.Join("config/injects", subDir)
+	uploadDir := filepath.Join("config", subDir)
 	for _, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {

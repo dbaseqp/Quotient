@@ -150,13 +150,13 @@ func (a *API) CreateAnnouncement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subDir := fmt.Sprintf("%d", announcement.ID)
-	if err := SafeMkdirAll("submissions/announcements", subDir, 0750); err != nil {
+	subDir := filepath.Join("announcements", fmt.Sprintf("%d", announcement.ID))
+	if err := SafeMkdirAll("submissions", subDir, 0750); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to create directory"})
 		return
 	}
 
-	uploadDir := filepath.Join("submissions/announcements", subDir)
+	uploadDir := filepath.Join("submissions", subDir)
 	for _, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {
