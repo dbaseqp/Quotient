@@ -10,19 +10,14 @@
                     <div class="card overflow-y-scroll">
                         <div class="card-img-top graph" id="service-status"></div>
                         <script>
-                            function shuffleSeries(arr) {
-                                for (let i = arr.length - 1; i > 0; i--) {
-                                    const j = Math.floor(Math.random() * (i + 1));
-                                    [arr[i], arr[j]] = [arr[j], arr[i]];
-                                }
-                                return arr;
-                            }
+                            const getChartTheme = () => document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'light';
                             let TEAMMAP = {}
                             let ROUNDID = 0
                             let options = {
                                 series: [],
                                 chart: {
                                     type: 'heatmap',
+                                    background: 'transparent',
                                     events: {
                                         dataPointSelection: function(event, chartContext, config) {
                                             const teamName = chartContext.w.globals.seriesNames[config.seriesIndex]
@@ -70,7 +65,7 @@
                                     }
                                 },
                                 theme: {
-                                    mode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+                                    mode: getChartTheme(),
                                 },
                                 dataLabels: {
                                     enabled: false
@@ -97,7 +92,7 @@
                                 await fetch("/api/graphs/services")
                                     .then((response) => {
                                         if (!response.ok) {
-                                            Promise.reject(response)
+                                            return Promise.reject(response)
                                         }
                                         return response.json()
                                     })
@@ -120,19 +115,25 @@
                                                 })
                                             }
                                         })
-                                        if (series.every((s) => s.name === "Team")) {
-                                            shuffleSeries(series)
-                                        } else {
+                                        if (!series.every((s) => s.name === "Team")) {
                                             series.sort((a, b) => b.name.localeCompare(a.name))
                                         }
                                     })
-                                categories = series[0].data.map((status) => {
+                                if (!series || !series.length || !series[0].data.length) {
+                                    await STATUSCHART.updateOptions({
+                                        series: [],
+                                        xaxis: { categories: [] },
+                                    })
+                                    STATUSCHART.clearAnnotations()
+                                    return
+                                }
+                                const categories = series[0].data.map((status) => {
                                     return status.x
                                 }).sort((a, b) => {
                                     return a.localeCompare(b)
                                 })
 
-                                STATUSCHART.updateOptions({
+                                await STATUSCHART.updateOptions({
                                     chart: {
                                         height: 170+17*series.length,
                                     },
@@ -181,8 +182,6 @@
                                     }
                                 }
                             }
-
-                            fetchStatus()
                         </script>
                         <div class="card-body">
                             <p class="card-text">Current Service Status</p>
@@ -207,6 +206,7 @@
                                 series: [],
                                 chart: {
                                     type: 'heatmap',
+                                    background: 'transparent',
                                 },
                                 stroke: {
                                     width: 1
@@ -257,7 +257,7 @@
                                     }
                                 },
                                 theme: {
-                                    mode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+                                    mode: getChartTheme(),
                                 },
                                 dataLabels: {
                                     enabled: true,
@@ -288,7 +288,7 @@
                                 await fetch("/api/graphs/uptimes")
                                     .then((response) => {
                                         if (!response.ok) {
-                                            Promise.reject(response)
+                                            return Promise.reject(response)
                                         }
                                         return response.json()
                                     })
@@ -298,10 +298,10 @@
                                             return {
                                                 name: service.Name,
                                                 data: service.Data.sort((a, b) => { return a.Service.localeCompare(b.Service) }).map((status) => {
-                                                    if (status.Uptime === null) {
+                                                    if (status.Uptime === null || status.Uptime < 0) {
                                                         return {
                                                             x: status.Service,
-                                                            y: -0.01,
+                                                            y: -1,
                                                         }
                                                     }
                                                     return {
@@ -311,28 +311,31 @@
                                                 })
                                             }
                                         })
-                                        if (series.every((s) => s.name === "Team")) {
-                                            shuffleSeries(series)
-                                        } else {
+                                        if (!series.every((s) => s.name === "Team")) {
                                             series.sort((a, b) => b.name.localeCompare(a.name))
                                         }
                                     })
 
-                                categories = series[0].data.map((status) => {
+                                if (!series || !series.length || !series[0].data.length) {
+                                    await UPTIMECHART.updateOptions({
+                                        series: [],
+                                        xaxis: { categories: [] },
+                                    })
+                                    return
+                                }
+                                const categories = series[0].data.map((status) => {
                                     return status.x
                                 }).sort((a, b) => {
                                     return a.localeCompare(b)
                                 })
 
-                                UPTIMECHART.updateOptions({
+                                await UPTIMECHART.updateOptions({
                                     series: series,
                                     xaxis: {
                                         categories: categories,
                                     }
                                 })
                             }
-
-                            fetchUptime()
                         </script>
                         <div class="card-body">
                             <p class="card-text">Uptime</p>
@@ -348,6 +351,7 @@
                                 series: [],
                                 chart: {
                                     type: 'line',
+                                    background: 'transparent',
                                     animations: {
                                         enabled: false,
                                     },
@@ -365,7 +369,7 @@
                                     enabled: true,
                                 },
                                 theme: {
-                                    mode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+                                    mode: getChartTheme(),
                                 },
                                 dataLabels: {
                                     enabled: false
@@ -382,6 +386,7 @@
                                 series: [{ data: [] }],
                                 chart: {
                                     type: 'bar',
+                                    background: 'transparent',
                                     animations: {
                                         enabled: false,
                                     },
@@ -390,7 +395,7 @@
                                     },
                                 },
                                 theme: {
-                                    mode: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+                                    mode: getChartTheme(),
                                 },
                                 plotOptions: {
                                     bar: {
@@ -413,7 +418,7 @@
                                 await fetch("/api/graphs/scores")
                                     .then((response) => {
                                         if (!response.ok) {
-                                            Promise.reject(response)
+                                            return Promise.reject(response)
                                         }
                                         return response.json()
                                     })
@@ -438,11 +443,26 @@
                                         })
                                     })
 
-                                categories = series[0].data.map((status) => {
+                                const firstWithData = series && series.find((s) => s.data.length > 0)
+                                if (!firstWithData) {
+                                    await SCORECHART.updateOptions({
+                                        series: [],
+                                        xaxis: { categories: [] },
+                                    })
+                                    await LEADERBOARDCHART.updateOptions({
+                                        series: [{ data: [] }],
+                                        xaxis: { categories: [] },
+                                    })
+                                    return
+                                }
+                                const categories = firstWithData.data.map((status) => {
                                     return status.x
                                 })
 
-                                SCORECHART.updateOptions({
+                                await SCORECHART.updateOptions({
+                                    legend: {
+                                        show: !series.every((s) => s.name === "Team"),
+                                    },
                                     series: series,
                                     xaxis: {
                                         categories: categories,
@@ -465,7 +485,7 @@
                                     return b.data - a.data
                                 })
 
-                                LEADERBOARDCHART.updateOptions({
+                                await LEADERBOARDCHART.updateOptions({
                                     series: [{
                                         name: 'Service Score',
                                         data: leaderboard_series.reduce((acc, team) => {
@@ -480,8 +500,6 @@
                                     }
                                 })
                             }
-
-                            fetchScores()
                         </script>
                         <div class="card-body">
                             <p class="card-text">Leaderboard</p>
@@ -495,37 +513,49 @@
 </div>
 <script>
     document.querySelectorAll(".fullscreen").forEach((button) => {
-        button.addEventListener("click", (event) => {
-            card = button.closest(".card")
-            if (card.requestFullscreen) {
-                card.requestFullscreen();
+        button.addEventListener("click", () => {
+            const card = button.closest(".card")
+            if (document.fullscreenElement === card && document.exitFullscreen) {
+                document.exitFullscreen();
+                return;
             }
-            else if (card.mozRequestFullScreen) {
-                card.mozRequestFullScreen();
-            }
-            else if (card.webkitRequestFullscreen) {
-                card.webkitRequestFullscreen();
-            }
-            else if (card.msRequestFullscreen) {
-                card.msRequestFullscreen();
-            }
-
+            card.requestFullscreen?.();
         })
     })
-    document.addEventListener("fullscreenchange", (event) => {
-        // pause on exit
-        if (!document.fullscreenElement) {
-            bscarousel.pause()
-        }
+
+    document.addEventListener("fullscreenchange", () => {
+        document.querySelectorAll(".fullscreen").forEach((button) => {
+            const isFs = document.fullscreenElement === button.closest(".card");
+            button.textContent = isFs ? "Exit Fullscreen" : "Fullscreen";
+            button.setAttribute("aria-pressed", isFs ? "true" : "false");
+        });
+        window.dispatchEvent(new Event("resize"));
     });
 
-    document.addEventListener("DOMContentLoaded", (event) => {
-        document.getElementById("updatedAt").innerText = new Date().toLocaleString()
-        setInterval(() => {
-            console.log("fetching data and updating graphs")
-            window.location.reload()
-            // document.getElementById("updatedAt").innerText = new Date().toLocaleString()
-        }, 30000)
+    new MutationObserver(() => {
+        const mode = getChartTheme();
+        [STATUSCHART, SCORECHART, UPTIMECHART, LEADERBOARDCHART].forEach((chart) => {
+            chart.updateOptions({ theme: { mode } });
+        });
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-bs-theme"] });
+
+    let isRefreshing = false;
+    async function refreshGraphs() {
+        if (isRefreshing) return;
+        isRefreshing = true;
+        try {
+            await Promise.all([fetchStatus(), fetchUptime(), fetchScores()]);
+            document.getElementById("updatedAt").innerText = new Date().toLocaleString();
+        } catch (err) {
+            console.error("Failed to refresh graphs:", err);
+        } finally {
+            isRefreshing = false;
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        refreshGraphs();
+        setInterval(refreshGraphs, 30000);
     });
 </script>
 {{ end }}

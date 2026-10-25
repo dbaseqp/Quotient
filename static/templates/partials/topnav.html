@@ -1,2 +1,28 @@
 {{ define "topnav" }}
+{{ if eq .title "Admin" }}
+<nav class="w-100 bg-body-tertiary border-bottom px-3 py-2 flex-shrink-0" aria-label="Admin navigation">
+    <div class="container-fluid d-flex flex-wrap align-items-center justify-content-between gap-2 px-0">
+        <h2 class="fs-6 fw-semibold text-body d-flex align-items-center mb-0">
+            <i class="bi bi-display me-2 text-primary" aria-hidden="true"></i>Admin
+        </h2>
+        <ul class="nav nav-pills gap-1">
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 small{{ if eq .path "/admin/engine" }} active{{ end }}" href="/admin/engine"{{ if eq .path "/admin/engine" }} aria-current="page"{{ end }}>
+                    <i class="bi bi-cpu me-1" aria-hidden="true"></i>Engine &amp; Scores
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 small{{ if eq .path "/admin/runners" }} active{{ end }}" href="/admin/runners"{{ if eq .path "/admin/runners" }} aria-current="page"{{ end }}>
+                    <i class="bi bi-activity me-1" aria-hidden="true"></i>Runner Tasks
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-3 small{{ if eq .path "/admin/teams" }} active{{ end }}" href="/admin/teams"{{ if eq .path "/admin/teams" }} aria-current="page"{{ end }}>
+                    <i class="bi bi-people me-1" aria-hidden="true"></i>Team Configuration
+                </a>
+            </li>
+        </ul>
+    </div>
+</nav>
+{{ end }}
 {{ end }}
