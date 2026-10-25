@@ -3,6 +3,7 @@ package checks
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net"
@@ -582,5 +583,51 @@ func TestSshRun_DomainExecution(t *testing.T) {
 		assert.Contains(t, result.Debug, "jdoe@team01.example.com:s3cret")
 	case <-time.After(5 * time.Second):
 		t.Fatal("ssh check timed out")
+	}
+}
+
+func TestImapRun_EncryptedSelfSignedCert(t *testing.T) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	tlsCfg := ts.TLS.Clone()
+	ts.Close()
+
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", tlsCfg)
+	require.NoError(t, err)
+	defer func() { _ = ln.Close() }()
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer func() { _ = c.Close() }()
+				_, _ = c.Write([]byte("* OK IMAP4rev1 Service Ready\r\n"))
+				buf := make([]byte, 256)
+				_, _ = c.Read(buf)
+			}(conn)
+		}
+	}()
+
+	port := ln.Addr().(*net.TCPAddr).Port
+	imapCheck := &Imap{
+		Service: Service{
+			Target:  "127.0.0.1",
+			Port:    port,
+			Timeout: 5,
+			Points:  5,
+		},
+		Encrypted: true,
+	}
+
+	resultsChan := make(chan Result, 1)
+	imapCheck.Run(1, "01", 1, resultsChan)
+
+	select {
+	case result := <-resultsChan:
+		assert.True(t, result.Status, "debug: %s, error: %s", result.Debug, result.Error)
+	case <-time.After(5 * time.Second):
+		t.Fatal("imap check timed out")
 	}
 }

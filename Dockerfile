@@ -15,6 +15,7 @@ RUN apk add --no-cache ca-certificates
 COPY config/certs/. /usr/local/share/ca-certificates/
 RUN update-ca-certificates
 COPY --from=builder /src/quotient /usr/local/bin/quotient
+COPY --from=builder /src/static /app/static
 WORKDIR /app
 
 CMD ["quotient"]
