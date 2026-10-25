@@ -110,16 +110,17 @@ func (se *ScoringEngine) teamCredentialLock(teamID uint) (*sync.Mutex, error) {
 	return mu, nil
 }
 
-func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string) (int, []string, error) {
-	// Validate credlist name
-	validCredlist := false
+func (se *ScoringEngine) isValidCredlist(credlistName string) bool {
 	for _, c := range se.Config.CredlistSettings.Credlist {
 		if c.CredlistPath == credlistName {
-			validCredlist = true
-			break
+			return true
 		}
 	}
-	if !validCredlist {
+	return false
+}
+
+func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, usernames []string, passwords []string, changedBy string) (int, []string, error) {
+	if !se.isValidCredlist(credlistName) {
 		return 0, nil, fmt.Errorf("invalid credlist name")
 	}
 
@@ -138,7 +139,6 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 
 	updatedCount := 0
 	var skippedUsernames []string
-	changedBy := fmt.Sprintf("team%d", teamID)
 
 	for i, username := range usernames {
 		err := se.DB.UpdateCredential(teamID, credlistName, username, passwords[i], changedBy)
@@ -167,7 +167,6 @@ func (se *ScoringEngine) GetCredlists() (any, error) {
 		a.Name = credlist.CredlistName
 		a.Example = credlist.CredlistExplainText
 		a.Path = credlist.CredlistPath
-		a.Usernames = []string{}
 
 		// Get usernames from original credentials in DB
 		origCreds, err := se.DB.GetOriginalCredentials(credlist.CredlistPath)
@@ -184,15 +183,7 @@ func (se *ScoringEngine) GetCredlists() (any, error) {
 }
 
 func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string, changedBy string) error {
-	// Validate credlist name
-	validCredlist := false
-	for _, c := range se.Config.CredlistSettings.Credlist {
-		if c.CredlistPath == credlistName {
-			validCredlist = true
-			break
-		}
-	}
-	if !validCredlist {
+	if !se.isValidCredlist(credlistName) {
 		return fmt.Errorf("invalid credlist name")
 	}
 
@@ -208,6 +199,9 @@ func (se *ScoringEngine) ResetCredentials(teamID uint, credlistName string, chan
 
 // GetTeamCredentials returns credentials for admin viewing
 func (se *ScoringEngine) GetTeamCredentials(teamID uint, credlistName string) ([]db.CredentialSchema, error) {
+	if !se.isValidCredlist(credlistName) {
+		return nil, fmt.Errorf("invalid credlist name")
+	}
 	return se.DB.GetTeamCredentials(teamID, credlistName)
 }
 

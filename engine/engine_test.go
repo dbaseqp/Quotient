@@ -529,7 +529,7 @@ func TestEnsureCredentialsSeeded_HotReload(t *testing.T) {
 	assert.Equal(t, map[string]string{"alice": "pass1", "bob": "pass2"}, credMap(team1.ID, "reload_linux.credlist"))
 	assert.Equal(t, map[string]string{"alice": "pass1", "bob": "pass2"}, credMap(team2.ID, "reload_linux.credlist"))
 
-	updated, skipped, err := se.UpdateCredentials(team1.ID, "reload_linux.credlist", []string{"alice"}, []string{"team1custom"})
+	updated, skipped, err := se.UpdateCredentials(team1.ID, "reload_linux.credlist", []string{"alice"}, []string{"team1custom"}, "team1")
 	require.NoError(t, err)
 	assert.Equal(t, 1, updated)
 	assert.Empty(t, skipped)
@@ -572,7 +572,7 @@ func TestEnsureCredentialsSeeded_HotReload(t *testing.T) {
 		"alice":   "pass1_updated",
 		"charlie": "pass3",
 	}, credMap(team3.ID, "reload_linux.credlist"))
-	updated3, _, err := se.UpdateCredentials(team3.ID, "reload_linux.credlist", []string{"alice"}, []string{"team3custom"})
+	updated3, _, err := se.UpdateCredentials(team3.ID, "reload_linux.credlist", []string{"alice"}, []string{"team3custom"}, "team3")
 	require.NoError(t, err)
 	assert.Equal(t, 1, updated3)
 	assert.Equal(t, "team3custom", credMap(team3.ID, "reload_linux.credlist")["alice"])
