@@ -437,9 +437,9 @@
             };
         </script>
         {{ end }}
-        <button class="inject-tab active nav-link w-100 text-start bg-body rounded-0 border placeholder-glow" id="tab--placeholder"
+        <button class="inject-tab nav-link w-100 text-start bg-body rounded-0 border placeholder-glow d-none" id="tab--placeholder"
             data-bs-toggle="pill" data-bs-target="#pane--placeholder" type="button" role="tab"
-            aria-controls="pane--placeholder" aria-selected="true">
+            aria-controls="pane--placeholder" aria-selected="false">
             <div class="container-fluid px-0">
                 <div class="d-flex justify-content-between align-items-start gap-2">
                     <div class="inject-tab-title flex-grow-1">
@@ -460,7 +460,7 @@
     </div>
     <div class="tab-content d-flex flex-column flex-grow-1 justify-content-start align-items-center overflow-y-scroll"
         id="pane-container">
-        <div class="active placeholder-glow w-100 tab-pane p-4 show position-relative h-100" tabindex="0"
+        <div class="placeholder-glow w-100 tab-pane p-4 position-relative h-100 d-none" tabindex="0"
             role="tabpanel" data-bs-toggle="pill" id="pane--placeholder">
             <div class="d-flex flex-column h-100">
                 <div class="d-flex flex-column">
@@ -668,7 +668,7 @@
     const PDF_FRAME = document.getElementById("inject-pdf-frame")
     const PDF_DOWNLOAD = document.getElementById("inject-pdf-download")
 
-    let prevData;
+    let prevDataJson;
 
     function injectFileURL(injectID, fileName) {
         return `/injects/${encodeURIComponent(injectID)}/${encodeURIComponent(fileName)}`
@@ -687,25 +687,17 @@
         PDF_FRAME.removeAttribute("src")
     })
 
-    // Function to refresh injects without full page reload
     function refreshInjects() {
-        // Clear existing tabs and panes (except placeholder)
         const existingTabs = TAB_CONTAINER.querySelectorAll('[id^="tab--"]:not(#tab--placeholder)');
         const existingPanes = PANE_CONTAINER.querySelectorAll('[id^="pane--"]:not(#pane--placeholder)');
         existingTabs.forEach(tab => tab.remove());
         existingPanes.forEach(pane => pane.remove());
 
-        // Reset prevData to force re-render
-        prevData = undefined;
-
-        // Hide refresh button
+        prevDataJson = undefined;
         REFRESH_BTN.classList.add("d-none");
-
-        // Fetch and update
         fetchAndUpdateInjects();
     }
 
-    // Function to fetch injects data and update the UI
     function fetchAndUpdateInjects() {
         fetch("/api/injects")
         .then((response) => {
@@ -715,27 +707,28 @@
             return response.json()
         })
         .then((data) => {
-            PLACEHOLDER_TAB.classList.add("d-none")
-            PLACEHOLDER_PANE.classList.add("d-none")
-            if (!data || data.length === 0) {
-                return
+            const items = Array.isArray(data) ? data : [];
+            const dataJson = JSON.stringify(items);
+            if (prevDataJson !== undefined) {
+                if (dataJson !== prevDataJson) {
+                    REFRESH_BTN.classList.remove("d-none");
+                }
+                return;
             }
-            if (prevData === undefined) {
-                prevData = data
-            } else if (JSON.stringify(prevData) != JSON.stringify(data)) {
-                REFRESH_BTN.classList.remove("d-none")
+            prevDataJson = dataJson;
+            if (items.length === 0) {
                 return
             }
             let tabs = [];
             let panes = [];
-            for (const inject of data) {
+            for (const inject of items) {
                 inject.OpenTime = (new Date(inject.OpenTime))
                 inject.DueTime = (new Date(inject.DueTime))
                 inject.CloseTime = (new Date(inject.CloseTime))
                 let tab = PLACEHOLDER_TAB.cloneNode(true)
                 let pane = PLACEHOLDER_PANE.cloneNode(true)
-                tab.classList.remove("active", "placeholder-glow", "d-none")
-                pane.classList.remove("active", "placeholder-glow", "d-none")
+                tab.classList.remove("placeholder-glow", "d-none")
+                pane.classList.remove("placeholder-glow", "d-none")
 
 
                 let title = tab.querySelector("#tab__title--placeholder")
@@ -852,13 +845,11 @@
                     description.appendChild(files)
                 }
                 
-                // Update IDs and attributes
                 tab.id = `tab--${inject.ID}`
                 tab.setAttribute('data-bs-target', `#pane--${inject.ID}`)
                 tab.setAttribute('aria-controls', `pane--${inject.ID}`)
                 pane.id = `pane--${inject.ID}`
 
-                // Replace placeholder in innerHTML
                 tab.innerHTML = tab.innerHTML.replaceAll("placeholder", inject.ID)
                 pane.innerHTML = pane.innerHTML.replaceAll("placeholder", inject.ID)
 
@@ -875,8 +866,11 @@
                 tabs.push(tab)
                 panes.push(pane)
             }
-            PLACEHOLDER_TAB.classList.add("d-none")
-            PLACEHOLDER_PANE.classList.add("d-none")
+            if (tabs.length > 0) {
+                tabs[0].classList.add("active")
+                tabs[0].setAttribute("aria-selected", "true")
+                panes[0].classList.add("active", "show")
+            }
             for (let i = 0; i < tabs.length; i++) {
                 TAB_CONTAINER.appendChild(tabs[i])
                 PANE_CONTAINER.appendChild(panes[i])
@@ -886,8 +880,7 @@
             const TOOLTIPS = new bootstrap.Tooltip(document.body, {
                 selector: '[data-bs-toggle="tooltip"]'
             });
-            // Only initialize DataTables on elements that aren't already initialized
-            document.querySelectorAll('.submission-table').forEach(table => {
+            PANE_CONTAINER.querySelectorAll('.tab-pane:not(#pane--placeholder) .submission-table').forEach(table => {
                 if (!table.classList.contains('dataTable')) {
                     new DataTable(table, {
                         order: [[2, 'desc']], // Sort by the third column (Submission Time) in descending order
