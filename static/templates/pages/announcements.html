@@ -121,9 +121,9 @@
             };
         </script>
         {{ end }}
-        <button class="active nav-link w-100 text-start bg-body rounded-0 border placeholder-glow" id="tab--placeholder"
+        <button class="nav-link w-100 text-start bg-body rounded-0 border placeholder-glow d-none" id="tab--placeholder"
             data-bs-toggle="pill" data-bs-target="#pane--placeholder" type="button" role="tab"
-            aria-controls="pane--placeholder" aria-selected="true">
+            aria-controls="pane--placeholder" aria-selected="false">
             <div class="container-fluid">
                 <div class="row">
                     <div class="col-10">
@@ -146,7 +146,7 @@
     </div>
     <div class="tab-content d-flex flex-column flex-grow-1 justify-content-start align-items-center"
         id="pane-container">
-        <div class="active placeholder-glow w-100 tab-pane p-4 show position-relative h-100" tabindex="0"
+        <div class="placeholder-glow w-100 tab-pane p-4 position-relative h-100 d-none" tabindex="0"
             role="tabpanel" data-bs-toggle="pill" id="pane--placeholder">
             <div class="d-flex flex-column h-100">
                 <div class="d-flex flex-column">
@@ -188,12 +188,12 @@
             let tabs = [];
             let panes = [];
 
-            for (const announcement of data) {
+            for (const announcement of (data || [])) {
                 announcement.OpenTime = (new Date(announcement.OpenTime)).toLocaleString()
                 let tab = PLACEHOLDER_TAB.cloneNode(true)
                 let pane = PLACEHOLDER_PANE.cloneNode(true)
-                tab.classList.remove("active", "placeholder-glow")
-                pane.classList.remove("active", "placeholder-glow")
+                tab.classList.remove("placeholder-glow", "d-none")
+                pane.classList.remove("placeholder-glow", "d-none")
 
 
                 let title = tab.querySelector("#tab__title--placeholder")
@@ -245,8 +245,11 @@
                 tabs.push(tab.firstChild)
                 panes.push(pane.firstChild)
             }
-            PLACEHOLDER_TAB.classList.add("d-none")
-            PLACEHOLDER_PANE.classList.add("d-none")
+            if (tabs.length > 0) {
+                tabs[0].classList.add("active")
+                tabs[0].setAttribute("aria-selected", "true")
+                panes[0].classList.add("active", "show")
+            }
             for (let i = 0; i < tabs.length; i++) {
                 TAB_CONTAINER.appendChild(tabs[i])
                 PANE_CONTAINER.appendChild(panes[i])
