@@ -11,6 +11,8 @@ import (
 	"github.com/dbaseqp/Quotient/engine/db"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 // RedisContainer wraps a Redis client for testing
@@ -45,7 +47,8 @@ func startRedis(t *testing.T) *RedisContainer {
 
 // PostgresContainer wraps a Postgres connection string for testing
 type PostgresContainer struct {
-	DB *db.DB
+	DB         *db.DB
+	connString string
 }
 
 func (p *PostgresContainer) Close() error {
@@ -66,7 +69,19 @@ func startPostgres(t *testing.T) *PostgresContainer {
 	connString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
 
-	return &PostgresContainer{DB: db.Connect(connString)}
+	return &PostgresContainer{DB: db.Connect(connString), connString: connString}
+}
+
+// ResetCompetitionState forgets that the competition ever started, which the
+// DB layer never does on its own: StartedAt is kept once set.
+func (p *PostgresContainer) ResetCompetitionState(t *testing.T) {
+	t.Helper()
+	conn, err := gorm.Open(postgres.Open(p.connString), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := conn.DB()
+	require.NoError(t, err)
+	defer sqlDB.Close() //nolint:errcheck
+	require.NoError(t, conn.Exec("DELETE FROM competition_state_schemas").Error)
 }
 
 // testTeamCounter provides unique team IDs across test runs
