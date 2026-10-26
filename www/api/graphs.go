@@ -51,9 +51,11 @@ func (a *API) GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 	type Series struct {
 		Name string
 		ID   uint
+		Self bool `json:",omitempty"`
 		Data []Point
 	}
 
+	callerTeamID, hasTeam := CallerTeamID(r.Context())
 	series := make([]Series, 0, len(teams))
 	for _, team := range teams {
 		temp := make(map[string]Point)
@@ -75,14 +77,17 @@ func (a *API) GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 			points = append(points, point)
 		}
 
-		s := Series{Name: team.Name, ID: team.ID, Data: points}
+		s := Series{Name: team.Name, ID: team.ID, Self: hasTeam && team.ID == callerTeamID, Data: points}
 		series = append(series, s)
 	}
 
 	if a.shouldScrub(r) {
 		for i := range series {
 			series[i].Name = "Team"
-			series[i].ID = 0
+			// The caller's own ID links their row to their services page.
+			if !series[i].Self {
+				series[i].ID = 0
+			}
 		}
 		rand.Shuffle(len(series), func(i, j int) { // #nosec G404 -- non-crypto randomization of anonymized graph series
 			series[i], series[j] = series[j], series[i]
@@ -90,7 +95,7 @@ func (a *API) GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{"series": series, "roundID": round.ID}
-	WriteJSON(w, http.StatusOK, data)
+	writeCallerJSON(w, data)
 }
 
 func (a *API) GetScoreStatus(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +115,7 @@ func (a *API) GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	type Series struct {
 		Name string
+		Self bool `json:",omitempty"`
 		Data []Point
 	}
 
@@ -123,8 +129,9 @@ func (a *API) GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 
 	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })
 
+	callerTeamID, hasTeam := CallerTeamID(r.Context())
 	for _, team := range teams {
-		s := Series{Name: team.Name, Data: make([]Point, 0)}
+		s := Series{Name: team.Name, Self: hasTeam && team.ID == callerTeamID, Data: make([]Point, 0)}
 		series = append(series, s)
 	}
 
@@ -159,7 +166,7 @@ func (a *API) GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 	})
 
 	data := map[string]any{"series": series}
-	WriteJSON(w, http.StatusOK, data)
+	writeCallerJSON(w, data)
 }
 
 func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
@@ -195,12 +202,14 @@ func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	type Series struct {
 		Name string
+		Self bool `json:",omitempty"`
 		Data []Point
 	}
 
+	callerTeamID, hasTeam := CallerTeamID(r.Context())
 	series := make([]Series, 0, len(uptime))
 	for _, team := range teams {
-		s := Series{Name: team.Name}
+		s := Series{Name: team.Name, Self: hasTeam && team.ID == callerTeamID}
 
 		points := make([]Point, 0, len(uniqueServices))
 		for _, servicename := range uniqueServices {
@@ -227,7 +236,7 @@ func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{"series": series}
-	WriteJSON(w, http.StatusOK, data)
+	writeCallerJSON(w, data)
 }
 
 func (a *API) shouldScrub(r *http.Request) bool {
@@ -242,4 +251,11 @@ func (a *API) shouldScrub(r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// writeCallerJSON writes a graph response that marks the caller's own series,
+// so no shared cache may serve it to anyone else.
+func writeCallerJSON(w http.ResponseWriter, data any) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	WriteJSON(w, http.StatusOK, data)
 }
