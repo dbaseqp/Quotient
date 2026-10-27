@@ -585,3 +585,71 @@ func TestEnsureCredentialsSeeded_HotReload(t *testing.T) {
 	require.NoError(t, se.ResetCredentials(team1.ID, "reload_linux.credlist", "admin"))
 	assert.Equal(t, "pass1_updated", credMap(team1.ID, "reload_linux.credlist")["alice"])
 }
+
+func TestRvb_IgnoresStaleResultsFromRestartedRound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	t.Setenv("REDIS_ADDR", "localhost:6379")
+
+	redis, pg := testutil.StartContainers(t)
+
+	ctx := context.Background()
+	redis.Client.FlushDB(ctx)
+	require.NoError(t, pg.DB.ResetScores())
+
+	team := pg.CreateTestTeam(t, "Team Stale", "01")
+
+	engine := NewTestEngine(t, redis, pg, 3)
+	engine.CurrentRound = 1
+
+	svc := &mockRunner{Service: checks.Service{Display: "web", Name: "box01-web", ServiceType: "Mock", Points: 10}}
+	engine.Config.Box = []config.Box{{Name: "box01", IP: "10.0.0.1", Runners: []checks.Runner{svc}}}
+
+	// A failed result left behind by a round that was cut short by a restart.
+	stale, _ := json.Marshal(checks.Result{TeamID: team.ID, ServiceName: "box01-web", ServiceType: "Mock", RoundID: 1, Status: false})
+	require.NoError(t, redis.Client.RPush(ctx, "results", stale).Err())
+
+	stopRunner := make(chan struct{})
+	runnerDone := make(chan struct{})
+	go func() {
+		defer close(runnerDone)
+		for {
+			select {
+			case <-stopRunner:
+				return
+			default:
+				val, err := redis.Client.BLPop(ctx, time.Second, "tasks").Result()
+				if err != nil || len(val) < 2 {
+					continue
+				}
+				var task Task
+				if err := json.Unmarshal([]byte(val[1]), &task); err != nil {
+					continue
+				}
+				result, _ := json.Marshal(checks.Result{
+					TeamID: task.TeamID, ServiceName: task.ServiceName, ServiceType: task.ServiceType,
+					RoundID: task.RoundID, Status: true, Points: 10,
+				})
+				redis.Client.RPush(ctx, "results", result)
+			}
+		}
+	}()
+
+	err := engine.rvb()
+	close(stopRunner)
+	<-runnerDone
+	require.NoError(t, err)
+
+	round, err := pg.DB.GetLastRound()
+	require.NoError(t, err)
+	var teamChecks []db.ServiceCheckSchema
+	for _, check := range round.Checks {
+		if check.TeamID == team.ID {
+			teamChecks = append(teamChecks, check)
+		}
+	}
+	require.Len(t, teamChecks, 1)
+	assert.True(t, teamChecks[0].Result, "stale failed result from the restarted round must not be scored")
+}
