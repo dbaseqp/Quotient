@@ -452,6 +452,7 @@ func (se *ScoringEngine) rvb() error {
 				RoundID:        se.CurrentRound,
 				Deadline:       se.NextRoundStartTime,
 				Attempts:       r.GetAttempts(),
+				AttemptDelay:   r.GetAttemptDelay(),
 				CheckData:      data, // the entire specialized struct
 			}
 

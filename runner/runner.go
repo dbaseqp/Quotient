@@ -232,6 +232,9 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 		if result.Status || time.Now().After(task.Deadline) {
 			break
 		}
+		if i < task.Attempts-1 && !waitForRetry(ctx, time.Duration(task.AttemptDelay)*time.Second, task.Deadline) {
+			break
+		}
 	}
 
 	// Marshal and store result
@@ -255,4 +258,20 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 	statusJSON, _ = json.Marshal(result)
 	// Use a longer TTL for completed tasks to ensure they're visible in the UI
 	rdb.Set(ctx, taskKey, statusJSON, 3*time.Minute)
+}
+
+// waitForRetry waits delay before the next attempt and reports whether that
+// attempt can still start before the round deadline.
+func waitForRetry(ctx context.Context, delay time.Duration, deadline time.Time) bool {
+	if !time.Now().Add(delay).Before(deadline) {
+		return false
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }

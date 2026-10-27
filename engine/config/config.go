@@ -130,6 +130,8 @@ type MiscConfig struct {
 	Points       int
 	Timeout      int
 	SlaThreshold int
+	Attempts     int
+	AttemptDelay int // seconds between attempts of a failing check
 	// SlaPenalty is a pointer so an explicit 0 (count SLAs without deducting
 	// points) can be told apart from an omitted key.
 	SlaPenalty *int
@@ -357,6 +359,13 @@ func checkConfig(conf *ConfigSettings) error {
 		errResult = errors.Join(errResult, errors.New("timeout must be smaller than delay minus jitter"))
 	}
 
+	if conf.MiscSettings.Attempts < 0 {
+		errResult = errors.Join(errResult, errors.New("Attempts must not be negative"))
+	}
+	if conf.MiscSettings.AttemptDelay < 0 {
+		errResult = errors.Join(errResult, errors.New("AttemptDelay must not be negative"))
+	}
+
 	if conf.MiscSettings.Points == 0 {
 		conf.MiscSettings.Points = 1
 	}
@@ -461,6 +470,9 @@ func checkConfig(conf *ConfigSettings) error {
 		}
 		for _, checks := range checkSets {
 			for _, check := range checks {
+				if setter, ok := check.(interface{ SetAttemptDefaults(int, int) }); ok {
+					setter.SetAttemptDefaults(conf.MiscSettings.Attempts, conf.MiscSettings.AttemptDelay)
+				}
 				if err := check.Verify(
 					conf.Box[i].Name,
 					conf.Box[i].IP,
@@ -469,6 +481,9 @@ func checkConfig(conf *ConfigSettings) error {
 					*conf.MiscSettings.SlaPenalty,
 					conf.MiscSettings.SlaThreshold,
 				); err != nil {
+					errResult = errors.Join(errResult, err)
+				}
+				if err := checkAttemptBudget(check, conf.MiscSettings.Delay-conf.MiscSettings.Jitter); err != nil {
 					errResult = errors.Join(errResult, err)
 				}
 				if _, exists := runnerNames[check.GetName()]; exists {
@@ -514,6 +529,20 @@ func getRunners[T checks.Runner](arr []T) []checks.Runner {
 		out[i] = v
 	}
 	return out
+}
+
+// checkAttemptBudget rejects a check whose attempts, each running to its
+// timeout, plus the delays between them can't finish in the shortest round.
+func checkAttemptBudget(check checks.Runner, shortestRound int) error {
+	attempts, delay := check.GetAttempts(), check.GetAttemptDelay()
+	if attempts < 1 || delay < 0 {
+		return fmt.Errorf("%s: Attempts must be at least 1 and AttemptDelay not negative", check.GetName())
+	}
+	if budget := attempts*check.GetTimeout() + (attempts-1)*delay; budget >= shortestRound {
+		return fmt.Errorf("%s: %d attempts with timeout %ds and delay %ds take up to %ds, which must be smaller than delay minus jitter (%ds)",
+			check.GetName(), attempts, check.GetTimeout(), delay, budget, shortestRound)
+	}
+	return nil
 }
 
 // Returns a flat list of all checks across all boxes.

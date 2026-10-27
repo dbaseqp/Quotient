@@ -22,6 +22,8 @@ type Runner interface {
 	GetType() string
 	GetName() string
 	GetAttempts() int
+	GetAttemptDelay() int
+	GetTimeout() int
 	GetCredlists() []string
 	SetTaskCredentials(creds []TaskCredential)
 }
@@ -42,6 +44,7 @@ type Service struct {
 	Target          string           `toml:",omitempty"` // Target is the IP address or hostname for the box
 	ServiceType     string           `toml:",omitempty"` // ServiceType is the name of the Runner that checks the service
 	Attempts        int              `toml:",omitempty"` // Attempts is the number of times the service has been checked
+	AttemptDelay    int              `toml:",omitempty"` // AttemptDelay is the number of seconds to wait before retrying a failed attempt
 	TaskCredentials []TaskCredential `toml:"-"`          // Credentials from task payload (set per-task, not from config)
 }
 
@@ -73,6 +76,25 @@ func (service *Service) GetName() string {
 
 func (service *Service) GetAttempts() int {
 	return service.Attempts
+}
+
+func (service *Service) GetAttemptDelay() int {
+	return service.AttemptDelay
+}
+
+func (service *Service) GetTimeout() int {
+	return service.Timeout
+}
+
+// SetAttemptDefaults fills Attempts and AttemptDelay from the event-wide
+// defaults when the service doesn't set them.
+func (service *Service) SetAttemptDefaults(attempts int, attemptDelay int) {
+	if service.Attempts == 0 {
+		service.Attempts = attempts
+	}
+	if service.AttemptDelay == 0 {
+		service.AttemptDelay = attemptDelay
+	}
 }
 
 func (service *Service) GetCredlists() []string {
