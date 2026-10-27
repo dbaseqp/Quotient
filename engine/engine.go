@@ -127,17 +127,7 @@ func (se *ScoringEngine) Start() {
 
 	se.NextRoundStartTime = time.Time{}
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "quotient_redis:6379"
-	}
-
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"),
-	})
-
-	events := rdb.Subscribe(context.Background(), "events")
+	events := se.RedisClient.Subscribe(context.Background(), "events")
 	// nolint:errcheck
 	defer events.Close()
 	eventsChannel := events.Channel()
@@ -185,27 +175,17 @@ func (se *ScoringEngine) Start() {
 			}
 		}
 	}()
-	waitForReset()
+	se.waitForReset()
 	slog.Info("Restarting scoring...")
 }
 
-func waitForReset() {
+func (se *ScoringEngine) waitForReset() {
 	// wait for a signal to reset the engine
 	// this will block until the engine is reset
 	// this is a blocking call
 	// the engine will be reset and the loop will start again
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "quotient_redis:6379"
-	}
-
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"),
-	})
-
-	events := rdb.Subscribe(context.Background(), "events")
+	events := se.RedisClient.Subscribe(context.Background(), "events")
 	// nolint:errcheck
 	defer events.Close()
 	eventsChannel := events.Channel()
@@ -371,22 +351,10 @@ func (se *ScoringEngine) rvb() error {
 
 	slog.Info(fmt.Sprintf("round should take %s", time.Until(se.NextRoundStartTime).String()))
 
-	//
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "quotient_redis:6379"
-	}
-
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"),
-	})
-
-	events := rdb.Subscribe(context.Background(), "events")
+	events := se.RedisClient.Subscribe(context.Background(), "events")
 	// nolint:errcheck
 	defer events.Close()
 	eventsChannel := events.Channel()
-	//
 
 	// do rvb stuff
 	teams, err := se.DB.GetTeams()
