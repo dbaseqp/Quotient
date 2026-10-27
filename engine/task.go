@@ -19,6 +19,7 @@ type Task struct {
 	Deadline       time.Time       `json:"deadline"`
 	RoundID        uint            `json:"round_id"`
 	Attempts       int             `json:"attempts"`
+	AttemptDelay   int             `json:"attempt_delay"` // seconds to wait before retrying a failed attempt
 	CheckData      json.RawMessage `json:"check_data"`
 	Credentials    []Credential    `json:"credentials,omitempty"`
 }

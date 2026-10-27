@@ -410,11 +410,14 @@ func (se *ScoringEngine) rvb() error {
 		slog.Debug("Box configuration", "name", box.Name, "runners", len(box.Runners))
 	}
 
-	// Clear any stale tasks from previous rounds before enqueuing new ones
-	staleTasks := se.RedisClient.LLen(ctx, "tasks").Val()
-	if staleTasks > 0 {
-		slog.Warn("Clearing stale tasks from queue", "count", staleTasks, "round", se.CurrentRound)
-		se.RedisClient.Del(ctx, "tasks")
+	// Clear any stale tasks and results before enqueuing new ones. After a
+	// restart mid-round the next round reuses the round ID, so leftover
+	// results would otherwise be counted as this round's.
+	for _, key := range []string{"tasks", "results"} {
+		if stale := se.RedisClient.LLen(ctx, key).Val(); stale > 0 {
+			slog.Warn("Clearing stale entries from queue", "queue", key, "count", stale, "round", se.CurrentRound)
+			se.RedisClient.Del(ctx, key)
+		}
 	}
 
 	// 1) Enqueue
@@ -449,6 +452,7 @@ func (se *ScoringEngine) rvb() error {
 				RoundID:        se.CurrentRound,
 				Deadline:       se.NextRoundStartTime,
 				Attempts:       r.GetAttempts(),
+				AttemptDelay:   r.GetAttemptDelay(),
 				CheckData:      data, // the entire specialized struct
 			}
 
