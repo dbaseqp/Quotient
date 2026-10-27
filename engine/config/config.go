@@ -360,10 +360,10 @@ func checkConfig(conf *ConfigSettings) error {
 	}
 
 	if conf.MiscSettings.Attempts < 0 {
-		errResult = errors.Join(errResult, errors.New("Attempts must not be negative"))
+		errResult = errors.Join(errResult, errors.New("attempts must not be negative"))
 	}
 	if conf.MiscSettings.AttemptDelay < 0 {
-		errResult = errors.Join(errResult, errors.New("AttemptDelay must not be negative"))
+		errResult = errors.Join(errResult, errors.New("attempt delay must not be negative"))
 	}
 
 	if conf.MiscSettings.Points == 0 {
