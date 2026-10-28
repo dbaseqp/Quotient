@@ -2,9 +2,12 @@ package api
 
 import (
 	"errors"
+	"image"
+	"image/png"
 	"log/slog"
 	"net/http"
 	"slices"
+	"sync"
 
 	"github.com/dbaseqp/Quotient/engine/db"
 	"github.com/dbaseqp/Quotient/www/timelapse"
@@ -56,7 +59,12 @@ func (a *API) ExportTimelapse(w http.ResponseWriter, r *http.Request) {
 		b.Set(res.RoundID, rowOf[res.TeamID], colOf[res.ServiceName], res.Result)
 	}
 
-	tl, err := b.Build()
+	icons, err := statusIcons()
+	if err != nil {
+		WriteInternalError(w, r, "Failed to load status icons", err)
+		return
+	}
+	tl, err := b.Build(icons)
 	if errors.Is(err, timelapse.ErrNoRounds) {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "No check results for active teams"})
 		return
@@ -71,6 +79,29 @@ func (a *API) ExportTimelapse(w http.ResponseWriter, r *http.Request) {
 		slog.Error("failed to write timelapse", "request_id", r.Context().Value("request_id"), "error", err)
 	}
 }
+
+// statusIcons loads the images the /graphs status heatmap draws, once.
+var statusIcons = sync.OnceValues(func() (timelapse.Icons, error) {
+	load := func(name string) (image.Image, error) {
+		f, err := SafeOpen("static/assets/services", name)
+		if err != nil {
+			return nil, err
+		}
+		// nolint:errcheck
+		defer f.Close()
+		return png.Decode(f)
+	}
+	var icons timelapse.Icons
+	var err error
+	if icons.Up, err = load("up.png"); err != nil {
+		return icons, err
+	}
+	if icons.Down, err = load("down.png"); err != nil {
+		return icons, err
+	}
+	icons.Unknown, err = load("pending.png")
+	return icons, err
+})
 
 // labelOrder compares names the way the /graphs page sorts them with
 // localeCompare. A collator is not safe for concurrent use, so each export

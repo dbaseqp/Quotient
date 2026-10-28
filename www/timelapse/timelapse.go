@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/color/palette"
 	"image/draw"
 	"image/gif"
 	"io"
@@ -21,8 +22,9 @@ import (
 )
 
 const (
-	cellW      = 24
-	cellH      = 16
+	cellW      = 22
+	cellH      = 22
+	iconSize   = 20 // fits inside a cell, leaving a 1px gap between cells
 	pad        = 8
 	titleH     = 16
 	glyphW     = 7                  // basicfont.Face7x13
@@ -34,24 +36,28 @@ const (
 	frameDelay = 10                 // centiseconds
 )
 
-// Palette indexes.
+// Indexes of the fixed colors at the start of the palette.
 const (
-	white uint8 = iota
-	black
-	green
-	red
-	grey
-	transparent
+	white       uint8 = 0
+	black       uint8 = 1
+	transparent uint8 = 5
 )
 
-// The status colors are the ones the /graphs status heatmap uses.
-var palette = color.Palette{
-	color.RGBA{0xFF, 0xFF, 0xFF, 0xFF},
-	color.RGBA{0x00, 0x00, 0x00, 0xFF},
-	color.RGBA{0x3D, 0x99, 0x70, 0xFF},
-	color.RGBA{0xAA, 0x07, 0x07, 0xFF},
-	color.RGBA{0x77, 0x77, 0x77, 0xFF},
-	color.RGBA{0x00, 0x00, 0x00, 0x00},
+// The fixed colors are the ones the /graphs status heatmap uses. The web-safe
+// colors after them render the status icons.
+var colors = append(color.Palette{
+	color.RGBA{0xFF, 0xFF, 0xFF, 0xFF}, // white
+	color.RGBA{0x00, 0x00, 0x00, 0xFF}, // black
+	color.RGBA{0x3D, 0x99, 0x70, 0xFF}, // up
+	color.RGBA{0xAA, 0x07, 0x07, 0xFF}, // down
+	color.RGBA{0x77, 0x77, 0x77, 0xFF}, // unknown
+	color.RGBA{0x00, 0x00, 0x00, 0x00}, // transparent
+}, palette.WebSafe...)
+
+// Icons are the images drawn for each status, the same ones the /graphs
+// status heatmap uses.
+type Icons struct {
+	Up, Down, Unknown image.Image
 }
 
 type status uint8
@@ -61,8 +67,6 @@ const (
 	up
 	down
 )
-
-var statusColor = [...]uint8{unknown: grey, up: green, down: red}
 
 type round struct {
 	id    uint
@@ -98,11 +102,17 @@ func (b *Builder) Set(roundID uint, team, service int, isUp bool) {
 var ErrNoRounds = errors.New("no rounds to draw")
 
 // Build lays out the image, refusing one too large to draw.
-func (b *Builder) Build() (*Timelapse, error) {
+func (b *Builder) Build(icons Icons) (*Timelapse, error) {
 	if len(b.rounds) == 0 {
 		return nil, ErrNoRounds
 	}
+	if icons.Up == nil || icons.Down == nil || icons.Unknown == nil {
+		return nil, errors.New("missing status icon")
+	}
 	t := &Timelapse{teams: shorten(b.teams), services: shorten(b.services), rounds: sample(b.rounds, maxFrames)}
+	t.tiles[up] = tile(icons.Up)
+	t.tiles[down] = tile(icons.Down)
+	t.tiles[unknown] = tile(icons.Unknown)
 	var maxRound uint
 	for _, r := range t.rounds {
 		maxRound = max(maxRound, r.id)
@@ -143,6 +153,26 @@ type Timelapse struct {
 	rounds          []round
 	gridX, gridY    int
 	width, height   int
+	tiles           [3]*image.Paletted // one per status, cell-sized
+}
+
+// tile renders an icon centered on a white cell-sized square.
+func tile(icon image.Image) *image.Paletted {
+	r := image.Rect(0, 0, cellW-1, cellH-1)
+	rgba := image.NewRGBA(r)
+	draw.Draw(rgba, r, image.White, image.Point{}, draw.Src)
+	off := image.Pt((r.Dx()-iconSize)/2, (r.Dy()-iconSize)/2)
+	xdraw.CatmullRom.Scale(rgba, image.Rect(0, 0, iconSize, iconSize).Add(off), icon, icon.Bounds(), xdraw.Over, nil)
+	t := image.NewPaletted(r, colors)
+	draw.Draw(t, r, rgba, image.Point{}, draw.Src)
+	return t
+}
+
+// paste copies a tile into img with its top-left corner at at.
+func paste(img, tile *image.Paletted, at image.Point) {
+	for y := 0; y < tile.Rect.Dy(); y++ {
+		copy(img.Pix[img.PixOffset(at.X, at.Y+y):], tile.Pix[tile.PixOffset(0, y):tile.PixOffset(tile.Rect.Dx(), y)])
+	}
 }
 
 // layOut sizes the image to fit the longest names and the widest title.
@@ -179,7 +209,7 @@ func title(round uint) string {
 // region that changed, with unchanged pixels transparent.
 func (t *Timelapse) Encode(w io.Writer) error {
 	bounds := image.Rect(0, 0, t.width, t.height)
-	cur := image.NewPaletted(bounds, palette)
+	cur := image.NewPaletted(bounds, colors)
 	fill(cur, bounds, white)
 	for i, name := range t.teams {
 		drawText(cur, pad, t.gridY+i*cellH+cellH-4, name)
@@ -189,20 +219,20 @@ func (t *Timelapse) Encode(w io.Writer) error {
 	}
 
 	g := &gif.GIF{}
-	prev := image.NewPaletted(bounds, palette)
+	prev := image.NewPaletted(bounds, colors)
 	for i, round := range t.rounds {
 		fill(cur, image.Rect(0, 0, t.width, pad+titleH), white)
 		drawText(cur, pad, pad+glyphH, title(round.id))
 		for row := range t.teams {
 			for col := range t.services {
-				fill(cur, t.cell(row, col), statusColor[round.cells[row*len(t.services)+col]])
+				paste(cur, t.tiles[round.cells[row*len(t.services)+col]], t.cell(row, col).Min)
 			}
 		}
 
 		var frame *image.Paletted
 		if i == 0 {
 			// cur is reused for later rounds, so keep a copy.
-			frame = image.NewPaletted(bounds, palette)
+			frame = image.NewPaletted(bounds, colors)
 			copy(frame.Pix, cur.Pix)
 		} else {
 			frame = delta(prev, cur)
@@ -218,7 +248,7 @@ func (t *Timelapse) Encode(w io.Writer) error {
 }
 
 func fill(img *image.Paletted, r image.Rectangle, c uint8) {
-	draw.Draw(img, r, image.NewUniform(palette[c]), image.Point{}, draw.Src)
+	draw.Draw(img, r, image.NewUniform(colors[c]), image.Point{}, draw.Src)
 }
 
 // delta returns the smallest image covering every pixel that differs between
@@ -237,7 +267,7 @@ func delta(prev, cur *image.Paletted) *image.Paletted {
 	if maxX >= 0 {
 		changed = image.Rect(minX, minY, maxX+1, maxY+1)
 	}
-	out := image.NewPaletted(changed, palette)
+	out := image.NewPaletted(changed, colors)
 	for y := changed.Min.Y; y < changed.Max.Y; y++ {
 		for x := changed.Min.X; x < changed.Max.X; x++ {
 			c := cur.ColorIndexAt(x, y)
@@ -253,7 +283,7 @@ func delta(prev, cur *image.Paletted) *image.Paletted {
 func drawText(img *image.Paletted, x, baseline int, s string) {
 	d := font.Drawer{
 		Dst:  img,
-		Src:  image.NewUniform(palette[black]),
+		Src:  image.NewUniform(colors[black]),
 		Face: basicfont.Face7x13,
 		Dot:  fixed.P(x, baseline),
 	}

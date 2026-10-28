@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/draw"
 	"image/gif"
 	"slices"
 	"strings"
@@ -15,12 +16,25 @@ import (
 	"pgregory.net/rapid"
 )
 
+// solid returns a square icon of one palette color, so a cell's center pixel
+// shows which icon was drawn.
+func solid(index uint8) image.Image {
+	img := image.NewRGBA(image.Rect(0, 0, 40, 40))
+	draw.Draw(img, img.Bounds(), image.NewUniform(colors[index]), image.Point{}, draw.Src)
+	return img
+}
+
+var (
+	testIcons   = Icons{Up: solid(2), Down: solid(3), Unknown: solid(4)}
+	statusColor = [...]uint8{unknown: 4, up: 2, down: 3}
+)
+
 // play decodes the GIF and returns what a viewer shows after each frame.
 func play(t require.TestingT, data []byte) (*gif.GIF, []*image.Paletted) {
 	g, err := gif.DecodeAll(bytes.NewReader(data))
 	require.NoError(t, err)
 
-	canvas := image.NewPaletted(image.Rect(0, 0, g.Config.Width, g.Config.Height), palette)
+	canvas := image.NewPaletted(image.Rect(0, 0, g.Config.Width, g.Config.Height), colors)
 	shown := make([]*image.Paletted, 0, len(g.Image))
 	for i, frame := range g.Image {
 		require.Equal(t, byte(gif.DisposalNone), g.Disposal[i])
@@ -32,7 +46,7 @@ func play(t require.TestingT, data []byte) (*gif.GIF, []*image.Paletted) {
 				}
 			}
 		}
-		snapshot := image.NewPaletted(canvas.Rect, palette)
+		snapshot := image.NewPaletted(canvas.Rect, colors)
 		copy(snapshot.Pix, canvas.Pix)
 		shown = append(shown, snapshot)
 	}
@@ -54,7 +68,7 @@ func build(teams, services []string, frames []frame) (*Timelapse, error) {
 			}
 		}
 	}
-	return b.Build()
+	return b.Build(testIcons)
 }
 
 func encode(t require.TestingT, teams, services []string, frames []frame) (*Timelapse, []byte) {
@@ -99,22 +113,27 @@ func TestEncodeDrawsEachRound(t *testing.T) {
 }
 
 func TestBuildRejects(t *testing.T) {
-	_, err := NewBuilder([]string{"team01"}, []string{"web"}).Build()
+	_, err := NewBuilder([]string{"team01"}, []string{"web"}).Build(testIcons)
 	assert.ErrorIs(t, err, ErrNoRounds)
+
+	b := NewBuilder([]string{"team01"}, []string{"web"})
+	b.Set(1, 0, 0, true)
+	_, err = b.Build(Icons{Up: solid(2), Down: solid(3)})
+	assert.ErrorContains(t, err, "missing status icon")
 
 	teams := make([]string, 5000)
 	for i := range teams {
 		teams[i] = fmt.Sprintf("team%d", i)
 	}
-	b := NewBuilder(teams, []string{"web"})
+	b = NewBuilder(teams, []string{"web"})
 	b.Set(1, 0, 0, true)
-	_, err = b.Build()
+	_, err = b.Build(testIcons)
 	assert.ErrorContains(t, err, "too large")
 
 	// Each side fits in a GIF, but the area is over maxPixels.
 	b = NewBuilder(teams[:300], teams[:300])
 	b.Set(1, 0, 0, true)
-	_, err = b.Build()
+	_, err = b.Build(testIcons)
 	assert.ErrorContains(t, err, "too large")
 }
 
@@ -131,7 +150,7 @@ func TestBuildSizesTitleForLargestRound(t *testing.T) {
 	b := NewBuilder([]string{"a"}, []string{"b"})
 	b.Set(1000000, 0, 0, true)
 	b.Set(1, 0, 0, false)
-	tl, err := b.Build()
+	tl, err := b.Build(testIcons)
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, tl.width, pad+len(title(1000000))*glyphW+pad)
 }
@@ -141,7 +160,7 @@ func manyRounds(n int) *Timelapse {
 	for i := range n {
 		b.Set(uint(i+1), 0, 0, i%2 == 0)
 	}
-	tl, err := b.Build()
+	tl, err := b.Build(testIcons)
 	if err != nil {
 		panic(err)
 	}
