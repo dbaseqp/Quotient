@@ -1,12 +1,12 @@
 package middleware
 
 import (
-	"context"
+	"crypto/rand"
 	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/dbaseqp/Quotient/www/api"
 )
 
 // Logging middleware logs quotient web requests. It is meant to be called after authentication is performed
@@ -14,13 +14,12 @@ func Logging(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		// Generate (or reuse) a unique request ID.
-		requestID := r.Context().Value("request_id")
+		// Generate (or reuse) a request ID.
+		requestID := api.RequestID(r.Context())
 		if requestID == "" {
-			requestID = uuid.New().String()
-			// TODO: use custom type to fix staticcheck instead
-			// nolint:staticcheck
-			r = r.WithContext(context.WithValue(r.Context(), "request_id", requestID))
+			// Short enough to keep log lines readable; only needs to tell nearby requests apart.
+			requestID = rand.Text()[:8]
+			r = r.WithContext(api.WithRequestID(r.Context(), requestID))
 		}
 
 		// Process the request.

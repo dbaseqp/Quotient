@@ -172,7 +172,7 @@ func (a *API) CreatePcr(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&form)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
-		slog.Error("Failed to decode PCR json", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("Failed to decode PCR json", "request_id", RequestID(r.Context()), "error", err.Error())
 		return
 	}
 
@@ -220,7 +220,7 @@ func (a *API) ResetPcr(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&form)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
-		slog.Error("Failed to decode PCR json", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("Failed to decode PCR json", "request_id", RequestID(r.Context()), "error", err.Error())
 		return
 	}
 	teamID, ok := a.pcrTeamID(w, r, form.TeamID, "PCR reset not allowed")

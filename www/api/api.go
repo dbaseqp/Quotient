@@ -39,7 +39,7 @@ func WriteJSON(w http.ResponseWriter, status int, data any) {
 
 // WriteInternalError logs err and sends only msg to the client.
 func WriteInternalError(w http.ResponseWriter, r *http.Request, msg string, err error) {
-	slog.Error(msg, "request_id", r.Context().Value("request_id"), "error", err.Error())
+	slog.Error(msg, "request_id", RequestID(r.Context()), "error", err.Error())
 	WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": msg})
 }
 
