@@ -15,7 +15,7 @@ func Logging(next http.HandlerFunc) http.HandlerFunc {
 		start := time.Now()
 
 		// Generate (or reuse) a unique request ID.
-		requestID := r.Context().Value("request_id")
+		requestID, _ := r.Context().Value("request_id").(string)
 		if requestID == "" {
 			requestID = uuid.New().String()
 			// TODO: use custom type to fix staticcheck instead
