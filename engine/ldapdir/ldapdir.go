@@ -18,8 +18,7 @@ func connect(s config.LdapAuthConfig) (*ldap.Conn, error) {
 		return nil, err
 	}
 	if err := conn.Bind(s.LdapBindDn, s.LdapBindPassword); err != nil {
-		// nolint:errcheck
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 	return conn, nil
