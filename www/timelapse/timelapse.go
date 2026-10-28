@@ -12,26 +12,26 @@ import (
 	"image/gif"
 	"io"
 	"math"
-	"unicode/utf8"
 
 	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/f64"
 	"golang.org/x/image/math/fixed"
 )
 
 const (
-	cellW      = 22
-	cellH      = 22
-	iconSize   = 20 // fits inside a cell, leaving a 1px gap between cells
+	cellW      = 34
+	cellH      = 34
+	iconSize   = 32 // fits inside a cell, leaving a 1px gap between cells
+	fontSize   = 14 // pixels
+	titleSize  = 24 // pixels
 	pad        = 8
-	titleH     = 16
-	glyphW     = 7                  // basicfont.Face7x13
-	glyphH     = 13                 // basicfont.Face7x13
 	labelAngle = 55 * math.Pi / 180 // same angle as the /graphs service labels
 	maxLabel   = 32                 // longer team and service names are cut short
-	maxPixels  = 1 << 20            // every frame is held in memory until encoded
+	maxPixels  = 1 << 21            // every frame is held in memory until encoded
 	maxFrames  = 300                // longer events are sampled
 	frameDelay = 10                 // centiseconds
 )
@@ -109,7 +109,15 @@ func (b *Builder) Build(icons Icons) (*Timelapse, error) {
 	if icons.Up == nil || icons.Down == nil || icons.Unknown == nil {
 		return nil, errors.New("missing status icon")
 	}
-	t := &Timelapse{teams: shorten(b.teams), services: shorten(b.services), rounds: sample(b.rounds, maxFrames)}
+	face, err := newFace(goregular.TTF, fontSize)
+	if err != nil {
+		return nil, err
+	}
+	titleFace, err := newFace(gobold.TTF, titleSize)
+	if err != nil {
+		return nil, err
+	}
+	t := &Timelapse{teams: shorten(b.teams), services: shorten(b.services), rounds: sample(b.rounds, maxFrames), face: face, titleFace: titleFace}
 	t.tiles[up] = tile(icons.Up)
 	t.tiles[down] = tile(icons.Down)
 	t.tiles[unknown] = tile(icons.Unknown)
@@ -153,7 +161,24 @@ type Timelapse struct {
 	rounds          []round
 	gridX, gridY    int
 	width, height   int
+	titleH          int
 	tiles           [3]*image.Paletted // one per status, cell-sized
+	// Faces are not safe for concurrent use, so each Timelapse has its own.
+	face, titleFace font.Face
+}
+
+func newFace(ttf []byte, size float64) (font.Face, error) {
+	f, err := opentype.Parse(ttf)
+	if err != nil {
+		return nil, err
+	}
+	return opentype.NewFace(f, &opentype.FaceOptions{Size: size, DPI: 72, Hinting: font.HintingFull})
+}
+
+// textSize returns the width of s in face and the face's ascent and descent.
+func textSize(face font.Face, s string) (width, ascent, descent int) {
+	m := face.Metrics()
+	return font.MeasureString(face, s).Ceil(), m.Ascent.Ceil(), m.Descent.Ceil()
 }
 
 // tile renders an icon centered on a white cell-sized square.
@@ -180,18 +205,23 @@ func (t *Timelapse) layOut(maxRound uint) {
 	longest := func(names []string) int {
 		n := 0
 		for _, name := range names {
-			n = max(n, utf8.RuneCountInString(name))
+			w, _, _ := textSize(t.face, name)
+			n = max(n, w)
 		}
-		return n * glyphW
+		return n
 	}
+	titleW, titleAscent, titleDescent := textSize(t.titleFace, title(maxRound))
+	_, ascent, descent := textSize(t.face, "")
+	lineH := ascent + descent
 	sin, cos := math.Sincos(labelAngle)
 	labelLen := float64(longest(t.services))
 
+	t.titleH = titleAscent + titleDescent
 	t.gridX = pad + longest(t.teams) + pad
-	t.gridY = pad + titleH + int(math.Ceil(labelLen*sin+glyphH*cos)) + pad/2
+	t.gridY = pad + t.titleH + int(math.Ceil(labelLen*sin+float64(lineH)*cos)) + pad/2
 	// The last service label leans right past the grid.
 	t.width = t.gridX + len(t.services)*cellW + max(pad, int(math.Ceil(labelLen*cos))-cellW/2+pad)
-	t.width = max(t.width, pad+utf8.RuneCountInString(title(maxRound))*glyphW+pad)
+	t.width = max(t.width, pad+titleW+pad)
 	t.height = t.gridY + len(t.teams)*cellH + pad
 }
 
@@ -211,18 +241,20 @@ func (t *Timelapse) Encode(w io.Writer) error {
 	bounds := image.Rect(0, 0, t.width, t.height)
 	cur := image.NewPaletted(bounds, colors)
 	fill(cur, bounds, white)
+	_, ascent, descent := textSize(t.face, "")
+	_, titleAscent, _ := textSize(t.titleFace, "")
 	for i, name := range t.teams {
-		drawText(cur, pad, t.gridY+i*cellH+cellH-4, name)
+		drawText(cur, t.face, pad, t.gridY+i*cellH+(cellH+ascent-descent)/2, name)
 	}
 	for j, svc := range t.services {
-		drawRotatedText(cur, t.gridX+j*cellW+cellW/2, t.gridY-2, svc)
+		t.drawRotatedText(cur, t.gridX+j*cellW+cellW/2, t.gridY-2, svc)
 	}
 
 	g := &gif.GIF{}
 	prev := image.NewPaletted(bounds, colors)
 	for i, round := range t.rounds {
-		fill(cur, image.Rect(0, 0, t.width, pad+titleH), white)
-		drawText(cur, pad, pad+glyphH, title(round.id))
+		fill(cur, image.Rect(0, 0, t.width, pad+t.titleH), white)
+		drawText(cur, t.titleFace, pad, pad+titleAscent, title(round.id))
 		for row := range t.teams {
 			for col := range t.services {
 				paste(cur, t.tiles[round.cells[row*len(t.services)+col]], t.cell(row, col).Min)
@@ -280,11 +312,11 @@ func delta(prev, cur *image.Paletted) *image.Paletted {
 	return out
 }
 
-func drawText(img *image.Paletted, x, baseline int, s string) {
+func drawText(img *image.Paletted, face font.Face, x, baseline int, s string) {
 	d := font.Drawer{
 		Dst:  img,
 		Src:  image.NewUniform(colors[black]),
-		Face: basicfont.Face7x13,
+		Face: face,
 		Dot:  fixed.P(x, baseline),
 	}
 	d.DrawString(s)
@@ -292,23 +324,25 @@ func drawText(img *image.Paletted, x, baseline int, s string) {
 
 // drawRotatedText draws s rising to the right at labelAngle, with the
 // bottom-left of the text at (x, y).
-func drawRotatedText(img *image.Paletted, x, y int, s string) {
-	text := image.NewRGBA(image.Rect(0, 0, utf8.RuneCountInString(s)*glyphW, glyphH))
+func (t *Timelapse) drawRotatedText(img *image.Paletted, x, y int, s string) {
+	w, ascent, descent := textSize(t.face, s)
+	h := ascent + descent
+	text := image.NewRGBA(image.Rect(0, 0, w, h))
 	d := font.Drawer{
 		Dst:  text,
 		Src:  image.Black,
-		Face: basicfont.Face7x13,
-		Dot:  fixed.P(0, glyphH-2),
+		Face: t.face,
+		Dot:  fixed.P(0, ascent),
 	}
 	d.DrawString(s)
 
 	// Rotate about the text's bottom-left corner and move it to (x, y). The
 	// half-pixel terms map pixel centers onto pixel centers.
 	sin, cos := math.Sincos(labelAngle)
-	qx, qy := 0.5, 0.5+glyphH
+	qx, qy := 0.5, 0.5+float64(h)
 	m := f64.Aff3{
 		cos, sin, float64(x) + 0.5 - (cos*qx + sin*qy),
 		-sin, cos, float64(y) + 0.5 - (-sin*qx + cos*qy),
 	}
-	xdraw.NearestNeighbor.Transform(img, m, text, text.Bounds(), xdraw.Over, nil)
+	xdraw.ApproxBiLinear.Transform(img, m, text, text.Bounds(), xdraw.Over, nil)
 }

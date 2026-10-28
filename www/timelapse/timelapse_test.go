@@ -152,7 +152,8 @@ func TestBuildSizesTitleForLargestRound(t *testing.T) {
 	b.Set(1, 0, 0, false)
 	tl, err := b.Build(testIcons)
 	require.NoError(t, err)
-	assert.GreaterOrEqual(t, tl.width, pad+len(title(1000000))*glyphW+pad)
+	titleW, _, _ := textSize(tl.titleFace, title(1000000))
+	assert.GreaterOrEqual(t, tl.width, pad+titleW+pad)
 }
 
 func manyRounds(n int) *Timelapse {
