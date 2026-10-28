@@ -12,7 +12,7 @@ services:
       retries: 5
       start_period: 3s
     networks:
-      - quotient_network
+      - quotient-network
   
   redis-base:
     image: redis:alpine
@@ -26,4 +26,4 @@ services:
       retries: 5
       start_period: 3s
     networks:
-      - quotient_network
+      - quotient-network

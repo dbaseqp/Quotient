@@ -54,7 +54,7 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
-		redisAddr = "quotient_redis:6379"
+		redisAddr = "quotient-redis:6379"
 	}
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
@@ -129,7 +129,7 @@ func (se *ScoringEngine) Start() {
 
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
-		redisAddr = "quotient_redis:6379"
+		redisAddr = "quotient-redis:6379"
 	}
 
 	rdb := redis.NewClient(&redis.Options{
@@ -197,7 +197,7 @@ func waitForReset() {
 
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
-		redisAddr = "quotient_redis:6379"
+		redisAddr = "quotient-redis:6379"
 	}
 
 	rdb := redis.NewClient(&redis.Options{
@@ -374,7 +374,7 @@ func (se *ScoringEngine) rvb() error {
 	//
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
-		redisAddr = "quotient_redis:6379"
+		redisAddr = "quotient-redis:6379"
 	}
 
 	rdb := redis.NewClient(&redis.Options{
