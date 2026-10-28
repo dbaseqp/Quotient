@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"strings"
 
@@ -88,14 +89,8 @@ func SafeMkdirAll(baseDir, relativePath string, perm os.FileMode) error {
 // CheckCompetitionStarted returns false and writes error response if competition hasn't started
 // Admins always have access regardless of competition start time
 func (a *API) CheckCompetitionStarted(w http.ResponseWriter, r *http.Request) bool {
-	roles := r.Context().Value("roles")
-	if roles != nil {
-		roleList := roles.([]string)
-		for _, role := range roleList {
-			if role == "admin" {
-				return true
-			}
-		}
+	if slices.Contains(CallerRoles(r.Context()), "admin") {
+		return true
 	}
 
 	if !a.eng.DB.GetCompetitionStarted() {

@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"slices"
 	"strings"
@@ -37,15 +36,7 @@ func Authentication(a *api.API, roles ...string) Middleware {
 			// need to refactor for multi-roles
 			for _, user_role := range identity.Roles {
 				if slices.Contains(roles, user_role) {
-					// Identity is authoritative. The string keys repeat it
-					// for handlers that still read them; drop both once
-					// every handler uses api.IdentityFrom.
-					ctx := api.WithIdentity(r.Context(), identity)
-					// nolint:staticcheck
-					ctx = context.WithValue(ctx, "username", identity.Username)
-					// nolint:staticcheck
-					ctx = context.WithValue(ctx, "roles", identity.Roles)
-					next(w, r.WithContext(ctx))
+					next(w, r.WithContext(api.WithIdentity(r.Context(), identity)))
 					return
 				}
 			}

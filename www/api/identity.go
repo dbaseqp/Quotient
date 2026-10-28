@@ -50,6 +50,12 @@ func IdentityFrom(ctx context.Context) (Identity, bool) {
 	return id, ok
 }
 
+// CallerRoles returns the caller's roles, or nil if the request is anonymous.
+func CallerRoles(ctx context.Context) []string {
+	id, _ := IdentityFrom(ctx)
+	return id.Roles
+}
+
 // CallerTeamID returns the team the caller acts as. Reports false when the
 // caller has no team, normal for admin and inject accounts. Do not add a
 // variant returning the ID alone: every caller must handle the no-team case.
@@ -64,7 +70,7 @@ func CallerTeamID(ctx context.Context) (uint, bool) {
 // requireOwnTeam reports whether the caller acts as teamID, writing the 403
 // itself when not. bypassRoles name the roles exempt from the check.
 func requireOwnTeam(w http.ResponseWriter, r *http.Request, teamID uint, bypassRoles ...string) bool {
-	roles, _ := r.Context().Value("roles").([]string)
+	roles := CallerRoles(r.Context())
 	for _, role := range bypassRoles {
 		if slices.Contains(roles, role) {
 			return true
