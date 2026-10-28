@@ -22,7 +22,7 @@ func requireJSONContentType(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (a *API) GetCredlists(w http.ResponseWriter, r *http.Request) {
-	req_roles := r.Context().Value("roles").([]string)
+	req_roles := CallerRoles(r.Context())
 	if !slices.Contains(req_roles, "admin") && !a.conf.MiscSettings.EasyPCR {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR self service not allowed"})
 		return
@@ -38,7 +38,7 @@ func (a *API) GetCredlists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetPcrs(w http.ResponseWriter, r *http.Request) {
-	reqRoles, _ := r.Context().Value("roles").([]string)
+	reqRoles := CallerRoles(r.Context())
 	if !slices.Contains(reqRoles, "admin") {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 		return
@@ -69,7 +69,7 @@ func (a *API) GetPcrs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetPcrHistory(w http.ResponseWriter, r *http.Request) {
-	reqRoles, _ := r.Context().Value("roles").([]string)
+	reqRoles := CallerRoles(r.Context())
 	if !slices.Contains(reqRoles, "admin") {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 		return
@@ -103,7 +103,7 @@ func (a *API) GetPcrHistory(w http.ResponseWriter, r *http.Request) {
 // allowPCRForTeam reports whether the caller may act on teamID, writing the
 // 403 itself when not.
 func (a *API) allowPCRForTeam(w http.ResponseWriter, r *http.Request, teamID uint, easyPCRDisabledMsg string) bool {
-	if slices.Contains(r.Context().Value("roles").([]string), "admin") {
+	if slices.Contains(CallerRoles(r.Context()), "admin") {
 		return true
 	}
 	if !a.conf.MiscSettings.EasyPCR {
@@ -183,9 +183,6 @@ func (a *API) CreatePcr(w http.ResponseWriter, r *http.Request) {
 
 	id, _ := IdentityFrom(r.Context())
 	changedBy := id.Username
-	if changedBy == "" {
-		changedBy, _ = r.Context().Value("username").(string)
-	}
 	updatedCount, skippedUsernames, err := a.eng.UpdateCredentials(teamID, form.CredlistPath, form.Usernames, form.Passwords, changedBy)
 	if err != nil {
 		WriteInternalError(w, r, "Error updating PCR", err)
@@ -230,9 +227,6 @@ func (a *API) ResetPcr(w http.ResponseWriter, r *http.Request) {
 
 	id, _ := IdentityFrom(r.Context())
 	changedBy := id.Username
-	if changedBy == "" {
-		changedBy, _ = r.Context().Value("username").(string)
-	}
 	if err := a.eng.ResetCredentials(teamID, form.CredlistPath, changedBy); err != nil {
 		WriteInternalError(w, r, "Error resetting PCR", err)
 		return

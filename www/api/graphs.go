@@ -231,11 +231,8 @@ func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) shouldScrub(r *http.Request) bool {
-	if r.Context().Value("roles") != nil {
-		req_roles := r.Context().Value("roles").([]string)
-		if slices.Contains(req_roles, "admin") {
-			return false
-		}
+	if slices.Contains(CallerRoles(r.Context()), "admin") {
+		return false
 	}
 
 	if a.conf.UISettings.AllowNonAnonymizedGraphsForBlueTeam {

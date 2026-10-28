@@ -185,11 +185,9 @@ func TestIdentityRoundTripsThroughContext(t *testing.T) {
 }
 
 func requestAs(roles []string, id Identity) *http.Request {
+	id.Roles = roles
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	ctx := WithIdentity(r.Context(), id)
-	// nolint:staticcheck
-	ctx = context.WithValue(ctx, "roles", roles)
-	return r.WithContext(ctx)
+	return r.WithContext(WithIdentity(r.Context(), id))
 }
 
 func TestRequireOwnTeam(t *testing.T) {
@@ -225,4 +223,11 @@ func TestRequireOwnTeam(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCallerRoles(t *testing.T) {
+	assert.Nil(t, CallerRoles(context.Background()), "an anonymous request has no roles")
+
+	ctx := WithIdentity(context.Background(), Identity{Username: "hola", Roles: []string{"team"}})
+	assert.Equal(t, []string{"team"}, CallerRoles(ctx))
 }
