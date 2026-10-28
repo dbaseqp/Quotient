@@ -76,7 +76,7 @@ func (a *API) ExportTimelapse(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "image/gif")
 	if err := tl.Encode(w); err != nil {
-		slog.Error("failed to write timelapse", "request_id", r.Context().Value("request_id"), "error", err)
+		slog.Error("failed to write timelapse", "request_id", RequestID(r.Context()), "error", err)
 	}
 }
 

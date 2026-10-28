@@ -34,7 +34,22 @@ type Identity struct {
 
 type contextKey int
 
-const identityContextKey contextKey = iota
+const (
+	identityContextKey contextKey = iota
+	requestIDContextKey
+)
+
+// WithRequestID stores the request ID on the context. Called only by the
+// logging middleware.
+func WithRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDContextKey, id)
+}
+
+// RequestID returns the request's ID, or "" if none was set.
+func RequestID(ctx context.Context) string {
+	id, _ := ctx.Value(requestIDContextKey).(string)
+	return id
+}
 
 // WithIdentity stores the identity on the request context. Called only by the
 // authentication middleware.

@@ -75,7 +75,7 @@ func (a *API) EditBox(w http.ResponseWriter, r *http.Request) {
 	var id uint
 	if temp, err := strconv.ParseUint(r.FormValue("box-id"), 10, 64); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert box id"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("", "request_id", RequestID(r.Context()), "error", err.Error())
 		return
 	} else {
 		id = uint(temp)
@@ -114,7 +114,7 @@ func (a *API) CreateVector(w http.ResponseWriter, r *http.Request) {
 	var vuln uint
 	if v, err := strconv.Atoi(vulnID); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert vuln id"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("", "request_id", RequestID(r.Context()), "error", err.Error())
 		return
 	} else if v < 0 {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Vuln ID must be non-negative"})
@@ -126,7 +126,7 @@ func (a *API) CreateVector(w http.ResponseWriter, r *http.Request) {
 	var box uint
 	if v, err := strconv.Atoi(boxID); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert box id"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("", "request_id", RequestID(r.Context()), "error", err.Error())
 		return
 	} else if v < 0 {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Box ID must be non-negative"})
@@ -138,7 +138,7 @@ func (a *API) CreateVector(w http.ResponseWriter, r *http.Request) {
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert port"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("", "request_id", RequestID(r.Context()), "error", err.Error())
 		return
 	}
 	if port < 0 || port > 65535 {
@@ -170,7 +170,7 @@ func (a *API) CreateAttack(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to parse multipart form"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("", "request_id", RequestID(r.Context()), "error", err.Error())
 		return
 	}
 
@@ -194,7 +194,7 @@ func (a *API) CreateAttack(w http.ResponseWriter, r *http.Request) {
 	var vector uint
 	if v, err := strconv.Atoi(vectorID); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert vector id"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("", "request_id", RequestID(r.Context()), "error", err.Error())
 		return
 	} else if v < 0 {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Vector ID must be non-negative"})
@@ -206,7 +206,7 @@ func (a *API) CreateAttack(w http.ResponseWriter, r *http.Request) {
 	var team uint
 	if v, err := strconv.Atoi(teamID); err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert team id"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("", "request_id", RequestID(r.Context()), "error", err.Error())
 		return
 	} else if v < 0 {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Team ID must be non-negative"})
@@ -218,7 +218,7 @@ func (a *API) CreateAttack(w http.ResponseWriter, r *http.Request) {
 	access, err := strconv.Atoi(accessLevelStr)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Failed to convert access level"})
-		slog.Error("", "request_id", r.Context().Value("request_id"), "error", err.Error())
+		slog.Error("", "request_id", RequestID(r.Context()), "error", err.Error())
 		return
 	}
 
