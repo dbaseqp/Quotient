@@ -12,14 +12,14 @@ services:
     extends:
       file: docker-compose.base.yml
       service: db-base
-    container_name: quotient_database
+    container_name: quotient-database
     restart: always
     volumes:
       - db_data:/var/lib/postgresql/data
 
   server:
-    container_name: quotient_server
-    image: quotient_server
+    container_name: quotient-server
+    image: quotient-server
     build:
       context: .
       dockerfile: Dockerfile
@@ -32,7 +32,7 @@ services:
       db:
         condition: service_healthy
     networks:
-      - quotient_network
+      - quotient-network
     volumes:
       - ./submissions:/app/submissions
       - ./config:/app/config
@@ -55,7 +55,7 @@ services:
       file: docker-compose.base.yml
       service: redis-base
     restart: always
-    container_name: quotient_redis
+    container_name: quotient-redis
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
@@ -78,7 +78,7 @@ services:
       db:
         condition: service_healthy
     networks:
-      - quotient_network
+      - quotient-network
     volumes:
       - ./submissions:/app/submissions
       - ./custom-checks:/app/checks
@@ -102,7 +102,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro # Needed to read runner names
 
 networks:
-  quotient_network:
+  quotient-network:
     driver: bridge
 
 volumes:

@@ -42,7 +42,7 @@ func runApp(err error) int {
 
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
-		redisAddr = "quotient_redis:6379"
+		redisAddr = "quotient-redis:6379"
 	}
 
 	rdb := redis.NewClient(&redis.Options{
