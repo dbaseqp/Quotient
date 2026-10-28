@@ -26,7 +26,9 @@ require (
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.33.0
+	golang.org/x/image v0.24.0
 	golang.org/x/oauth2 v0.24.0
+	golang.org/x/text v0.22.0
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.11
 	pgregory.net/rapid v1.2.0
@@ -73,7 +75,6 @@ require (
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/tools v0.30.1-0.20250220174815-31e3bb2b8fd1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
