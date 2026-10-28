@@ -29,7 +29,8 @@
                             <h3 class="mb-0">Scoring Data</h3>
                             <div>
                                 <button class="btn btn-primary me-2" onclick="exportJSON()">Export JSON</button>
-                                <button class="btn btn-primary" onclick="exportCSV()">Export CSV</button>
+                                <button class="btn btn-primary me-2" onclick="exportCSV()">Export CSV</button>
+                                <button class="btn btn-primary" onclick="exportTimelapse(this)">Export Timelapse</button>
                             </div>
                         </div>
                         <div class="card">
@@ -188,6 +189,30 @@
                         link.click();
                         document.body.removeChild(link);
                         URL.revokeObjectURL(url);
+                    }
+                    async function exportTimelapse(button) {
+                        button.disabled = true;
+                        try {
+                            const response = await fetch('/api/engine/export/timelapse');
+                            if (!response.ok) {
+                                const data = await response.json().catch(() => ({}));
+                                alert(data.error || `Timelapse export failed (${response.status})`);
+                                return;
+                            }
+                            const url = URL.createObjectURL(await response.blob());
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = 'timelapse.gif';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            URL.revokeObjectURL(url);
+                        } catch (error) {
+                            console.error('Error exporting timelapse:', error);
+                            alert('Timelapse export failed: ' + error.message);
+                        } finally {
+                            button.disabled = false;
+                        }
                     }
                     async function exportCSV() {
                         await fetchScores();
