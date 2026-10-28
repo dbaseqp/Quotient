@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/ldapdir"
 
-	"github.com/go-ldap/ldap/v3"
 	"github.com/gorilla/securecookie"
 )
 
@@ -226,80 +226,13 @@ func (a *API) auth(username string, password string) (map[string]any, error) {
 	// auth from other sources
 	// if ldap configs are present, try to auth against ldap
 	if a.conf.LdapSettings != (config.LdapAuthConfig{}) {
-		conn, err := ldap.DialURL(a.conf.LdapSettings.LdapConnectUrl)
+		groups, err := ldapdir.Authenticate(a.conf.LdapSettings, username, password)
 		if err != nil {
 			return nil, err
 		}
-		// nolint:errcheck
-		defer conn.Close()
-
-		// bind using the given username and password and searchbase from config
-		err = conn.Bind(a.conf.LdapSettings.LdapBindDn, a.conf.LdapSettings.LdapBindPassword)
-		if err != nil {
-			return nil, err
-		}
-
-		searchRequest := ldap.NewSearchRequest(
-			a.conf.LdapSettings.LdapSearchBaseDn,
-			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", ldap.EscapeFilter(username)),
-			[]string{"dn"},
-			nil,
-		)
-
-		sr, err := conn.Search(searchRequest)
-		if err != nil {
-			return nil, err
-		}
-
-		if len(sr.Entries) != 1 {
-			return nil, errors.New("user does not exist or too many entries returned")
-		}
-
-		userDN := sr.Entries[0].DN
-
-		err = conn.Bind(userDN, password)
-		if err != nil {
-			return nil, errors.New("invalid credentials")
-		}
-
-		// query for the user's roles
-		roleSearchRequest := ldap.NewSearchRequest(
-			a.conf.LdapSettings.LdapSearchBaseDn,
-			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-			fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", ldap.EscapeFilter(username)),
-			[]string{"memberOf"},
-			nil,
-		)
-
-		sr, err = conn.Search(roleSearchRequest)
-		if err != nil {
-			return nil, err
-		}
-
-		hasAuthorizedRole := false
-		for _, entry := range sr.Entries {
-			for _, memberOf := range entry.GetAttributeValues("memberOf") {
-				if memberOf == a.conf.LdapSettings.LdapAdminGroupDn ||
-					memberOf == a.conf.LdapSettings.LdapRedGroupDn ||
-					memberOf == a.conf.LdapSettings.LdapTeamGroupDn {
-					hasAuthorizedRole = true
-					break
-				}
-
-				if memberOf == a.conf.LdapSettings.LdapInjectGroupDn {
-					return map[string]any{"username": username, "authSource": "ldap"}, nil
-				}
-			}
-			if hasAuthorizedRole {
-				break
-			}
-		}
-
-		if !hasAuthorizedRole {
+		if len(a.ldapGroupRoles(groups)) == 0 {
 			return nil, errors.New("LDAP user has no authorized roles")
 		}
-
 		return map[string]any{"username": username, "authSource": "ldap"}, nil
 	}
 

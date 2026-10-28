@@ -13,8 +13,7 @@ import (
 
 	"github.com/dbaseqp/Quotient/engine/config"
 	"github.com/dbaseqp/Quotient/engine/db"
-
-	"github.com/go-ldap/ldap/v3"
+	"github.com/dbaseqp/Quotient/engine/ldapdir"
 )
 
 // Identity is the caller, resolved once per request from their auth source.
@@ -272,56 +271,34 @@ func (a *API) ldapRoles(username string) ([]string, error) {
 		return nil, errors.New("LDAP session but LDAP is not configured")
 	}
 
-	conn, err := ldap.DialURL(a.conf.LdapSettings.LdapConnectUrl)
-	if err != nil {
-		return nil, err
-	}
-	// nolint:errcheck
-	defer conn.Close()
-
-	// bind using the given username and password and searchbase from config
-	err = conn.Bind(a.conf.LdapSettings.LdapBindDn, a.conf.LdapSettings.LdapBindPassword)
+	groups, err := ldapdir.Groups(a.conf.LdapSettings, username)
 	if err != nil {
 		return nil, err
 	}
 
-	// query for the user's roles
-	searchRequest := ldap.NewSearchRequest(
-		a.conf.LdapSettings.LdapSearchBaseDn,
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(&(objectClass=person)(sAMAccountName=%s))", ldap.EscapeFilter(username)),
-		[]string{"memberOf"},
-		nil,
-	)
-
-	sr, err := conn.Search(searchRequest)
-	if err != nil {
-		return nil, err
-	}
-
-	roles := make([]string, 0)
-	for _, entry := range sr.Entries {
-		for _, memberOf := range entry.GetAttributeValues("memberOf") {
-			if memberOf == a.conf.LdapSettings.LdapAdminGroupDn {
-				roles = append(roles, "admin")
-			}
-
-			if memberOf == a.conf.LdapSettings.LdapRedGroupDn {
-				roles = append(roles, "red")
-			}
-
-			if memberOf == a.conf.LdapSettings.LdapTeamGroupDn {
-				roles = append(roles, "team")
-			}
-
-			if memberOf == a.conf.LdapSettings.LdapInjectGroupDn {
-				roles = append(roles, "inject")
-			}
-		}
-	}
-
+	roles := a.ldapGroupRoles(groups)
 	if len(roles) == 0 {
 		return nil, errors.New("LDAP user has no authorized roles")
 	}
 	return roles, nil
+}
+
+// ldapGroupRoles maps LDAP group DNs to the roles they grant.
+func (a *API) ldapGroupRoles(groups []string) []string {
+	roles := make([]string, 0)
+	for _, group := range groups {
+		if group == a.conf.LdapSettings.LdapAdminGroupDn {
+			roles = append(roles, "admin")
+		}
+		if group == a.conf.LdapSettings.LdapRedGroupDn {
+			roles = append(roles, "red")
+		}
+		if group == a.conf.LdapSettings.LdapTeamGroupDn {
+			roles = append(roles, "team")
+		}
+		if group == a.conf.LdapSettings.LdapInjectGroupDn {
+			roles = append(roles, "inject")
+		}
+	}
+	return roles
 }
