@@ -271,10 +271,10 @@ SlaPenalty = 50             # Points deducted for SLA violation (default: SlaThr
 
 ```toml
 [UISettings]
-EnablePublicGraphs = false                    # Allow unauthenticated graph viewing
-DisableGraphsForBlueTeam = true               # Hide graphs from teams
-AllowNonAnonymizedGraphsForBlueTeam = false   # Show team names on graphs
-ShowAnnouncementsForRedTeam = true            # Red team sees announcements
+EnablePublicGraphs = false            # Allow unauthenticated graph viewing
+DisableGraphsForBlueTeam = true       # Hide graphs from teams
+AllowNonAnonymizedGraphs = false      # Show team names on graphs
+ShowAnnouncementsForRedTeam = true    # Red team sees announcements
 ```
 
 #### Local Auth

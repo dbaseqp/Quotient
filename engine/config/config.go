@@ -138,6 +138,7 @@ type MiscConfig struct {
 type UIConfig struct {
 	EnablePublicGraphs                  bool
 	DisableGraphsForBlueTeam            bool
+	AllowNonAnonymizedGraphs            bool
 	AllowNonAnonymizedGraphsForBlueTeam bool
 	ShowAnnouncementsForRedTeam         bool
 }
@@ -368,6 +369,10 @@ func checkConfig(conf *ConfigSettings) error {
 	if conf.MiscSettings.SlaPenalty == nil {
 		penalty := conf.MiscSettings.SlaThreshold * conf.MiscSettings.Points
 		conf.MiscSettings.SlaPenalty = &penalty
+	}
+
+	if conf.UISettings.AllowNonAnonymizedGraphsForBlueTeam {
+		conf.UISettings.AllowNonAnonymizedGraphs = true
 	} else if *conf.MiscSettings.SlaPenalty < 0 {
 		errResult = errors.Join(errResult, errors.New("SlaPenalty must not be negative"))
 	} else if *conf.MiscSettings.SlaPenalty == 0 {
