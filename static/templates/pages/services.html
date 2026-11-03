@@ -282,9 +282,29 @@
         window.history.replaceState({}, '', url)
     }
 
+    function disposeTooltips(container) {
+        // This exists because of a Bootstrap issue that would cause the old tooltip to remain if you were hovering during an update
+        container.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((tooltipTriggerEl) => {
+            bootstrap.Tooltip.getInstance(tooltipTriggerEl)?.dispose()
+        })
+    }
+
+    function updateTooltips() {
+        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((tooltipTriggerEl) => {
+            if (!bootstrap.Tooltip.getInstance(tooltipTriggerEl)) {
+                new bootstrap.Tooltip(tooltipTriggerEl)
+            }
+        })
+    }
+
     document.getElementById('offcanvas').addEventListener('hidden.bs.offcanvas', () => {
         updateUrlParams({ service: null, round: null })
     })
+
+    let teamID;
+    const services = [];
+    let servicesDOMCreated = false;
+    let lastData;
 
     fetch("/api/teams")
         .then((response) => {
@@ -304,10 +324,13 @@
                 team_select.appendChild(option)
             }
             team_select.addEventListener("change", (source) => {
+                teamID = source.currentTarget.value
+                services.length = 0
+                servicesDOMCreated = false
+                lastData = null
                 SERVICE_CONTAINER.innerHTML = ""
-                const TEAM_ID = source.currentTarget.value
-                updateUrlParams({ team: TEAM_ID, service: null, round: null })
-                fetchServices(TEAM_ID)
+                updateUrlParams({ team: teamID, service: null, round: null })
+                fetchServices(teamID)
             })
         })
         .then(() => {
@@ -327,12 +350,16 @@
                 }
             }
 
-            const TEAM_ID = document.getElementById("team-select").value;
-            // We'll validate serviceParam inside fetchServices after we have the list of services
-            fetchServices(TEAM_ID, serviceParam, roundParam);
+            teamID = document.getElementById("team-select").value;
+            // serviceParam is validated by fetchServices after obtaining the list of services
+            fetchServices(teamID, serviceParam, roundParam);
         })
 
-    function fetchServices(team_id, highlightServiceName = null, highlightRound = null) {
+    // This variable is set to avoid overlapping requests
+    function fetchServices(team_id = null, highlightServiceName = null, highlightRound = null) {
+        if (team_id == null) {
+            return;
+        }
         fetch(`/api/services/${team_id}`)
             .then((response) => {
                 if (!response.ok) {
@@ -341,153 +368,204 @@
                 return response.json()
             })
             .then((data) => {
-                let services = [];
                 if (data === null) {
+                    if (document.querySelectorAll(".team-has-no-services")[0] != null) {
+                        return
+                    }
                     const message = document.createElement("div")
-                    message.classList.add("alert", "alert-warning")
+                    message.classList.add("alert", "alert-warning", "team-has-no-services")
                     message.textContent = "No services found for this team."
                     SERVICE_CONTAINER.appendChild(message)
                     return
                 }
-                // Validate highlightServiceName against available services
-                let validServiceName = null;
-                if (highlightServiceName) {
-                    // Check if highlightServiceName exists in the data
-                    const serviceExists = data.some(summary => summary.ServiceName === highlightServiceName);
-                    if (serviceExists) {
-                        validServiceName = highlightServiceName;
-                    }
+                else if (JSON.stringify(data) == lastData) {
+                    return
                 }
 
-                for (const SUMMARY of data) {
-                    const SERVICENAME = SUMMARY.ServiceName
-                    const SLACOUNT = SUMMARY.SlaCount
-                    const LAST10ROUNDS = SUMMARY.Last10Rounds
-                    const UPTIME = Math.round(SUMMARY.Uptime * 100)
-
-                    let service = PLACEHOLDER_SERVICE.cloneNode(true)
-                    service.classList.remove("placeholder-glow", "d-none")
-
-                    let name = service.querySelector("#service__name--placeholder")
-                    let uptime = service.querySelector("#service__uptime--placeholder")
-                    let uptime_text = service.querySelector("#service__uptime__text--placeholder")
-                    let slas = service.querySelector("#service__slas--placeholder")
-                    let checks = service.querySelector("#service__checks--placeholder")
-
-                    name.className = ""
-                    // uptime.className = ""
-                    checks.className = ""
-
-                    slas.textContent = SLACOUNT
-                    name.textContent = SERVICENAME
-                    uptime_text.textContent = UPTIME + "%"
-                    uptime.style.width = UPTIME + "%"
-                    if (UPTIME >= 80) {
-                        uptime.classList.add("bg-success")
-                    } else if (UPTIME >= 50) {
-                        uptime.classList.add("bg-warning")
-                    } else {
-                        uptime.classList.add("bg-danger")
-                    }
-
-                    for (const round of LAST10ROUNDS) {
-                        let checkFoundInRound = false
-                        for (const check of round.Checks) {
-                            if (SERVICENAME == check.ServiceName) {
-                                checkFoundInRound = true
-                                let icon = document.createElement("img")
-                                if (check.Result) {
-                                    icon.src = "/static/assets/services/up.png"
-                                } else {
-                                    icon.src = "/static/assets/services/down.png"
-                                }
-                                icon.height = 25
-                                icon.width = 25
-                                icon.setAttribute("data-bs-toggle", "tooltip")
-                                icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString())
-                                checks.appendChild(icon)
-                            }
-                        }
-                        if (!checkFoundInRound) {
-                            let icon = document.createElement("img")
-                            icon.src = "/static/assets/services/pending.png"
-                            icon.height = 25
-                            icon.width = 25
-                            icon.setAttribute("data-bs-toggle", "tooltip")
-                            icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString())
-                            checks.appendChild(icon)
-                        }
-                    }
-
-                    // Set the data-service-id attribute (this is what's actually used in the click handler)
-                    service.setAttribute("data-service-id", SERVICENAME)
-
-                    // If this is the service we want to highlight (from task card click)
-                    if (validServiceName && SERVICENAME === validServiceName) {
-                        // Add a highlight class to this service
-                        service.classList.add('border-primary', 'border-2')
-
-                        if (highlightRound) {
-                            service.dataset.highlightRound = highlightRound
-                        }
-
-                        // Auto-click this service to show details
-                        setTimeout(() => {
-                            service.click()
-                        }, 500)
-                    }
-
-                    services.push(service)
+                if (!servicesDOMCreated) {
+                    createServicesDOM(data, highlightServiceName, highlightRound);
+                } else {
+                    updateServicesDOM(data, highlightServiceName, highlightRound);
                 }
 
-                for (let i = 0; i < services.length; i++) {
-                    SERVICE_CONTAINER.appendChild(services[i])
-                }
-            })
-            .then(() => {
-                const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
-                const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
-            })
-            .then(() => {
-                document.querySelectorAll(".service-button").forEach((button) => {
-                    button.addEventListener("click", (source) => {
-                        const SERVICE_ID = source.currentTarget.getAttribute("data-service-id")
-                        const TEAM_ID = document.getElementById("team-select").value
-                        const HIGHLIGHT_ROUND = source.currentTarget.getAttribute("data-highlight-round")
-                        updateUrlParams({ team: TEAM_ID, service: SERVICE_ID, round: HIGHLIGHT_ROUND })
-                        DRILLDOWN_TITLE.textContent = "Service: " + SERVICE_ID
-                        {{ if contains .roles "admin" }}
-                        updateDrilldownCustomCheck(SERVICE_ID)
-                        {{ end }}
-                        DRILLDOWN_LIST.textContent = ""
-                        DRILLDOWN_LIST.appendChild(DRILLDOWN_PLACEHOLDER.cloneNode(true))
-                        fetch(`/api/services/${TEAM_ID}/${SERVICE_ID}`)
-                            .then((response) => {
-                                if (!response.ok) {
-                                    Promise.reject(response)
-                                }
-                                return response.json()
-                            })
-                            .then((data) => {
-                                for (const a of data) {
-                                    let row = DRILLDOWN_PLACEHOLDER.cloneNode(true)
-                                    row.id = ""
-                                    row.childNodes[1].textContent = a.Round.ID
-                                    row.childNodes[3].textContent = (new Date(a.Round.StartTime)).toLocaleString()
-                                    row.childNodes[5].textContent = a.Result
-                                    row.childNodes[7].textContent = a.Debug
-                                    row.childNodes[9].textContent = a.Error
-                                    if (HIGHLIGHT_ROUND && parseInt(HIGHLIGHT_ROUND) === a.Round.ID) {
-                                        row.classList.add('table-primary')
-                                    }
-                                    DRILLDOWN_LIST.appendChild(row)
-                                }
-                                DRILLDOWN_LIST.removeChild(DRILLDOWN_LIST.childNodes[0])
-                                if (source.currentTarget) source.currentTarget.removeAttribute('data-highlight-round')
-                            })
-                    })
-                })
+                lastData = JSON.stringify(data);
             })
     }
+
+    // Fetch the new scoring data for the active team
+    setInterval(() => {
+        fetchServices(teamID)
+    }, 60000)
+
+
+    function createServicesDOM(data, highlightServiceName, highlightRound) {
+        // Validate highlightServiceName against available services
+        // If the url contains a specific highlighted service, verify it and the drilldown will be opened for it
+        let validServiceName = null;
+        if (highlightServiceName) {
+            // Check if highlightServiceName exists in the data
+            const serviceExists = data.some(summary => summary.ServiceName === highlightServiceName);
+            if (serviceExists) {
+                validServiceName = highlightServiceName;
+            }
+        }
+
+
+        for (const SUMMARY of data) {
+            let service = PLACEHOLDER_SERVICE.cloneNode(true)
+            service.classList.remove("placeholder-glow", "d-none")
+
+            const SERVICENAME = SUMMARY.ServiceName
+            // Set the data-service-id attribute (this is what's actually used in the click handler)
+            service.setAttribute("data-service-id", SERVICENAME)
+
+            // Fill in the contents of the service block
+            updateServiceDOM(service, SUMMARY);
+
+            // If this is the service we want to highlight (from task card click)
+            if (validServiceName && SERVICENAME === validServiceName) {
+                // Add a highlight class to this service
+                service.classList.add('border-primary', 'border-2')
+
+                if (highlightRound) {
+                    service.dataset.highlightRound = highlightRound
+                }
+
+                // Auto-click this service to show details
+                setTimeout(() => {
+                    service.click()
+                }, 500) // this pause is to wait until the element has been inserted into the page
+            }
+
+            services.push(service)
+        }
+
+        for (let i = 0; i < services.length; i++) {
+            SERVICE_CONTAINER.appendChild(services[i])
+        }
+
+        updateTooltips()
+
+        // *=*=*=*=* MIXED TIME
+        // Creating drilldown, we can ignore for now
+        document.querySelectorAll(".service-button").forEach((button) => {
+            button.addEventListener("click", (source) => {
+                openDrilldown(source);
+            })
+        })
+
+        servicesDOMCreated = true;
+    }
+
+    function openDrilldown(source) {
+        const SERVICE_ID = source.currentTarget.getAttribute("data-service-id")
+        const TEAM_ID = document.getElementById("team-select").value
+        const HIGHLIGHT_ROUND = source.currentTarget.getAttribute("data-highlight-round")
+        updateUrlParams({ team: TEAM_ID, service: SERVICE_ID, round: HIGHLIGHT_ROUND })
+        DRILLDOWN_TITLE.textContent = "Service: " + SERVICE_ID
+        {{ if contains .roles "admin" }}
+        updateDrilldownCustomCheck(SERVICE_ID)
+        {{ end }}
+        DRILLDOWN_LIST.textContent = ""
+        DRILLDOWN_LIST.appendChild(DRILLDOWN_PLACEHOLDER.cloneNode(true))
+        fetch(`/api/services/${TEAM_ID}/${SERVICE_ID}`)
+            .then((response) => {
+                if (!response.ok) {
+                    Promise.reject(response)
+                }
+                return response.json()
+            })
+            .then((data) => {
+                for (const a of data) {
+                    let row = DRILLDOWN_PLACEHOLDER.cloneNode(true)
+                    row.id = ""
+                    row.childNodes[1].textContent = a.Round.ID
+                    row.childNodes[3].textContent = (new Date(a.Round.StartTime)).toLocaleString()
+                    row.childNodes[5].textContent = a.Result
+                    row.childNodes[7].textContent = a.Debug
+                    row.childNodes[9].textContent = a.Error
+                    if (HIGHLIGHT_ROUND && parseInt(HIGHLIGHT_ROUND) === a.Round.ID) {
+                        row.classList.add('table-primary')
+                    }
+                    DRILLDOWN_LIST.appendChild(row)
+                }
+                DRILLDOWN_LIST.removeChild(DRILLDOWN_LIST.childNodes[0])
+                if (source.currentTarget) source.currentTarget.removeAttribute('data-highlight-round')
+            })
+    }
+
+    // Updates every part of the service except the drilldown
+    function updateServiceDOM(service, SUMMARY) {
+        const SERVICENAME = SUMMARY.ServiceName
+        const SLACOUNT = SUMMARY.SlaCount
+        const LAST10ROUNDS = SUMMARY.Last10Rounds
+        const UPTIME = Math.round(SUMMARY.Uptime * 100)
+
+        let name = service.querySelector("#service__name--placeholder")
+        let uptime = service.querySelector("#service__uptime--placeholder")
+        let uptime_text = service.querySelector("#service__uptime__text--placeholder")
+        let slas = service.querySelector("#service__slas--placeholder")
+        let checks = service.querySelector("#service__checks--placeholder")
+
+        name.className = ""
+        uptime.className = ""
+        checks.className = ""
+
+        slas.textContent = SLACOUNT
+        name.textContent = SERVICENAME
+        uptime_text.textContent = UPTIME + "%"
+        uptime.style.width = UPTIME + "%"
+        uptime.classList.add("progress-bar")
+        if (UPTIME >= 80) {
+            uptime.classList.add("bg-success")
+        } else if (UPTIME >= 50) {
+            uptime.classList.add("bg-warning")
+        } else {
+            uptime.classList.add("bg-danger")
+        }
+
+        disposeTooltips(checks)
+        checks.innerHTML = "";
+        for (const round of LAST10ROUNDS) {
+            let checkFoundInRound = false
+            for (const check of round.Checks) {
+                if (SERVICENAME == check.ServiceName) {
+                    checkFoundInRound = true
+                    let icon = document.createElement("img")
+                    if (check.Result) {
+                        icon.src = "/static/assets/services/up.png"
+                    } else {
+                        icon.src = "/static/assets/services/down.png"
+                    }
+                    icon.height = 25
+                    icon.width = 25
+                    icon.setAttribute("data-bs-toggle", "tooltip")
+                    icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString())
+                    checks.appendChild(icon)
+                }
+            }
+            if (!checkFoundInRound) {
+                let icon = document.createElement("img")
+                icon.src = "/static/assets/services/pending.png"
+                icon.height = 25
+                icon.width = 25
+                icon.setAttribute("data-bs-toggle", "tooltip")
+                icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString())
+                checks.appendChild(icon)
+            }
+        }
+
+    }
+
+    function updateServicesDOM(data, highlightServiceName, highlightRound) {
+        for (const SUMMARY of data) {
+            const SERVICE = document.querySelector(`[data-service-id="${SUMMARY.ServiceName}"]`)
+            updateServiceDOM(SERVICE, SUMMARY);
+        }
+
+        updateTooltips()
+    }
+
+    // update drilldown, just replace full innards if open only, otherwise clear the loop
 </script>
 {{ end }}
