@@ -567,23 +567,58 @@
     </div>
 </div>
 
-<div class="offcanvas offcanvas-end inject-pdf-viewer" id="inject-pdf-viewer" tabindex="-1"
-    aria-labelledby="inject-pdf-viewer-title">
+<div class="offcanvas offcanvas-end inject-file-viewer" id="inject-file-viewer" tabindex="-1"
+    aria-labelledby="inject-file-viewer-title">
     <div class="offcanvas-header border-bottom">
-        <h2 class="offcanvas-title fs-5 text-truncate" id="inject-pdf-viewer-title">Inject PDF</h2>
-        <a class="btn btn-outline-primary ms-auto me-2 flex-shrink-0" id="inject-pdf-download" href="#" download>
+        <h2 class="offcanvas-title fs-5 text-truncate" id="inject-file-viewer-title">Inject attachment</h2>
+        <a class="btn btn-outline-primary ms-auto me-2 flex-shrink-0" id="inject-file-download" href="#" download>
             <i class="bi bi-download me-1"></i>Download
         </a>
         <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="offcanvas" aria-label="Close"></button>
     </div>
-    <div class="offcanvas-body p-0 d-flex">
-        <iframe class="border-0 flex-grow-1" id="inject-pdf-frame" title="Inject PDF viewer"></iframe>
+    <div class="offcanvas-body p-0 d-flex position-relative" id="inject-file-viewer-body" aria-busy="false">
+        <div class="inject-file-loading d-none" id="inject-file-loading" role="status">
+            <div class="spinner-border text-primary" aria-hidden="true"></div>
+            <span>Loading preview…</span>
+        </div>
+        <div class="alert alert-danger m-3 align-self-start d-none" id="inject-file-error" role="alert"></div>
+        <iframe class="border-0 flex-grow-1 d-none" id="inject-pdf-frame" title="Inject PDF viewer"></iframe>
+        <div class="inject-docx-container flex-grow-1 d-none" id="inject-docx-container"
+            aria-label="Inject DOCX viewer"></div>
     </div>
 </div>
 
 <style>
-    .inject-pdf-viewer {
+    .inject-file-viewer {
         --bs-offcanvas-width: min(72vw, 1100px);
+    }
+
+    .inject-file-loading {
+        align-items: center;
+        background: rgba(var(--bs-body-bg-rgb), .9);
+        display: flex;
+        flex-direction: column;
+        gap: .75rem;
+        inset: 0;
+        justify-content: center;
+        position: absolute;
+        z-index: 2;
+    }
+
+    .inject-docx-container {
+        background: var(--bs-secondary-bg);
+        overflow: auto;
+        padding: 1.5rem;
+    }
+
+    .inject-docx-container .docx-wrapper {
+        background: transparent;
+        padding: 0;
+    }
+
+    .inject-docx-container .docx-wrapper > section.docx {
+        box-shadow: var(--bs-box-shadow-sm);
+        margin-bottom: 1.5rem;
     }
 
     .inject-countdown-badge {
@@ -639,8 +674,12 @@
     }
 
     @media (max-width: 767.98px) {
-        .inject-pdf-viewer {
+        .inject-file-viewer {
             --bs-offcanvas-width: 100vw;
+        }
+
+        .inject-docx-container {
+            padding: .5rem;
         }
 
         .inject-layout #tab-container {
@@ -657,35 +696,20 @@
 </style>
 
 <script src="/static/assets/inject-countdown.js"></script>
+<script src="/static/assets/vendor/jszip/jszip-3.10.1.min.js"></script>
+<script src="/static/assets/vendor/docx-preview/docx-preview-0.3.6.min.js"></script>
+<script src="/static/assets/inject-file-viewer.js"></script>
 <script>
     const TAB_CONTAINER = document.getElementById("tab-container")
     const PANE_CONTAINER = document.getElementById("pane-container")
     const PLACEHOLDER_TAB = document.getElementById("tab--placeholder")
     const PLACEHOLDER_PANE = document.getElementById("pane--placeholder")
     const REFRESH_BTN = document.getElementById("refresh--btn")
-    const PDF_VIEWER = document.getElementById("inject-pdf-viewer")
-    const PDF_VIEWER_TITLE = document.getElementById("inject-pdf-viewer-title")
-    const PDF_FRAME = document.getElementById("inject-pdf-frame")
-    const PDF_DOWNLOAD = document.getElementById("inject-pdf-download")
-
     let prevDataJson;
 
     function injectFileURL(injectID, fileName) {
         return `/injects/${encodeURIComponent(injectID)}/${encodeURIComponent(fileName)}`
     }
-
-    function viewInjectPDF(injectID, fileName) {
-        const fileURL = injectFileURL(injectID, fileName)
-        PDF_VIEWER_TITLE.textContent = fileName
-        PDF_FRAME.src = `${fileURL}?inline=1`
-        PDF_DOWNLOAD.href = fileURL
-        PDF_DOWNLOAD.setAttribute("download", fileName)
-        bootstrap.Offcanvas.getOrCreateInstance(PDF_VIEWER).show()
-    }
-
-    PDF_VIEWER.addEventListener("hidden.bs.offcanvas", () => {
-        PDF_FRAME.removeAttribute("src")
-    })
 
     function refreshInjects() {
         const existingTabs = TAB_CONTAINER.querySelectorAll('[id^="tab--"]:not(#tab--placeholder)');
@@ -829,15 +853,13 @@
                         a.textContent = file
                         li.appendChild(a)
 
-                        if (file.toLowerCase().endsWith(".pdf")) {
-                            a.dataset.pdfInjectId = inject.ID
-                            a.dataset.pdfFileName = file
+                        if (/\.(pdf|docx)$/i.test(file)) {
                             let viewButton = document.createElement("button")
                             viewButton.type = "button"
                             viewButton.className = "btn btn-sm btn-outline-primary"
                             viewButton.innerHTML = `<i class="bi bi-eye me-1"></i>View`
-                            viewButton.dataset.pdfInjectId = inject.ID
-                            viewButton.dataset.pdfFileName = file
+                            viewButton.dataset.fileViewerInjectId = inject.ID
+                            viewButton.dataset.fileViewerFileName = file
                             li.appendChild(viewButton)
                         }
                         ul.appendChild(li)
@@ -856,10 +878,13 @@
                 InjectCountdown.bind(tab.querySelector(`#tab__countdown--${inject.ID}`), inject)
                 InjectCountdown.bind(pane.querySelector(`#pane__countdown--${inject.ID}`), inject)
 
-                pane.querySelectorAll("[data-pdf-file-name]").forEach((viewerTrigger) => {
+                pane.querySelectorAll("[data-file-viewer-file-name]").forEach((viewerTrigger) => {
                     viewerTrigger.addEventListener("click", (event) => {
                         event.preventDefault()
-                        viewInjectPDF(viewerTrigger.dataset.pdfInjectId, viewerTrigger.dataset.pdfFileName)
+                        InjectFileViewer.open(
+                            viewerTrigger.dataset.fileViewerInjectId,
+                            viewerTrigger.dataset.fileViewerFileName,
+                        )
                     })
                 })
 

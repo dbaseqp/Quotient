@@ -18,6 +18,37 @@ import (
 	"gorm.io/gorm"
 )
 
+const docxContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+type injectFilePresentation struct {
+	Disposition string
+	ContentType string
+	Frameable   bool
+}
+
+func getInjectFilePresentation(fileName string, inline bool) injectFilePresentation {
+	presentation := injectFilePresentation{
+		Disposition: "attachment",
+		ContentType: "application/octet-stream",
+	}
+
+	switch strings.ToLower(filepath.Ext(fileName)) {
+	case ".pdf":
+		presentation.ContentType = "application/pdf"
+		if inline {
+			presentation.Disposition = "inline"
+			presentation.Frameable = true
+		}
+	case ".docx":
+		presentation.ContentType = docxContentType
+		if inline {
+			presentation.Disposition = "inline"
+		}
+	}
+
+	return presentation
+}
+
 func (a *API) GetInjects(w http.ResponseWriter, r *http.Request) {
 	data, err := a.eng.DB.GetInjects()
 	if err != nil {
@@ -115,17 +146,15 @@ func (a *API) DownloadInjectFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	disposition := "attachment"
-	contentType := "application/octet-stream"
-	if r.URL.Query().Get("inline") == "1" && strings.EqualFold(filepath.Ext(fileName), ".pdf") {
-		disposition = "inline"
-		contentType = "application/pdf"
+	presentation := getInjectFilePresentation(fileName, r.URL.Query().Get("inline") == "1")
+	if presentation.Frameable {
 		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
 	}
 
-	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": fileName}))
-	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType(presentation.Disposition, map[string]string{"filename": fileName}))
+	w.Header().Set("Content-Type", presentation.ContentType)
 	http.ServeContent(w, r, fileName, fileInfo.ModTime(), file)
 }
 
