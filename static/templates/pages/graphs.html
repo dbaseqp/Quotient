@@ -11,7 +11,24 @@
                         <div class="card-img-top graph" id="service-status"></div>
                         <script>
                             const getChartTheme = () => document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'light';
-                            let TEAMMAP = {}
+                            // The API marks only the viewer's own team with Self, which is shown by color alone.
+                            const SELF_COLOR = '#775DD0'
+                            const OTHER_COLORS = ['#008FFB', '#00E396', '#FEB019', '#FF4560'] // ApexCharts' palette without SELF_COLOR
+                            // Moves the viewer's series last: the top row of a heatmap, the topmost line of a line chart.
+                            const pinSelfToTop = (series) => [...series.filter((s) => !s.self), ...series.filter((s) => s.self)]
+                            // Labels are matched by position, since on an anonymized scoreboard they all read "Team".
+                            // Runs after every render, since ApexCharts redraws labels on resize and theme changes.
+                            const highlightSelfLabel = (selfLabelIndex) => (chartContext) => {
+                                const selfIndex = selfLabelIndex()
+                                chartContext.el.querySelectorAll('.apexcharts-yaxis-label').forEach((label, i) => {
+                                    label.style.fill = i === selfIndex ? SELF_COLOR : ''
+                                    label.style.fontWeight = i === selfIndex ? '700' : ''
+                                })
+                            }
+                            // A heatmap's y-axis labels start with a blank one, then go top row first, where pinSelfToTop puts the viewer.
+                            const heatmapSelfLabel = (hasSelf) => highlightSelfLabel(() => hasSelf() ? 1 : -1)
+                            let TEAMIDS = []
+                            let STATUS_HAS_SELF = false
                             let ROUNDID = 0
                             let options = {
                                 series: [],
@@ -20,13 +37,14 @@
                                     background: 'transparent',
                                     events: {
                                         dataPointSelection: function(event, chartContext, config) {
-                                            const teamName = chartContext.w.globals.seriesNames[config.seriesIndex]
                                             const serviceName = chartContext.w.globals.categoryLabels[config.dataPointIndex]
-                                            const teamID = TEAMMAP[teamName]
+                                            const teamID = TEAMIDS[config.seriesIndex]
                                             if (teamID !== undefined) {
                                                 window.location.href = `/services?team=${teamID}&service=${serviceName}&round=${ROUNDID}`
                                             }
-                                        }
+                                        },
+                                        mounted: heatmapSelfLabel(() => STATUS_HAS_SELF),
+                                        updated: heatmapSelfLabel(() => STATUS_HAS_SELF),
                                     }
                                 },
                                 stroke: {
@@ -100,11 +118,10 @@
                                         console.log(data)
                                         ROUNDID = data.roundID
                                         series = data.series.map((service) => {
-                                            if (service.Name !== "Team" && service.ID) {
-                                                TEAMMAP[service.Name] = service.ID
-                                            }
                                             return {
                                                 name: service.Name,
+                                                teamID: service.ID || undefined,
+                                                self: !!service.Self,
                                                 data: service.Data.map((status) => {
                                                     return {
                                                         x: status.X,
@@ -118,6 +135,9 @@
                                         if (!series.every((s) => s.name === "Team")) {
                                             series.sort((a, b) => b.name.localeCompare(a.name))
                                         }
+                                        series = pinSelfToTop(series)
+                                        TEAMIDS = series.map((s) => s.teamID)
+                                        STATUS_HAS_SELF = series.some((s) => s.self)
                                     })
                                 if (!series || !series.length || !series[0].data.length) {
                                     await STATUSCHART.updateOptions({
@@ -157,7 +177,7 @@
                                             img = UNKIMG
                                         }
 
-                                        const teamID = TEAMMAP[series[i].name]
+                                        const teamID = TEAMIDS[i]
                                         const serviceName = status.x
                                         const pointID = `status-${i}-${j}`
                                         const rowHeight = STATUSCHART.w.globals.gridHeight / series.length;
@@ -202,11 +222,16 @@
                     <div class="card overflow-y-scroll">
                         <div class="card-img-top graph" id="uptime-status"></div>
                         <script>
+                            let UPTIME_HAS_SELF = false
                             let options3 = {
                                 series: [],
                                 chart: {
                                     type: 'heatmap',
                                     background: 'transparent',
+                                    events: {
+                                        mounted: heatmapSelfLabel(() => UPTIME_HAS_SELF),
+                                        updated: heatmapSelfLabel(() => UPTIME_HAS_SELF),
+                                    },
                                 },
                                 stroke: {
                                     width: 1
@@ -297,6 +322,7 @@
                                         series = data.series.map((service) => {
                                             return {
                                                 name: service.Name,
+                                                self: !!service.Self,
                                                 data: service.Data.sort((a, b) => { return a.Service.localeCompare(b.Service) }).map((status) => {
                                                     if (status.Uptime === null || status.Uptime < 0) {
                                                         return {
@@ -314,6 +340,8 @@
                                         if (!series.every((s) => s.name === "Team")) {
                                             series.sort((a, b) => b.name.localeCompare(a.name))
                                         }
+                                        series = pinSelfToTop(series)
+                                        UPTIME_HAS_SELF = series.some((s) => s.self)
                                     })
 
                                 if (!series || !series.length || !series[0].data.length) {
@@ -382,11 +410,16 @@
                             const SCORECHART = new ApexCharts(document.querySelector("#score-status"), options1);
                             SCORECHART.render();
 
+                            let LEADERBOARD_SELF = -1
                             let options2 = {
                                 series: [{ data: [] }],
                                 chart: {
                                     type: 'bar',
                                     background: 'transparent',
+                                    events: {
+                                        mounted: highlightSelfLabel(() => LEADERBOARD_SELF),
+                                        updated: highlightSelfLabel(() => LEADERBOARD_SELF),
+                                    },
                                     animations: {
                                         enabled: false,
                                     },
@@ -428,11 +461,13 @@
                                             if (team.Data === null) {
                                                 return {
                                                     name: team.Name,
+                                                    self: !!team.Self,
                                                     data: []
                                                 }
                                             }
                                             return {
                                                 name: team.Name,
+                                                self: !!team.Self,
                                                 data: team.Data.map((point) => {
                                                     return {
                                                         x: point.Round,
@@ -459,11 +494,17 @@
                                     return status.x
                                 })
 
+                                // Later series draw on top, so the viewer's line goes last.
+                                const lines = pinSelfToTop(series)
                                 await SCORECHART.updateOptions({
                                     legend: {
-                                        show: !series.every((s) => s.name === "Team"),
+                                        show: !lines.every((s) => s.name === "Team"),
                                     },
-                                    series: series,
+                                    stroke: {
+                                        width: lines.map((s) => s.self ? 5 : 2),
+                                    },
+                                    colors: lines.map((s, i) => s.self ? SELF_COLOR : OTHER_COLORS[i % OTHER_COLORS.length]),
+                                    series: lines,
                                     xaxis: {
                                         categories: categories,
                                     }
@@ -474,18 +515,26 @@
                                     if (team.data.length === 0) {
                                         return {
                                             name: team.name,
+                                            self: team.self,
                                             data: 0
                                         }
                                     }
                                     return {
                                         name: team.name,
+                                        self: team.self,
                                         data: team.data[team.data.length - 1].y
                                     }
                                 }).sort((a, b) => {
                                     return b.data - a.data
                                 })
+                                LEADERBOARD_SELF = leaderboard_series.findIndex((team) => team.self)
 
                                 await LEADERBOARDCHART.updateOptions({
+                                    plotOptions: {
+                                        bar: { horizontal: true, distributed: true },
+                                    },
+                                    legend: { show: false },
+                                    colors: leaderboard_series.map((team) => team.self ? SELF_COLOR : OTHER_COLORS[0]),
                                     series: [{
                                         name: 'Service Score',
                                         data: leaderboard_series.reduce((acc, team) => {
