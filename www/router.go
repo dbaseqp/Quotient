@@ -173,6 +173,7 @@ func (router *Router) Start() {
 
 	mux.HandleFunc("GET /api/engine/export/scores", ADMINAUTH(a.ExportScores))
 	mux.HandleFunc("GET /api/engine/export/config", ADMINAUTH(a.ExportConfig))
+	mux.HandleFunc("GET /api/engine/export/timelapse", ADMINAUTH(a.ExportTimelapse))
 
 	// admin-only PCR routes
 	mux.HandleFunc("GET /api/pcrs", ADMINAUTH(a.GetPcrs))

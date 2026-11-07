@@ -311,3 +311,23 @@ func (d *DB) LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) 
 	}
 	return nil
 }
+
+// CheckResult is one team's result for one service in one round.
+type CheckResult struct {
+	RoundID     uint
+	TeamID      uint
+	ServiceName string
+	Result      bool
+}
+
+// GetCheckResults returns the check results of the given teams in round
+// order, without their error and debug text.
+func (d *DB) GetCheckResults(teamIDs []uint) ([]CheckResult, error) {
+	var results []CheckResult
+	err := d.db.Table("service_check_schemas").
+		Select("round_id, team_id, service_name, result").
+		Where("team_id IN ?", teamIDs).
+		Order("round_id").
+		Find(&results).Error
+	return results, err
+}
