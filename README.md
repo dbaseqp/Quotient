@@ -265,7 +265,11 @@ Points = 5                  # Points per successful check (default: 1)
 Timeout = 30                # Check timeout in seconds (default: Delay/2)
 SlaThreshold = 5            # Consecutive failures before SLA penalty (default: 5)
 SlaPenalty = 50             # Points deducted for SLA violation (default: SlaThreshold * Points; 0 counts SLAs without deducting; not per-check)
+Attempts = 1                # Tries before a check fails (default: 1)
+AttemptDelay = 0            # Seconds to wait before retrying a failed attempt (default: 0)
 ```
+
+Every attempt, plus the waits between them, must fit in the shortest round: `Attempts * Timeout + (Attempts - 1) * AttemptDelay` must be less than `Delay - Jitter`.
 
 #### UI Settings
 
@@ -357,6 +361,8 @@ All checks support these common properties:
 | `timeout` | Check timeout in seconds | Global default |
 | `slathreshold` | Failures before SLA penalty | Global default |
 | `slapenalty` | Points deducted on SLA violation | Global default |
+| `attempts` | Tries before the check fails | Global default |
+| `attemptdelay` | Seconds to wait before retrying a failed attempt | Global default |
 | `credlists` | Array of credlist names for authentication | None |
 | `disabled` | Disable this check | false |
 | `launchtime` | Start checking at this time | Immediate |
