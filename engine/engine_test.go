@@ -268,9 +268,6 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	// Set Redis address for rvb() internal connections
-	t.Setenv("REDIS_ADDR", "localhost:6379")
-
 	redis, pg := testutil.StartContainers(t)
 
 	ctx := context.Background()
@@ -370,12 +367,60 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 	}
 }
 
-func TestRvb_HandlesMultipleServices(t *testing.T) {
+func TestRvb_StopsOnResetPublishedToEngineRedis(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	t.Setenv("REDIS_ADDR", "localhost:6379")
+	redis, pg := testutil.StartContainers(t)
+
+	ctx := context.Background()
+	redis.Client.FlushDB(ctx)
+	require.NoError(t, pg.DB.ResetScores())
+
+	pg.CreateTestTeam(t, "Team Reset 1", "01")
+	pg.CreateTestTeam(t, "Team Reset 2", "02")
+
+	engine := NewTestEngine(t, redis, pg, 3)
+	mockSvc := &mockRunner{Service: checks.Service{Display: "web", Name: "box01-web", ServiceType: "Mock", Points: 10}}
+	engine.Config.Box = []config.Box{{Name: "box01", IP: "10.0.0.1", Runners: []checks.Runner{mockSvc}}}
+
+	// Once rvb is subscribed, publish a reset on the engine's own Redis, then
+	// return one result so the collection loop checks for events again.
+	runnerDone := make(chan struct{})
+	go func() {
+		defer close(runnerDone)
+		subscribeDeadline := time.Now().Add(2 * time.Second)
+		for redis.Client.PubSubNumSub(ctx, "events").Val()["events"] == 0 {
+			if time.Now().After(subscribeDeadline) {
+				return // rvb never subscribed here, so the reset can't reach it
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		redis.Client.Publish(ctx, "events", "reset")
+		time.Sleep(200 * time.Millisecond)
+
+		val, err := redis.Client.BLPop(ctx, 2*time.Second, "tasks").Result()
+		if err != nil {
+			return
+		}
+		var task Task
+		if json.Unmarshal([]byte(val[1]), &task) != nil {
+			return
+		}
+		result, _ := json.Marshal(checks.Result{TeamID: task.TeamID, ServiceName: task.ServiceName, ServiceType: task.ServiceType, RoundID: task.RoundID, Status: true, Points: 10})
+		redis.Client.RPush(ctx, "results", result)
+	}()
+
+	err := engine.rvb()
+	<-runnerDone
+	require.ErrorContains(t, err, "reset event received")
+}
+
+func TestRvb_HandlesMultipleServices(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 
 	redis, pg := testutil.StartContainers(t)
 
