@@ -138,7 +138,8 @@ func (a *API) Logout(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Path:     "/",
 	})
-	slog.Info("Successful logout", "username", r.Context().Value("username"))
+	id, _ := IdentityFrom(r.Context())
+	slog.Info("Successful logout", "username", id.Username)
 }
 
 // Authenticate resolves the caller from their session cookie. Reports false

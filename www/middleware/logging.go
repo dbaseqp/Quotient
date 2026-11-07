@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dbaseqp/Quotient/www/api"
 	"github.com/google/uuid"
 )
 
@@ -34,9 +35,9 @@ func Logging(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		// Retrieve the username safely from the context.
-		username, ok := r.Context().Value("username").(string)
-		if !ok {
-			username = "anonymous"
+		username := "anonymous"
+		if id, ok := api.IdentityFrom(r.Context()); ok {
+			username = id.Username
 		}
 
 		// Log the request details.

@@ -15,7 +15,7 @@ func (a *API) GetTeams(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving teams"})
 		return
 	}
-	req_roles := r.Context().Value("roles").([]string)
+	req_roles := CallerRoles(r.Context())
 	if !slices.Contains(req_roles, "admin") {
 		myTeamID, hasTeam := CallerTeamID(r.Context())
 		teams = filterToTeam(teams, myTeamID, hasTeam)
@@ -97,7 +97,7 @@ func (a *API) GetServiceAll(w http.ResponseWriter, r *http.Request) {
 	teamID := uint(temp)
 
 	serviceID := r.PathValue("service_name")
-	req_roles := r.Context().Value("roles").([]string)
+	req_roles := CallerRoles(r.Context())
 
 	if !requireOwnTeam(w, r, teamID, "admin") {
 		return
