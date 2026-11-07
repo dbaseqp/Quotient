@@ -14,7 +14,7 @@
 [RequiredSettings]
   EventName = "Example Competition"
   EventType = "rvb"
-  DBConnectURL = "postgres://engineuser:your_password@quotient_database:5432/engine"
+  DBConnectURL = "postgres://engineuser:your_password@quotient-database:5432/engine"
   BindAddress = "0.0.0.0"
 
 [MiscSettings]

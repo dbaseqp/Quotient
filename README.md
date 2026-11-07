@@ -41,9 +41,9 @@ Create a `.env` file with the following required variables:
 POSTGRES_USER=engineuser
 POSTGRES_PASSWORD=<your-db-password>
 POSTGRES_DB=engine
-POSTGRES_HOST=quotient_database
+POSTGRES_HOST=quotient-database
 REDIS_PASSWORD=<your-redis-password>
-REDIS_HOST=quotient_redis
+REDIS_HOST=quotient-redis
 ```
 
 Optional variables:
@@ -149,7 +149,7 @@ ip = "10.100.1_.2"
 [RequiredSettings]
 EventName = "Name of my Competition"
 EventType = "rvb"  # Use "rvb" for Red vs Blue (CCDC-style)
-DBConnectURL = "postgres://engineuser:password@quotient_database:5432/engine"
+DBConnectURL = "postgres://engineuser:password@quotient-database:5432/engine"
 BindAddress = "0.0.0.0"
 ```
 
