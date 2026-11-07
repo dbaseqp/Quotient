@@ -2,14 +2,13 @@ package db
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"log/slog"
 	"os"
 
 	"github.com/dbaseqp/Quotient/engine/config"
+	"github.com/dbaseqp/Quotient/engine/ldapdir"
 
-	"github.com/go-ldap/ldap/v3"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -126,33 +125,12 @@ func (d *DB) AddTeams(conf *config.ConfigSettings) error {
 	// check for teams from other sources
 	// ldap
 	if conf.LdapSettings != (config.LdapAuthConfig{}) {
-		conn, err := ldap.DialURL(conf.LdapSettings.LdapConnectUrl)
-		if err != nil {
-			return err
-		}
-		// nolint:errcheck
-		defer conn.Close()
-
-		err = conn.Bind(conf.LdapSettings.LdapBindDn, conf.LdapSettings.LdapBindPassword)
+		teamNames, err := ldapdir.TeamMembers(conf.LdapSettings)
 		if err != nil {
 			return err
 		}
 
-		searchRequest := ldap.NewSearchRequest(
-			conf.LdapSettings.LdapSearchBaseDn,
-			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-			fmt.Sprintf("(&(objectClass=person)(memberOf=%s))", conf.LdapSettings.LdapTeamGroupDn),
-			[]string{"sAMAccountName"},
-			nil,
-		)
-
-		sr, err := conn.Search(searchRequest)
-		if err != nil {
-			return err
-		}
-
-		for _, entry := range sr.Entries {
-			teamName := entry.GetAttributeValue("sAMAccountName")
+		for _, teamName := range teamNames {
 			t := TeamSchema{Name: teamName}
 			result := d.db.Where(&t).First(&t)
 			if result.Error != nil {
