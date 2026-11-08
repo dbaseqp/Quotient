@@ -68,7 +68,26 @@ If the `regex` option is set, the check only passes if:
 
 Without `regex`, only the exit code matters.
 
-Your script can print output to stdout or stderr for debugging. This output is captured and visible from the admin interface.
+Your script can print output to stdout or stderr for debugging. This output is captured and visible from the admin interface, and to blue teams when `ShowDebugToBlueTeam` is enabled. What they see starts with the command as run, credentials included.
+
+### Failure Messages
+
+When a check fails, its output is often all an admin (or a team, with `ShowDebugToBlueTeam` on) has to go on. Write each failure so the reader knows where to look:
+
+- **One message per step.** A check that logs in, loads a page and reads data has three ways to fail. Give each its own message instead of one "login failed" for all of them.
+- **Name the component and where it runs.** If the check depends on a service on another host (an identity provider, a database, a DNS server), say which one failed and its address. A team that sees only the app's name will troubleshoot or reset the app's box, even when the fault is elsewhere.
+- **Say what was expected and what came back.** "returned HTTP 503" or "page missing 'Welcome'" beats "unexpected response".
+- **Pass on the service's own error text** when it gives one, such as the message on a login page.
+- **Keep one condition per message.** A message like "returned HTTP 200 or database error" reads as if a 200 were the failure.
+
+Some examples, using the `FAILED:` prefix of the scripts on this page:
+
+```
+FAILED: wiki didn't redirect the login to the identity provider (HTTP 200)
+FAILED: identity provider at 10.0.5.20 refused the login for jdoe: Invalid username or password.
+FAILED: identity provider accepted jdoe but the wiki didn't show them logged in (HTTP 302)
+FAILED: store can't connect to its database (MariaDB on the database host)
+```
 
 ## Environment and Dependencies
 
@@ -104,7 +123,7 @@ docker-compose up -d runner
 
 - **Keep checks fast.** The default timeout is half the round delay (e.g., 30s for a 60s delay). Checks that exceed the timeout are marked as failed.
 - **Avoid infinite loops.** The runner forcibly kills the command when the timeout is reached.
-- **Use meaningful output.** Print context on both success and failure to help with debugging.
+- **Use meaningful output.** Print context on both success and failure (see [Failure Messages](#failure-messages)).
 - **Handle escaped credentials.** USERNAME and PASSWORD are shell-escaped by the runner. If your script passes them to other tools, ensure those tools handle quoted strings correctly.
 - **Test locally first.** Run your script manually before deploying to catch errors early.
 
