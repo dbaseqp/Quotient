@@ -159,15 +159,14 @@ func createRunner(task *engine.Task) (checks.Runner, error) {
 }
 
 func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, task *engine.Task) {
-	// Create a task key to identify the check
-	taskKey := fmt.Sprintf("task:%d:%d:%s:%s", task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
+	taskKey := fmt.Sprintf("task:%t:%d:%d:%s:%s", task.Preflight, task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
 
-	// Create a result
 	result := checks.Result{
 		TeamID:      task.TeamID,
 		ServiceName: task.ServiceName,
 		ServiceType: task.ServiceType,
 		RoundID:     task.RoundID,
+		Preflight:   task.Preflight,
 		Status:      false,
 		RunnerID:    runnerID,
 		StartTime:   time.Now().Format(time.RFC3339),
@@ -211,6 +210,7 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 			result.ServiceName = task.ServiceName
 			result.ServiceType = task.ServiceType
 			result.RoundID = task.RoundID
+			result.Preflight = task.Preflight
 
 			slog.Info("check result received", "round_id", result.RoundID, "team_id", result.TeamID,
 				"service_type", result.ServiceType, "status", result.Status, "debug", result.Debug, "error", result.Error)
@@ -223,6 +223,7 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 			result.ServiceName = task.ServiceName
 			result.ServiceType = task.ServiceType
 			result.RoundID = task.RoundID
+			result.Preflight = task.Preflight
 
 			slog.Warn("check timed out", "round_id", task.RoundID, "team_id", task.TeamID,
 				"service_type", task.ServiceType)

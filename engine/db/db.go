@@ -55,7 +55,8 @@ func (d *DB) migrate() {
 		// box schema must come first for automigrate to work
 		&VulnSchema{}, &BoxSchema{}, &VectorSchema{}, &AttackSchema{}, &CompetitionStateSchema{},
 		// credential schemas for PCR management
-		&OriginalCredentialSchema{}, &CredentialSchema{}, &PCRHistorySchema{})
+		&OriginalCredentialSchema{}, &CredentialSchema{}, &PCRHistorySchema{},
+		&PreflightCheckSchema{})
 	if err != nil {
 		log.Fatalln("Failed to auto migrate:", err)
 	}
