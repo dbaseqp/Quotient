@@ -167,6 +167,17 @@ func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetOutages returns the teams whose every check failed in the latest scored round.
+func (a *API) GetOutages(w http.ResponseWriter, r *http.Request) {
+	outages, err := a.eng.DB.GetTeamOutages()
+	if err != nil {
+		slog.Error("failed to get team outages", "error", err)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve team outages"})
+		return
+	}
+	WriteJSON(w, http.StatusOK, outages)
+}
+
 func (a *API) UpdateTeams(w http.ResponseWriter, r *http.Request) {
 	type Form struct {
 		Teams []struct {
