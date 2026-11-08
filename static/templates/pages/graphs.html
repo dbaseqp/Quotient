@@ -184,12 +184,15 @@
                                         
                                         let point = {
                                             x: serviceName,
-                                            y: STATUSCHART.w.globals.yRange[0],
+                                            y: 0,
                                             seriesIndex: i,
                                             id: pointID,
+                                            marker: {
+                                                size: 0,
+                                            },
                                             image: {
                                                 path: img,
-                                                offsetY: (rowHeight * series.length) + (rowHeight / 2) - (i * rowHeight) - rowHeight,
+                                                offsetY: (rowHeight / 2) - (i * rowHeight) - rowHeight,
                                             },
                                             click: () => {
                                                 if (teamID !== undefined) {
