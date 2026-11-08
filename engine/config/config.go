@@ -147,6 +147,7 @@ type UIConfig struct {
 
 type InjectConfig struct {
 	CompetitionStartTime string
+	CompetitionEndTime   string
 	CompetitionTimezone  string
 }
 
@@ -155,20 +156,38 @@ func (conf *ConfigSettings) CompetitionStart() (time.Time, error) {
 	if settings.CompetitionStartTime == "" || settings.CompetitionTimezone == "" {
 		return time.Time{}, errors.New("InjectSettings.CompetitionStartTime and InjectSettings.CompetitionTimezone are required for inject imports")
 	}
+	return parseCompetitionTime("start", settings.CompetitionStartTime, settings.CompetitionTimezone)
+}
 
-	location, err := time.LoadLocation(settings.CompetitionTimezone)
+func (conf *ConfigSettings) CompetitionEnd() (end time.Time, ok bool, err error) {
+	settings := conf.InjectSettings
+	if settings.CompetitionEndTime == "" {
+		return time.Time{}, false, nil
+	}
+	if settings.CompetitionTimezone == "" {
+		return time.Time{}, false, errors.New("InjectSettings.CompetitionTimezone is required with InjectSettings.CompetitionEndTime")
+	}
+	end, err = parseCompetitionTime("end", settings.CompetitionEndTime, settings.CompetitionTimezone)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid competition timezone %q: %w", settings.CompetitionTimezone, err)
+		return time.Time{}, false, err
+	}
+	return end, true, nil
+}
+
+func parseCompetitionTime(which, value, timezone string) (time.Time, error) {
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid competition timezone %q: %w", timezone, err)
 	}
 
-	start, err := time.ParseInLocation("2006-01-02 15:04", settings.CompetitionStartTime, location)
+	parsed, err := time.ParseInLocation("2006-01-02 15:04", value, location)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid competition start time %q (expected YYYY-MM-DD HH:MM): %w", settings.CompetitionStartTime, err)
+		return time.Time{}, fmt.Errorf("invalid competition %s time %q (expected YYYY-MM-DD HH:MM): %w", which, value, err)
 	}
-	if start.Format("2006-01-02 15:04") != settings.CompetitionStartTime {
-		return time.Time{}, fmt.Errorf("competition start time %q does not exist in timezone %q", settings.CompetitionStartTime, settings.CompetitionTimezone)
+	if parsed.Format("2006-01-02 15:04") != value {
+		return time.Time{}, fmt.Errorf("competition %s time %q does not exist in timezone %q", which, value, timezone)
 	}
-	return start, nil
+	return parsed, nil
 }
 
 type User struct {
@@ -245,7 +264,6 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 	return nil
 }
 
-// general error checking
 func checkConfig(conf *ConfigSettings) error {
 	var errResult error
 
@@ -388,10 +406,15 @@ func checkConfig(conf *ConfigSettings) error {
 		slog.Warn("SlaPenalty = 0: SLAs are counted but deduct no points")
 	}
 
-	if conf.InjectSettings.CompetitionStartTime != "" || conf.InjectSettings.CompetitionTimezone != "" {
+	if conf.InjectSettings.CompetitionStartTime != "" {
 		if _, err := conf.CompetitionStart(); err != nil {
 			errResult = errors.Join(errResult, err)
 		}
+	}
+	if end, ok, err := conf.CompetitionEnd(); err != nil {
+		errResult = errors.Join(errResult, err)
+	} else if start, startErr := conf.CompetitionStart(); ok && startErr == nil && !end.After(start) {
+		errResult = errors.Join(errResult, errors.New("InjectSettings.CompetitionEndTime must be after CompetitionStartTime"))
 	}
 
 	// OIDC settings defaults

@@ -155,6 +155,9 @@ func (d *DB) ResetScores() error {
 	if err := d.db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas, preflight_check_schemas, preflight_round_schemas CASCADE").Error; err != nil {
 		return err
 	}
+	if err := d.db.Model(&CompetitionStateSchema{}).Where("1 = 1").Update("overtime_end", nil).Error; err != nil {
+		return err
+	}
 
 	// Refresh the materialized view to clear it
 	if err := d.db.Exec("REFRESH MATERIALIZED VIEW cumulative_scores").Error; err != nil {

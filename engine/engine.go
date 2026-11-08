@@ -46,6 +46,8 @@ type ScoringEngine struct {
 	pauseMu sync.Mutex
 	// resume is closed while the engine runs; while paused it is open and the round loop blocks on it.
 	resume chan struct{}
+	// overtimeEnd is the CompetitionEnd an admin already resumed after.
+	overtimeEnd time.Time
 }
 
 func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
@@ -143,7 +145,9 @@ func (se *ScoringEngine) Start() {
 				return
 			default:
 			}
-
+			if se.pauseAtCompetitionEnd() {
+				continue
+			}
 			se.CurrentRoundStartTime = time.Now()
 			se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
 
@@ -287,12 +291,21 @@ func (se *ScoringEngine) GetActiveTasks() (map[string]any, error) {
 }
 
 func (se *ScoringEngine) resetPauseState() {
+	var overtimeEnd time.Time
+	if se.DB != nil {
+		var err error
+		overtimeEnd, err = se.DB.GetOvertimeEnd()
+		if err != nil {
+			slog.Error("failed to read competition overtime", "error", err)
+		}
+	}
 	se.pauseMu.Lock()
 	defer se.pauseMu.Unlock()
 	se.resume = make(chan struct{})
 	if !se.Config.MiscSettings.StartPaused {
 		close(se.resume)
 	}
+	se.overtimeEnd = overtimeEnd
 }
 
 func (se *ScoringEngine) pausedLocked() bool {
@@ -315,6 +328,12 @@ func (se *ScoringEngine) SetPaused(pause bool) bool {
 		return true
 	}
 	close(se.resume)
+	if end, ok, err := se.Config.CompetitionEnd(); err == nil && ok && !time.Now().Before(end) {
+		se.overtimeEnd = end
+		if err := se.DB.SetOvertimeEnd(end); err != nil {
+			slog.Error("failed to save competition overtime; a restart will pause at the end again", "error", err)
+		}
+	}
 	return true
 }
 
@@ -324,7 +343,25 @@ func (se *ScoringEngine) Paused() bool {
 	return se.pausedLocked()
 }
 
-// ResetScores resets the engine to the initial state and stops the engine
+func (se *ScoringEngine) pauseAtCompetitionEnd() bool {
+	end, ok, err := se.Config.CompetitionEnd()
+	if err != nil {
+		slog.Error("invalid competition end; not pausing at it", "error", err)
+		return false
+	}
+	if !ok || time.Now().Before(end) {
+		return false
+	}
+	se.pauseMu.Lock()
+	defer se.pauseMu.Unlock()
+	if se.pausedLocked() || se.overtimeEnd.Equal(end) {
+		return false
+	}
+	se.resume = make(chan struct{})
+	slog.Info("Competition end reached, pausing scoring", "end", end)
+	return true
+}
+
 func (se *ScoringEngine) ResetScores() error {
 	slog.Info("Resetting scores and clearing Redis queues")
 
@@ -348,6 +385,9 @@ func (se *ScoringEngine) ResetScores() error {
 	se.RedisClient.Publish(context.Background(), "events", "reset")
 
 	se.CurrentRound = 1
+	se.pauseMu.Lock()
+	se.overtimeEnd = time.Time{}
+	se.pauseMu.Unlock()
 	se.uptimeMu.Lock()
 	se.UptimePerService = make(map[uint]map[string]db.Uptime)
 	se.uptimeMu.Unlock()
@@ -357,11 +397,7 @@ func (se *ScoringEngine) ResetScores() error {
 	return nil
 }
 
-// perform a round of koth
 func (se *ScoringEngine) koth() error {
-	// enginePauseWg.Wait()
-
-	// do koth stuff
 	se.finishScoredRound()
 	return nil
 }
