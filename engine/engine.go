@@ -31,8 +31,6 @@ type ScoringEngine struct {
 	UptimePerService      map[uint]map[string]db.Uptime
 	uptimeMu              sync.RWMutex
 	SlaPerService         map[uint]map[string]int
-	EnginePauseWg         *sync.WaitGroup
-	IsEnginePaused        bool
 	CurrentRound          uint
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
@@ -44,6 +42,10 @@ type ScoringEngine struct {
 
 	// Config update handling
 	configPath string
+
+	pauseMu sync.Mutex
+	// resume is closed while the engine runs; while paused it is open and the round loop blocks on it.
+	resume chan struct{}
 }
 
 func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
@@ -79,6 +81,7 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 		configPath:       configPath,
 		DB:               d,
 	}
+	se.resetPauseState()
 
 	if err := conf.WatchConfig(configPath, func() {
 		if err := se.DB.AddTeams(se.Config); err != nil {
@@ -117,65 +120,64 @@ func (se *ScoringEngine) Start() {
 		slog.Error("failed to load credential files into teams", "error", err)
 	}
 
-	// start paused if configured
-	se.IsEnginePaused = false
-	se.EnginePauseWg = &sync.WaitGroup{}
-	if se.Config.MiscSettings.StartPaused {
-		se.IsEnginePaused = true
-		se.EnginePauseWg.Add(1)
-	}
-
 	se.NextRoundStartTime = time.Time{}
 
-	events := se.RedisClient.Subscribe(context.Background(), "events")
-	// nolint:errcheck
-	defer events.Close()
-	eventsChannel := events.Channel()
+	stop := make(chan struct{})
+	loopDone := make(chan struct{})
 
 	// engine loop
 	go func() {
+		defer close(loopDone)
 		for {
 			slog.Info("Queueing up for round", "round", se.CurrentRound)
-			se.EnginePauseWg.Wait()
+			se.pauseMu.Lock()
+			resume := se.resume
+			se.pauseMu.Unlock()
 			select {
-			case msg := <-eventsChannel:
-				slog.Info("Received message", "message", msg.Payload)
-				if msg.Payload == "reset" {
-					slog.Info("Engine loop reset event received while waiting, quitting...")
-					return
-				} else {
-					continue
-				}
+			case <-stop:
+				return
+			case <-resume:
+			}
+			select {
+			case <-stop:
+				return
 			default:
-				slog.Info("Starting round", "round", se.CurrentRound)
-				se.CurrentRoundStartTime = time.Now()
-				se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
+			}
 
-				// run the round logic
-				var err error
-				switch se.Config.RequiredSettings.EventType {
-				case "koth":
-					err = se.koth()
-				case "rvb":
-					err = se.rvb()
-				default:
-					slog.Error("Unknown event type", "eventType", se.Config.RequiredSettings.EventType)
-				}
-				if err != nil {
-					slog.Error("Round error. If this is a reset, ignore...", "error", err)
-					return
-				}
+			slog.Info("Starting round", "round", se.CurrentRound)
+			se.CurrentRoundStartTime = time.Now()
+			se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
 
-				slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
-				se.CurrentRound++
+			// run the round logic
+			var err error
+			switch se.Config.RequiredSettings.EventType {
+			case "koth":
+				err = se.koth()
+			case "rvb":
+				err = se.rvb()
+			default:
+				slog.Error("Unknown event type", "eventType", se.Config.RequiredSettings.EventType)
+			}
+			if err != nil {
+				slog.Error("Round error. If this is a reset, ignore...", "error", err)
+				return
+			}
 
-				se.RedisClient.Publish(context.Background(), "events", "round_finish")
-				slog.Info(fmt.Sprintf("Round %d will start in %s, sleeping...", se.CurrentRound, time.Until(se.NextRoundStartTime).String()))
-				time.Sleep(time.Until(se.NextRoundStartTime))
+			slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
+			se.CurrentRound++
+
+			se.RedisClient.Publish(context.Background(), "events", "round_finish")
+			slog.Info(fmt.Sprintf("Round %d will start in %s, sleeping...", se.CurrentRound, time.Until(se.NextRoundStartTime).String()))
+			select {
+			case <-stop:
+				return
+			case <-time.After(time.Until(se.NextRoundStartTime)):
 			}
 		}
 	}()
 	se.waitForReset()
+	close(stop)
+	<-loopDone
 	slog.Info("Restarting scoring...")
 }
 
@@ -286,18 +288,42 @@ func (se *ScoringEngine) GetActiveTasks() (map[string]any, error) {
 	return result, nil
 }
 
-func (se *ScoringEngine) PauseEngine() {
-	if !se.IsEnginePaused {
-		se.EnginePauseWg.Add(1)
-		se.IsEnginePaused = true
+func (se *ScoringEngine) resetPauseState() {
+	se.pauseMu.Lock()
+	defer se.pauseMu.Unlock()
+	se.resume = make(chan struct{})
+	if !se.Config.MiscSettings.StartPaused {
+		close(se.resume)
 	}
 }
 
-func (se *ScoringEngine) ResumeEngine() {
-	if se.IsEnginePaused {
-		se.EnginePauseWg.Done()
-		se.IsEnginePaused = false
+func (se *ScoringEngine) pausedLocked() bool {
+	select {
+	case <-se.resume:
+		return false
+	default:
+		return true
 	}
+}
+
+func (se *ScoringEngine) SetPaused(pause bool) bool {
+	se.pauseMu.Lock()
+	defer se.pauseMu.Unlock()
+	if se.pausedLocked() == pause {
+		return false
+	}
+	if pause {
+		se.resume = make(chan struct{})
+		return true
+	}
+	close(se.resume)
+	return true
+}
+
+func (se *ScoringEngine) Paused() bool {
+	se.pauseMu.Lock()
+	defer se.pauseMu.Unlock()
+	return se.pausedLocked()
 }
 
 // ResetScores resets the engine to the initial state and stops the engine
@@ -623,7 +649,6 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 	}
 }
 
-// newTestEngine creates a minimal engine for testing
 func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.PostgresContainer, slaThreshold int) *ScoringEngine {
 	t.Helper()
 
@@ -645,7 +670,7 @@ func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.Po
 		},
 	}
 
-	return &ScoringEngine{
+	se := &ScoringEngine{
 		Config:           conf,
 		credentialsMutex: make(map[uint]*sync.Mutex),
 		UptimePerService: make(map[uint]map[string]db.Uptime),
@@ -654,4 +679,6 @@ func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.Po
 		DB:               pg.DB,
 		CurrentRound:     1,
 	}
+	se.resetPauseState()
+	return se
 }
