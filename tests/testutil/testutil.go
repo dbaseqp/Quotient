@@ -83,11 +83,13 @@ func (p *PostgresContainer) Exec(t *testing.T, sql string) {
 	require.NoError(t, conn.Exec(sql).Error)
 }
 
-// ResetCompetitionState forgets that the competition ever started, which the
-// DB layer never does on its own: StartedAt is kept once set.
+// ResetCompetitionState forgets that the competition ever started, now and
+// again at test cleanup, which the DB layer never does on its own: StartedAt is
+// kept once set.
 func (p *PostgresContainer) ResetCompetitionState(t *testing.T) {
 	t.Helper()
 	p.Exec(t, "DELETE FROM competition_state_schemas")
+	t.Cleanup(func() { p.Exec(t, "DELETE FROM competition_state_schemas") })
 }
 
 // testTeamCounter provides unique team IDs across test runs

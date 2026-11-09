@@ -25,27 +25,23 @@ func passResult(task Task) []checks.Result {
 
 // fakeRunner answers every task on the "tasks" queue with respond(task) until
 // test cleanup. go-redis does not interrupt a blocking BLPop on context
-// cancellation, so cleanup pushes a sentinel task that the goroutine consumes
-// before it checks done.
+// cancellation, so cleanup pushes a "stop" sentinel instead.
 func fakeRunner(t *testing.T, redis *testutil.RedisContainer, respond func(Task) []checks.Result) {
 	t.Helper()
 	if respond == nil {
 		respond = passResult
 	}
 	ctx := context.Background()
-	done := make(chan struct{})
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
 		for {
 			val, err := redis.Client.BLPop(ctx, 0, "tasks").Result()
-			select {
-			case <-done:
-				return
-			default:
-			}
 			if err != nil || len(val) < 2 {
 				continue
+			}
+			if val[1] == "stop" {
+				return
 			}
 			var task Task
 			if err := json.Unmarshal([]byte(val[1]), &task); err != nil {
@@ -59,7 +55,6 @@ func fakeRunner(t *testing.T, redis *testutil.RedisContainer, respond func(Task)
 		}
 	}()
 	t.Cleanup(func() {
-		close(done)
 		redis.Client.RPush(ctx, "tasks", "stop")
 		<-finished
 	})
@@ -187,7 +182,6 @@ func TestPreflightPending_StopReturnsToPreflightOnlyBeforeScoring(t *testing.T) 
 	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
 	pg.ResetCompetitionState(t)
-	t.Cleanup(func() { pg.ResetCompetitionState(t) })
 	se := newPreflightEngine(t, redis, pg)
 
 	assert.True(t, se.preflightPending())
@@ -213,16 +207,13 @@ func TestPreflightPending_IgnoresRoundCounterAfterEmptyRound(t *testing.T) {
 	redis.Client.FlushDB(context.Background())
 	require.NoError(t, pg.DB.ResetScores())
 	pg.ResetCompetitionState(t)
-	t.Cleanup(func() { pg.ResetCompetitionState(t) })
 
 	pg.CreateTestTeam(t, "Team Preflight Empty", "01")
 	se := newPreflightEngine(t, redis, pg)
-	se.Config.MiscSettings.Delay = 2
 
-	// Round 1 runs without a runner, so it stores nothing; only the in-memory
-	// counter moves on.
+	// A round that stored nothing still advances the in-memory counter.
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
-	require.NoError(t, se.rvb())
+	se.finishScoredRound()
 	assert.Equal(t, uint(2), se.CurrentRound)
 	last, err := pg.DB.GetLastRound()
 	require.NoError(t, err)
@@ -240,7 +231,6 @@ func TestPreflightPending_LegacyRowWithoutStartedAt(t *testing.T) {
 	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
 	pg.ResetCompetitionState(t)
-	t.Cleanup(func() { pg.ResetCompetitionState(t) })
 	se := newPreflightEngine(t, redis, pg)
 
 	// Rows written before StartedAt existed: the UI treats them as started, so
@@ -260,7 +250,6 @@ func TestResetScores_ReentersPreflight(t *testing.T) {
 	redis.Client.FlushDB(context.Background())
 	require.NoError(t, pg.DB.ResetScores())
 	pg.ResetCompetitionState(t)
-	t.Cleanup(func() { pg.ResetCompetitionState(t) })
 
 	pg.CreateTestTeam(t, "Team Preflight Reset", "01")
 	se := newPreflightEngine(t, redis, pg)

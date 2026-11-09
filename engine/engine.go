@@ -384,22 +384,19 @@ func (se *ScoringEngine) finishScoredRound() {
 	se.RedisClient.Publish(context.Background(), "events", "round_finish")
 }
 
-// preflightPending is true while the competition is not started and no scored
-// round has been stored. Both facts are read from the DB every round rather
-// than from CurrentRound, which also advances on rounds that stored nothing and
-// is reseeded on restart. GetCompetitionStarted reports a read error as not
-// started, and a GetLastRound error counts as no stored round: on a read error
-// this iteration runs a preflight round, delaying scoring by one round.
+// preflightPending reads the DB rather than CurrentRound, which also advances
+// on rounds that stored nothing and is reseeded on restart. A DB read error
+// runs a preflight round, delaying scoring by one round.
 func (se *ScoringEngine) preflightPending() bool {
 	if se.DB.GetCompetitionStarted() {
 		return false
 	}
-	last, err := se.DB.GetLastRound()
+	scored, err := se.DB.HasScoredRound()
 	if err != nil {
-		slog.Error("failed to get last round, running a preflight round", "error", err)
+		slog.Error("failed to check for scored rounds, running a preflight round", "error", err)
 		return true
 	}
-	return last.ID == 0
+	return !scored
 }
 
 // preflight runs the same checks as rvb but stores the results apart from

@@ -51,6 +51,13 @@ func (d *DB) GetLastRound() (RoundSchema, error) {
 	return round, nil
 }
 
+// HasScoredRound reports whether any scored round has been stored.
+func (d *DB) HasScoredRound() (bool, error) {
+	var n int64
+	err := d.db.Table("round_schemas").Limit(1).Count(&n).Error
+	return n > 0, err
+}
+
 func (d *DB) RefreshScoresMaterializedView() error {
 	// Use concurrent refresh to avoid blocking reads
 	return d.db.Exec("REFRESH MATERIALIZED VIEW CONCURRENTLY cumulative_scores").Error
