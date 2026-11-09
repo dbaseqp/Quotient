@@ -66,18 +66,3 @@ func (d *DB) GetCompetitionStart() (*time.Time, error) {
 	}
 	return state.StartedAt, nil
 }
-
-// CompetitionEverStarted is true once the competition has been started at
-// least once, even if it was stopped since. Rows written before StartedAt
-// existed only carry Started, so both are consulted.
-func (d *DB) CompetitionEverStarted() (bool, error) {
-	var state CompetitionStateSchema
-	result := d.db.First(&state)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return false, nil
-		}
-		return false, result.Error
-	}
-	return state.Started || state.StartedAt != nil, nil
-}

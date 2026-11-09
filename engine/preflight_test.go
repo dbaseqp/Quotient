@@ -3,8 +3,10 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/dbaseqp/Quotient/engine/checks"
 	"github.com/dbaseqp/Quotient/engine/config"
@@ -15,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// passResult is the result fakeRunner pushes for a task when respond is nil.
 func passResult(task Task) []checks.Result {
 	return []checks.Result{{
 		TeamID: task.TeamID, ServiceName: task.ServiceName, ServiceType: task.ServiceType,
@@ -24,8 +25,8 @@ func passResult(task Task) []checks.Result {
 }
 
 // fakeRunner answers every task on the "tasks" queue with respond(task) until
-// stop is called. respond defaults to passResult. go-redis does not interrupt
-// a blocking BLPop on context cancellation, so stop pushes a sentinel task that
+// stop is called (also at test cleanup). go-redis does not interrupt a
+// blocking BLPop on context cancellation, so stop pushes a sentinel task that
 // the goroutine consumes before it checks done.
 func fakeRunner(t *testing.T, redis *testutil.RedisContainer, respond func(Task) []checks.Result) (stop func()) {
 	t.Helper()
@@ -58,11 +59,16 @@ func fakeRunner(t *testing.T, redis *testutil.RedisContainer, respond func(Task)
 			}
 		}
 	}()
-	return func() {
-		close(done)
-		redis.Client.RPush(ctx, "tasks", "stop")
-		<-finished
+	var once sync.Once
+	stop = func() {
+		once.Do(func() {
+			close(done)
+			redis.Client.RPush(ctx, "tasks", "stop")
+			<-finished
+		})
 	}
+	t.Cleanup(stop)
+	return stop
 }
 
 func newPreflightEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.PostgresContainer) *ScoringEngine {
@@ -106,6 +112,7 @@ func TestPreflight_StoresResultsApartFromScoring(t *testing.T) {
 		}
 		return passResult(task)
 	})
+	se.CurrentRoundStartTime = time.Now().Truncate(time.Microsecond)
 	require.NoError(t, se.preflight())
 	require.NoError(t, se.preflight())
 	stop()
@@ -114,7 +121,7 @@ func TestPreflight_StoresResultsApartFromScoring(t *testing.T) {
 
 	round, rows := teamPreflight(t, pg, team.ID)
 	assert.Equal(t, uint(2), round.ID, "only the latest preflight round is returned")
-	assert.Equal(t, se.CurrentRoundStartTime.Unix(), round.StartTime.Unix())
+	assert.True(t, se.CurrentRoundStartTime.Equal(round.StartTime), "round start time %s stored as %s", se.CurrentRoundStartTime, round.StartTime)
 	require.Len(t, rows, 1)
 	assert.Equal(t, round.ID, rows[0].RoundID)
 	assert.True(t, rows[0].Result)
@@ -180,48 +187,45 @@ func TestPreflight_StoresRoundWithoutResults(t *testing.T) {
 	assert.Empty(t, round.Checks)
 }
 
-func TestCompetitionEverStarted_StaysStartedAfterStop(t *testing.T) {
+func TestPreflightPending_StopReturnsToPreflightOnlyBeforeScoring(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	_, pg := testutil.StartContainers(t)
+	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
-	t.Cleanup(func() { require.NoError(t, pg.DB.ResetScores()) })
+	t.Cleanup(func() { pg.Exec(t, "DELETE FROM competition_state_schemas") })
+	se := newPreflightEngine(t, redis, pg)
 
-	started, err := pg.DB.CompetitionEverStarted()
-	require.NoError(t, err)
-	assert.False(t, started)
+	assert.True(t, se.preflightPending())
 
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
-	started, err = pg.DB.CompetitionEverStarted()
-	require.NoError(t, err)
-	assert.True(t, started)
+	assert.False(t, se.preflightPending())
 
+	se.CurrentRound = 2
 	require.NoError(t, pg.DB.SetCompetitionStarted(false))
-	started, err = pg.DB.CompetitionEverStarted()
-	require.NoError(t, err)
-	assert.True(t, started, "stopping after the first start doesn't return to preflight")
+	assert.False(t, se.preflightPending(), "stopping after a scored round doesn't return to preflight")
+
+	se.CurrentRound = 1
+	assert.True(t, se.preflightPending(), "stopping before any scored round returns to preflight")
 }
 
-func TestCompetitionEverStarted_LegacyRowWithoutStartedAt(t *testing.T) {
+func TestPreflightPending_LegacyRowWithoutStartedAt(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	_, pg := testutil.StartContainers(t)
+	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
-	t.Cleanup(func() { require.NoError(t, pg.DB.ResetScores()) })
+	t.Cleanup(func() { pg.Exec(t, "DELETE FROM competition_state_schemas") })
+	se := newPreflightEngine(t, redis, pg)
 
 	// Rows written before StartedAt existed: the UI treats them as started, so
 	// the engine must not run preflight rounds against them.
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
 	pg.Exec(t, "UPDATE competition_state_schemas SET started_at = NULL")
 
-	started, err := pg.DB.CompetitionEverStarted()
-	require.NoError(t, err)
-	assert.True(t, started)
-	assert.True(t, pg.DB.GetCompetitionStarted())
+	assert.False(t, se.preflightPending())
 }
 
 func TestResetScores_ReentersPreflight(t *testing.T) {
@@ -232,21 +236,30 @@ func TestResetScores_ReentersPreflight(t *testing.T) {
 	redis, pg := testutil.StartContainers(t)
 	redis.Client.FlushDB(context.Background())
 	require.NoError(t, pg.DB.ResetScores())
-	t.Cleanup(func() { require.NoError(t, pg.DB.ResetScores()) })
+	t.Cleanup(func() { pg.Exec(t, "DELETE FROM competition_state_schemas") })
 
 	pg.CreateTestTeam(t, "Team Preflight Reset", "01")
 	se := newPreflightEngine(t, redis, pg)
 
 	stop := fakeRunner(t, redis, nil)
 	require.NoError(t, se.preflight())
-	stop()
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
-
-	require.NoError(t, se.ResetScores())
-
-	started, err := pg.DB.CompetitionEverStarted()
+	startedAt, err := pg.DB.GetCompetitionStart()
 	require.NoError(t, err)
-	assert.False(t, started, "reset returns the engine to preflight rounds")
+	require.NotNil(t, startedAt)
+	require.NoError(t, se.rvb())
+	stop()
+	assert.False(t, se.preflightPending())
+
+	require.NoError(t, pg.DB.SetCompetitionStarted(false))
+	assert.False(t, se.preflightPending(), "stopping alone doesn't drop the scored round")
+	require.NoError(t, se.ResetScores())
+	assert.True(t, se.preflightPending(), "reset while stopped returns the engine to preflight rounds")
+
+	afterReset, err := pg.DB.GetCompetitionStart()
+	require.NoError(t, err)
+	require.NotNil(t, afterReset, "reset keeps the competition start, the anchor of imported injects")
+	assert.True(t, startedAt.Equal(*afterReset))
 	round, err := pg.DB.GetLatestPreflightRound()
 	require.NoError(t, err)
 	assert.Zero(t, round.ID, "reset drops the previous event's preflight rounds")

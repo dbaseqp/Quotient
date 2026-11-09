@@ -148,11 +148,11 @@ func (d *DB) AddTeams(conf *config.ConfigSettings) error {
 	return nil
 }
 
-// ResetScores returns the event to the state before any round ran: scored and
-// preflight rounds are dropped and the competition is no longer started, so the
-// engine runs preflight rounds again.
+// ResetScores drops scored and preflight rounds so the engine re-enters
+// preflight once the competition is stopped. Competition state is kept: the
+// start anchor of imported injects survives a reset.
 func (d *DB) ResetScores() error {
-	if err := d.db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas, preflight_check_schemas, preflight_round_schemas, competition_state_schemas CASCADE").Error; err != nil {
+	if err := d.db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas, preflight_check_schemas, preflight_round_schemas CASCADE").Error; err != nil {
 		return err
 	}
 

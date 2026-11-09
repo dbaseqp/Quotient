@@ -144,21 +144,19 @@ func (se *ScoringEngine) Start() {
 			default:
 			}
 
-			started, err := se.DB.CompetitionEverStarted()
-			if err != nil {
-				slog.Error("failed to read competition start", "error", err)
-				return
-			}
 			se.CurrentRoundStartTime = time.Now()
 			se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
 
-			switch {
-			case se.Config.RequiredSettings.EventType == "rvb" && !started:
-				err = se.preflight()
-			case se.Config.RequiredSettings.EventType == "koth":
+			var err error
+			switch se.Config.RequiredSettings.EventType {
+			case "koth":
 				err = se.koth()
-			case se.Config.RequiredSettings.EventType == "rvb":
-				err = se.rvb()
+			case "rvb":
+				if se.preflightPending() {
+					err = se.preflight()
+				} else {
+					err = se.rvb()
+				}
 			default:
 				slog.Error("Unknown event type", "eventType", se.Config.RequiredSettings.EventType)
 			}
@@ -386,9 +384,15 @@ func (se *ScoringEngine) finishScoredRound() {
 	se.RedisClient.Publish(context.Background(), "events", "round_finish")
 }
 
+// preflightPending is true while the competition is not started and no scored
+// round exists. GetCompetitionStarted reports a read error as not started,
+// which fails closed into an unscored preflight round.
+func (se *ScoringEngine) preflightPending() bool {
+	return se.CurrentRound == 1 && !se.DB.GetCompetitionStarted()
+}
+
 // preflight runs the same checks as rvb but stores the results apart from
-// scoring. The round row is written even when no results arrived so a timed-out
-// round is visible to admins.
+// scoring.
 func (se *ScoringEngine) preflight() error {
 	last, err := se.DB.GetLastPreflightRoundID()
 	if err != nil {
