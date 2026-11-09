@@ -8,7 +8,7 @@ Custom checks are defined under a `[[box.custom]]` section in `event.conf`. The 
 
 | Placeholder | Description |
 |-------------|-------------|
-| `ROUND` | Current round number. During preflight rounds (before the competition is started) this is the preflight round number, which also starts at 1, so a script must not assume it is unique across preflight and scored rounds |
+| `ROUND` | Current round number. During preflight rounds (while the competition is not started and no scored round has been stored, so also after `GET /api/engine/reset` while stopped) this is the preflight round number, which also starts at 1, so a script must not assume it is unique across preflight and scored rounds |
 | `TARGET` | Hostname or IP address (with team identifier substituted) |
 | `TEAMIDENTIFIER` | The team's unique identifier (e.g., "01") |
 | `USERNAME` | A username from the configured credlists |

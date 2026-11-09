@@ -385,10 +385,21 @@ func (se *ScoringEngine) finishScoredRound() {
 }
 
 // preflightPending is true while the competition is not started and no scored
-// round exists. GetCompetitionStarted reports a read error as not started,
-// which fails closed into an unscored preflight round.
+// round has been stored. Both facts are read from the DB every round rather
+// than from CurrentRound, which also advances on rounds that stored nothing and
+// is reseeded on restart. GetCompetitionStarted reports a read error as not
+// started, and a GetLastRound error counts as no stored round: on a read error
+// this iteration runs a preflight round, delaying scoring by one round.
 func (se *ScoringEngine) preflightPending() bool {
-	return se.CurrentRound == 1 && !se.DB.GetCompetitionStarted()
+	if se.DB.GetCompetitionStarted() {
+		return false
+	}
+	last, err := se.DB.GetLastRound()
+	if err != nil {
+		slog.Error("failed to get last round, running a preflight round", "error", err)
+		return true
+	}
+	return last.ID == 0
 }
 
 // preflight runs the same checks as rvb but stores the results apart from

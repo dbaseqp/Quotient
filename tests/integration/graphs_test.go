@@ -53,8 +53,8 @@ func TestGraphsMarkOnlyCallersOwnSeries(t *testing.T) {
 	a := api.NewAPI(eng.Config, eng)
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
 	t.Cleanup(func() {
+		pg.ResetCompetitionState(t)
 		require.NoError(t, pg.DB.ResetScores())
-		pg.Exec(t, "DELETE FROM competition_state_schemas")
 	})
 
 	suffix := time.Now().UnixNano()

@@ -17,6 +17,8 @@ func TestImportedInjectScheduleAnchorsOnceToActualStart(t *testing.T) {
 	}
 
 	_, pg := testutil.StartContainers(t)
+	pg.ResetCompetitionState(t)
+	t.Cleanup(func() { pg.ResetCompetitionState(t) })
 
 	openOffset := int64((30 * time.Minute) / time.Second)
 	dueOffset := int64((90 * time.Minute) / time.Second)

@@ -298,9 +298,8 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 		},
 	}
 
-	stop := fakeRunner(t, redis, nil)
+	fakeRunner(t, redis, nil)
 	err := engine.rvb()
-	stop()
 
 	require.NoError(t, err)
 
@@ -406,7 +405,7 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 		},
 	}
 
-	stop := fakeRunner(t, redis, func(task Task) []checks.Result {
+	fakeRunner(t, redis, func(task Task) []checks.Result {
 		results := passResult(task)
 		switch task.ServiceName {
 		case "box01-ssh":
@@ -417,7 +416,6 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 		return results
 	})
 	err := engine.rvb()
-	stop()
 
 	require.NoError(t, err)
 
@@ -581,9 +579,8 @@ func TestRvb_IgnoresStaleResultsFromRestartedRound(t *testing.T) {
 	stale, _ := json.Marshal(checks.Result{TeamID: team.ID, ServiceName: "box01-web", ServiceType: "Mock", RoundID: 1, Status: false})
 	require.NoError(t, redis.Client.RPush(ctx, "results", stale).Err())
 
-	stop := fakeRunner(t, redis, nil)
+	fakeRunner(t, redis, nil)
 	err := engine.rvb()
-	stop()
 	require.NoError(t, err)
 
 	round, err := pg.DB.GetLastRound()
