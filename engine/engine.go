@@ -47,7 +47,9 @@ type ScoringEngine struct {
 	// resume is closed while the engine runs; while paused it is open and the round loop blocks on it.
 	resume chan struct{}
 	// pausedAtEnd is the competition end the round loop paused itself at, nil
-	// for a manual pause. A resume persists it as overtime.
+	// for a manual pause. Owned by the round loop (pauseAtCompetitionEnd), no
+	// mutex: the loop is the only goroutine that pauses at the end and later
+	// observes the resume, so it alone decides and persists overtime.
 	pausedAtEnd *time.Time
 }
 
@@ -311,32 +313,15 @@ func (se *ScoringEngine) pausedLocked() bool {
 
 func (se *ScoringEngine) SetPaused(pause bool) bool {
 	se.pauseMu.Lock()
+	defer se.pauseMu.Unlock()
 	if se.pausedLocked() == pause {
-		se.pauseMu.Unlock()
 		return false
 	}
 	if pause {
 		se.resume = make(chan struct{})
-		se.pauseMu.Unlock()
-		return true
+	} else {
+		close(se.resume)
 	}
-	end := se.pausedAtEnd
-	se.pauseMu.Unlock()
-	// Persist overtime before releasing the loop: once resume is closed the loop
-	// re-reads the row at the next round boundary and would pause again if it
-	// still saw no overtime.
-	if end != nil {
-		if err := se.DB.SetOvertimeEnd(end); err != nil {
-			slog.Error("failed to save competition overtime; the next round will pause at the end again", "error", err)
-		}
-	}
-	se.pauseMu.Lock()
-	defer se.pauseMu.Unlock()
-	if !se.pausedLocked() {
-		return false // resumed concurrently while persisting
-	}
-	close(se.resume)
-	se.pausedAtEnd = nil
 	return true
 }
 
@@ -347,18 +332,30 @@ func (se *ScoringEngine) Paused() bool {
 }
 
 // pauseAtCompetitionEnd pauses the engine once CompetitionEndTime has passed,
-// unless an admin already resumed after that end (overtime, persisted in the DB).
+// unless an admin already resumed after that end (overtime, persisted in the
+// DB). Called by the round loop before each round: when the loop finds itself
+// released from a pause it took at this same end, that resume is overtime and
+// is persisted here, so the round loop is the only writer of OvertimeEnd.
 func (se *ScoringEngine) pauseAtCompetitionEnd() bool {
-	if se.Config.InjectSettings.End == nil || time.Now().Before(*se.Config.InjectSettings.End) {
+	end := se.Config.InjectSettings.End
+	if end == nil || time.Now().Before(*end) {
+		se.pausedAtEnd = nil
 		return false
 	}
-	end := *se.Config.InjectSettings.End
 	overtime, err := se.DB.GetOvertimeEnd()
 	if err != nil {
 		slog.Error("failed to read competition overtime; not pausing at the end", "error", err)
 		return false
 	}
-	if overtime.Equal(end) {
+	if overtime.Equal(*end) {
+		return false
+	}
+	if se.pausedAtEnd != nil && se.pausedAtEnd.Equal(*end) {
+		if err := se.DB.SetOvertimeEnd(end); err != nil {
+			slog.Error("failed to save competition overtime; retrying next round", "error", err)
+			return false
+		}
+		se.pausedAtEnd = nil
 		return false
 	}
 	se.pauseMu.Lock()
@@ -367,8 +364,9 @@ func (se *ScoringEngine) pauseAtCompetitionEnd() bool {
 		return false
 	}
 	se.resume = make(chan struct{})
-	se.pausedAtEnd = &end
-	slog.Info("Competition end reached, pausing scoring", "end", end)
+	pausedAt := *end
+	se.pausedAtEnd = &pausedAt
+	slog.Info("Competition end reached, pausing scoring", "end", pausedAt)
 	return true
 }
 

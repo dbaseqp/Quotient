@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"os"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -83,28 +82,6 @@ func (p *PostgresContainer) Exec(t *testing.T, sql string, args ...any) {
 	require.NoError(t, err)
 	defer sqlDB.Close() //nolint:errcheck
 	require.NoError(t, conn.Exec(sql, args...).Error)
-}
-
-// Hold runs sql in a transaction that stays open until release is called, e.g.
-// a SELECT ... FOR UPDATE that blocks the DB layer's writers of that row.
-func (p *PostgresContainer) Hold(t *testing.T, sql string, args ...any) (release func()) {
-	t.Helper()
-	conn, err := gorm.Open(postgres.Open(p.connString), &gorm.Config{})
-	require.NoError(t, err)
-	sqlDB, err := conn.DB()
-	require.NoError(t, err)
-	tx := conn.Begin()
-	require.NoError(t, tx.Error)
-	require.NoError(t, tx.Exec(sql, args...).Error)
-	var once sync.Once
-	release = func() {
-		once.Do(func() {
-			require.NoError(t, tx.Rollback().Error)
-			require.NoError(t, sqlDB.Close())
-		})
-	}
-	t.Cleanup(release)
-	return release
 }
 
 // Reconnect opens a fresh connection, re-running the migrations.

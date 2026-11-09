@@ -26,9 +26,8 @@ func (d *DB) competitionState() (CompetitionStateSchema, error) {
 	return state, err
 }
 
-// updateCompetitionState locks the singleton row, applies fn and saves every
-// column. fn runs in the same transaction. All access goes through this and
-// competitionState; migrate normalizes and seeds the row.
+// updateCompetitionState locks the singleton row, applies fn in the same
+// transaction and saves every column.
 func (d *DB) updateCompetitionState(fn func(tx *gorm.DB, state *CompetitionStateSchema) error) error {
 	return d.db.Transaction(func(tx *gorm.DB) error {
 		var state CompetitionStateSchema
