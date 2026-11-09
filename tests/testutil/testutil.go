@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"os"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -84,6 +85,28 @@ func (p *PostgresContainer) Exec(t *testing.T, sql string, args ...any) {
 	require.NoError(t, conn.Exec(sql, args...).Error)
 }
 
+// Hold runs sql in a transaction that stays open until release is called, e.g.
+// a SELECT ... FOR UPDATE that blocks the DB layer's writers of that row.
+func (p *PostgresContainer) Hold(t *testing.T, sql string, args ...any) (release func()) {
+	t.Helper()
+	conn, err := gorm.Open(postgres.Open(p.connString), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := conn.DB()
+	require.NoError(t, err)
+	tx := conn.Begin()
+	require.NoError(t, tx.Error)
+	require.NoError(t, tx.Exec(sql, args...).Error)
+	var once sync.Once
+	release = func() {
+		once.Do(func() {
+			require.NoError(t, tx.Rollback().Error)
+			require.NoError(t, sqlDB.Close())
+		})
+	}
+	t.Cleanup(release)
+	return release
+}
+
 // Reconnect opens a fresh connection, re-running the migrations.
 func (p *PostgresContainer) Reconnect(t *testing.T) *db.DB {
 	t.Helper()
@@ -94,11 +117,12 @@ func (p *PostgresContainer) Reconnect(t *testing.T) *db.DB {
 
 // ResetCompetitionState forgets that the competition ever started, now and
 // again at test cleanup, which the DB layer never does on its own: StartedAt is
-// kept once set.
+// kept once set. The singleton row stays, as migrate seeded it.
 func (p *PostgresContainer) ResetCompetitionState(t *testing.T) {
 	t.Helper()
-	p.Exec(t, "DELETE FROM competition_state_schemas")
-	t.Cleanup(func() { p.Exec(t, "DELETE FROM competition_state_schemas") })
+	const reset = "UPDATE competition_state_schemas SET started = false, started_at = NULL, overtime_end = NULL"
+	p.Exec(t, reset)
+	t.Cleanup(func() { p.Exec(t, reset) })
 }
 
 // testTeamCounter provides unique team IDs across test runs

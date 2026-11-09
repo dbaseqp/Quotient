@@ -1,7 +1,6 @@
 package db
 
 import (
-	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -20,24 +19,18 @@ type CompetitionStateSchema struct {
 
 const competitionStateID = 1
 
-// competitionState reads the singleton row; a missing row is the zero state.
+// competitionState reads the singleton row, which migrate seeds.
 func (d *DB) competitionState() (CompetitionStateSchema, error) {
 	var state CompetitionStateSchema
 	err := d.db.Where("id = ?", competitionStateID).First(&state).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return CompetitionStateSchema{}, nil
-	}
 	return state, err
 }
 
-// updateCompetitionState is the only writer of the singleton row: it creates
-// the row if absent, locks it, applies fn and saves every column. fn runs in
-// the same transaction.
+// updateCompetitionState locks the singleton row, applies fn and saves every
+// column. fn runs in the same transaction. All access goes through this and
+// competitionState; migrate normalizes and seeds the row.
 func (d *DB) updateCompetitionState(fn func(tx *gorm.DB, state *CompetitionStateSchema) error) error {
 	return d.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&CompetitionStateSchema{ID: competitionStateID}).Error; err != nil {
-			return err
-		}
 		var state CompetitionStateSchema
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", competitionStateID).First(&state).Error; err != nil {
 			return err
@@ -49,13 +42,16 @@ func (d *DB) updateCompetitionState(fn func(tx *gorm.DB, state *CompetitionState
 	})
 }
 
-// normalizeCompetitionState moves a legacy state row created with an
-// auto-assigned id onto competitionStateID.
-func (d *DB) normalizeCompetitionState() error {
-	return d.db.Exec(`UPDATE competition_state_schemas SET id = ?
+// initCompetitionState moves a legacy state row created with an auto-assigned
+// id onto competitionStateID, then seeds the row if there is none.
+func (d *DB) initCompetitionState() error {
+	if err := d.db.Exec(`UPDATE competition_state_schemas SET id = ?
 		WHERE id = (SELECT MIN(id) FROM competition_state_schemas)
 		AND NOT EXISTS (SELECT 1 FROM competition_state_schemas WHERE id = ?)`,
-		competitionStateID, competitionStateID).Error
+		competitionStateID, competitionStateID).Error; err != nil {
+		return err
+	}
+	return d.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&CompetitionStateSchema{ID: competitionStateID}).Error
 }
 
 func (d *DB) GetCompetitionStarted() bool {
@@ -94,16 +90,10 @@ func (d *DB) GetOvertimeEnd() (time.Time, error) {
 	return *state.OvertimeEnd, nil
 }
 
-func (d *DB) SetOvertimeEnd(end time.Time) error {
+// SetOvertimeEnd records the end an admin resumed scoring after; nil forgets it.
+func (d *DB) SetOvertimeEnd(end *time.Time) error {
 	return d.updateCompetitionState(func(_ *gorm.DB, state *CompetitionStateSchema) error {
-		state.OvertimeEnd = &end
-		return nil
-	})
-}
-
-func (d *DB) clearOvertimeEnd() error {
-	return d.updateCompetitionState(func(_ *gorm.DB, state *CompetitionStateSchema) error {
-		state.OvertimeEnd = nil
+		state.OvertimeEnd = end
 		return nil
 	})
 }

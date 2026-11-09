@@ -66,6 +66,31 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		assert.False(t, se.Paused())
 	})
 
+	t.Run("the resume is persisted before the loop is released", func(t *testing.T) {
+		fresh(t)
+		end := at(-2 * time.Hour)
+		se := newEngine(t, end)
+		require.True(t, se.pauseAtCompetitionEnd())
+
+		// Hold the state row so the overtime write cannot commit: a resume that
+		// released the loop first would let it read a NULL overtime and pause again.
+		release := pg.Hold(t, "SELECT id FROM competition_state_schemas WHERE id = 1 FOR UPDATE")
+		resumed := make(chan bool, 1)
+		go func() { resumed <- se.SetPaused(false) }()
+		select {
+		case <-resumed:
+			t.Fatal("resume returned without persisting overtime")
+		case <-time.After(300 * time.Millisecond):
+		}
+		assert.True(t, se.Paused(), "the loop stays blocked until overtime is committed")
+
+		release()
+		assert.True(t, <-resumed)
+		assert.True(t, end.Equal(overtime(t)))
+		assert.False(t, se.pauseAtCompetitionEnd(), "the woken loop runs overtime")
+		assert.False(t, se.Paused())
+	})
+
 	t.Run("a manual pause before the end is not overtime after it", func(t *testing.T) {
 		fresh(t)
 		se := newEngine(t, at(time.Hour))
@@ -120,7 +145,7 @@ func TestResetScoresForgetsOvertime(t *testing.T) {
 
 	end := time.Date(2026, 10, 31, 23, 30, 0, 0, time.UTC)
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
-	require.NoError(t, pg.DB.SetOvertimeEnd(end))
+	require.NoError(t, pg.DB.SetOvertimeEnd(&end))
 	got, err := pg.DB.GetOvertimeEnd()
 	require.NoError(t, err)
 	require.True(t, end.Equal(got))
@@ -153,7 +178,7 @@ func TestCompetitionState_ConcurrentStartAndOvertime(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for range 10 {
-			require.NoError(t, pg.DB.SetOvertimeEnd(end))
+			require.NoError(t, pg.DB.SetOvertimeEnd(&end))
 		}
 	}()
 	wg.Wait()
@@ -170,13 +195,14 @@ func TestCompetitionState_LegacyRowIsNormalized(t *testing.T) {
 	}
 
 	_, pg := testutil.StartContainers(t)
-	pg.ResetCompetitionState(t)
 	t.Cleanup(func() { pg.ResetCompetitionState(t) })
 
+	// A pre-normalization database: only a row with an auto-assigned id.
 	startedAt := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	pg.Exec(t, "DELETE FROM competition_state_schemas")
 	pg.Exec(t, "INSERT INTO competition_state_schemas (id, started, started_at) VALUES (5, true, ?)", startedAt)
 
-	d := pg.Reconnect(t)
+	d := pg.Reconnect(t) // runs migrate: normalization, then the seed, which must not add a second row
 	assert.True(t, d.GetCompetitionStarted(), "the legacy row is read as the singleton")
 	gotStart, err := d.GetCompetitionStart()
 	require.NoError(t, err)
@@ -184,7 +210,7 @@ func TestCompetitionState_LegacyRowIsNormalized(t *testing.T) {
 	assert.True(t, startedAt.Equal(*gotStart))
 
 	end := time.Date(2026, 10, 31, 23, 30, 0, 0, time.UTC)
-	require.NoError(t, d.SetOvertimeEnd(end))
+	require.NoError(t, d.SetOvertimeEnd(&end))
 	require.NoError(t, d.SetCompetitionStarted(false))
 	assert.False(t, d.GetCompetitionStarted())
 	gotEnd, err := d.GetOvertimeEnd()
@@ -194,4 +220,21 @@ func TestCompetitionState_LegacyRowIsNormalized(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, gotStart)
 	assert.True(t, startedAt.Equal(*gotStart), "the first start survives normalization and later writes")
+}
+
+func TestCompetitionState_SeededOnMigrate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	_, pg := testutil.StartContainers(t)
+	t.Cleanup(func() { pg.ResetCompetitionState(t) })
+	pg.Exec(t, "DELETE FROM competition_state_schemas")
+
+	d := pg.Reconnect(t)
+	got, err := d.GetOvertimeEnd()
+	require.NoError(t, err, "migrate seeds the singleton row")
+	assert.True(t, got.IsZero())
+	require.NoError(t, d.SetCompetitionStarted(true))
+	assert.True(t, d.GetCompetitionStarted())
 }

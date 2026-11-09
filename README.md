@@ -280,7 +280,7 @@ In rvb events, rounds that run while the competition is not started and no score
 ```toml
 [InjectSettings]
 CompetitionStartTime = "2027-03-19 08:00"  # Planned start, used to preview imported inject schedules
-CompetitionEndTime = "2027-03-19 16:30"    # No round starts after this; the engine pauses itself
+CompetitionEndTime = "2027-03-19 16:30"    # No round starts after this unless an admin resumes (overtime)
 CompetitionTimezone = "America/Los_Angeles"
 ```
 

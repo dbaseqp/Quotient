@@ -58,14 +58,6 @@ func TestInjectConfigParseEndOnly(t *testing.T) {
 	assert.Equal(t, time.Date(2027, time.March, 19, 23, 30, 0, 0, time.UTC), settings.End.UTC())
 }
 
-func TestInjectConfigParseClearsStaleTimes(t *testing.T) {
-	end := time.Date(2027, time.March, 19, 23, 30, 0, 0, time.UTC)
-	settings := InjectConfig{Start: &end, End: &end}
-	require.NoError(t, settings.parse())
-	assert.Nil(t, settings.Start)
-	assert.Nil(t, settings.End)
-}
-
 func TestCheckConfigRejectsEndNotAfterStart(t *testing.T) {
 	for _, end := range []string{"2027-03-19 08:00", "2027-03-19 07:59"} {
 		conf := &ConfigSettings{InjectSettings: InjectConfig{

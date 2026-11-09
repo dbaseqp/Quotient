@@ -46,9 +46,9 @@ type ScoringEngine struct {
 	pauseMu sync.Mutex
 	// resume is closed while the engine runs; while paused it is open and the round loop blocks on it.
 	resume chan struct{}
-	// pausedAtEnd is the competition end the round loop paused itself at, zero
+	// pausedAtEnd is the competition end the round loop paused itself at, nil
 	// for a manual pause. A resume persists it as overtime.
-	pausedAtEnd time.Time
+	pausedAtEnd *time.Time
 }
 
 func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
@@ -320,15 +320,23 @@ func (se *ScoringEngine) SetPaused(pause bool) bool {
 		se.pauseMu.Unlock()
 		return true
 	}
-	close(se.resume)
 	end := se.pausedAtEnd
-	se.pausedAtEnd = time.Time{}
 	se.pauseMu.Unlock()
-	if !end.IsZero() {
+	// Persist overtime before releasing the loop: once resume is closed the loop
+	// re-reads the row at the next round boundary and would pause again if it
+	// still saw no overtime.
+	if end != nil {
 		if err := se.DB.SetOvertimeEnd(end); err != nil {
 			slog.Error("failed to save competition overtime; the next round will pause at the end again", "error", err)
 		}
 	}
+	se.pauseMu.Lock()
+	defer se.pauseMu.Unlock()
+	if !se.pausedLocked() {
+		return false // resumed concurrently while persisting
+	}
+	close(se.resume)
+	se.pausedAtEnd = nil
 	return true
 }
 
@@ -338,22 +346,13 @@ func (se *ScoringEngine) Paused() bool {
 	return se.pausedLocked()
 }
 
-// competitionEnded reports the configured CompetitionEndTime once it has passed.
-func (se *ScoringEngine) competitionEnded() (time.Time, bool) {
-	end := se.Config.InjectSettings.End
-	if end == nil || time.Now().Before(*end) {
-		return time.Time{}, false
-	}
-	return *end, true
-}
-
-// pauseAtCompetitionEnd pauses the engine once the competition end has passed,
+// pauseAtCompetitionEnd pauses the engine once CompetitionEndTime has passed,
 // unless an admin already resumed after that end (overtime, persisted in the DB).
 func (se *ScoringEngine) pauseAtCompetitionEnd() bool {
-	end, ok := se.competitionEnded()
-	if !ok {
+	if se.Config.InjectSettings.End == nil || time.Now().Before(*se.Config.InjectSettings.End) {
 		return false
 	}
+	end := *se.Config.InjectSettings.End
 	overtime, err := se.DB.GetOvertimeEnd()
 	if err != nil {
 		slog.Error("failed to read competition overtime; not pausing at the end", "error", err)
@@ -368,7 +367,7 @@ func (se *ScoringEngine) pauseAtCompetitionEnd() bool {
 		return false
 	}
 	se.resume = make(chan struct{})
-	se.pausedAtEnd = end
+	se.pausedAtEnd = &end
 	slog.Info("Competition end reached, pausing scoring", "end", end)
 	return true
 }

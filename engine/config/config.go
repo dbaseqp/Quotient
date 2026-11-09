@@ -158,7 +158,6 @@ type InjectConfig struct {
 
 // parse fills Start and End from the configured strings.
 func (settings *InjectConfig) parse() error {
-	settings.Start, settings.End = nil, nil
 	if settings.CompetitionStartTime == "" && settings.CompetitionEndTime == "" {
 		return nil
 	}

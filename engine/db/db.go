@@ -60,8 +60,8 @@ func (d *DB) migrate() {
 	if err != nil {
 		log.Fatalln("Failed to auto migrate:", err)
 	}
-	if err := d.normalizeCompetitionState(); err != nil {
-		log.Fatalln("Failed to normalize competition state:", err)
+	if err := d.initCompetitionState(); err != nil {
+		log.Fatalln("Failed to initialize competition state:", err)
 	}
 
 	// Create materialized views
@@ -158,7 +158,7 @@ func (d *DB) ResetScores() error {
 	if err := d.db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas, preflight_check_schemas, preflight_round_schemas CASCADE").Error; err != nil {
 		return err
 	}
-	if err := d.clearOvertimeEnd(); err != nil {
+	if err := d.SetOvertimeEnd(nil); err != nil {
 		return err
 	}
 
