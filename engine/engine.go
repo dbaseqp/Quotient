@@ -349,7 +349,7 @@ func (se *ScoringEngine) pauseAtCompetitionEnd() bool {
 	if overtime.Equal(*end) {
 		return false
 	}
-	if se.pausedAtEnd != nil && se.pausedAtEnd.Equal(*end) {
+	if se.pausedAtEnd != nil {
 		if err := se.DB.SetOvertimeEnd(end); err != nil {
 			slog.Error("failed to save competition overtime; retrying next round", "error", err)
 			return false

@@ -152,7 +152,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		assert.True(t, later.Equal(overtime(t)))
 	})
 
-	t.Run("a score reset while paused at the end forgets the pending end-pause", func(t *testing.T) {
+	t.Run("Start forgets a pending end-pause taken before it ran", func(t *testing.T) {
 		fresh(t)
 		end := at(-2 * time.Hour)
 		se := newEngine(t, end)
