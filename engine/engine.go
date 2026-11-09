@@ -32,7 +32,6 @@ type ScoringEngine struct {
 	uptimeMu              sync.RWMutex
 	SlaPerService         map[uint]map[string]int
 	CurrentRound          uint
-	PreflightRound        uint // last preflight round run; see preflight()
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
@@ -104,11 +103,6 @@ func (se *ScoringEngine) Start() {
 	} else {
 		se.CurrentRound = uint(t.ID) + 1
 	}
-	if last, err := se.DB.GetLastPreflightRound(); err != nil {
-		slog.Error("failed to get last preflight round", "error", err)
-	} else {
-		se.PreflightRound = last
-	}
 
 	se.uptimeMu.Lock()
 	if err := se.DB.LoadUptimes(&se.UptimePerService); err != nil {
@@ -150,20 +144,20 @@ func (se *ScoringEngine) Start() {
 			default:
 			}
 
-			preflight := se.Config.RequiredSettings.EventType == "rvb" && !se.competitionEverStarted()
+			started, err := se.DB.CompetitionEverStarted()
+			if err != nil {
+				slog.Error("failed to read competition start", "error", err)
+				return
+			}
 			se.CurrentRoundStartTime = time.Now()
 			se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
 
-			var err error
 			switch {
-			case preflight:
-				slog.Info("Starting preflight round", "preflight_round", se.PreflightRound+1)
+			case se.Config.RequiredSettings.EventType == "rvb" && !started:
 				err = se.preflight()
 			case se.Config.RequiredSettings.EventType == "koth":
-				slog.Info("Starting round", "round", se.CurrentRound)
 				err = se.koth()
 			case se.Config.RequiredSettings.EventType == "rvb":
-				slog.Info("Starting round", "round", se.CurrentRound)
 				err = se.rvb()
 			default:
 				slog.Error("Unknown event type", "eventType", se.Config.RequiredSettings.EventType)
@@ -173,13 +167,6 @@ func (se *ScoringEngine) Start() {
 				return
 			}
 
-			if preflight {
-				slog.Info(fmt.Sprintf("Preflight round %d complete", se.PreflightRound))
-			} else {
-				slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
-				se.CurrentRound++
-				se.RedisClient.Publish(context.Background(), "events", "round_finish")
-			}
 			slog.Info(fmt.Sprintf("Next round will start in %s, sleeping...", time.Until(se.NextRoundStartTime).String()))
 			select {
 			case <-stop:
@@ -339,16 +326,6 @@ func (se *ScoringEngine) Paused() bool {
 	return se.pausedLocked()
 }
 
-// Stopping the competition after it starts doesn't bring preflight rounds back.
-func (se *ScoringEngine) competitionEverStarted() bool {
-	start, err := se.DB.GetCompetitionStart()
-	if err != nil {
-		slog.Error("failed to read competition start; scoring the round", "error", err)
-		return true
-	}
-	return start != nil
-}
-
 // ResetScores resets the engine to the initial state and stops the engine
 func (se *ScoringEngine) ResetScores() error {
 	slog.Info("Resetting scores and clearing Redis queues")
@@ -387,35 +364,47 @@ func (se *ScoringEngine) koth() error {
 	// enginePauseWg.Wait()
 
 	// do koth stuff
+	se.finishScoredRound()
 	return nil
 }
 
+// perform a round of rvb
 func (se *ScoringEngine) rvb() error {
+	slog.Info("Starting round", "round", se.CurrentRound)
 	results, err := se.runChecks(se.CurrentRound, false)
 	if err != nil {
 		return err
 	}
 	se.processCollectedResults(results)
+	se.finishScoredRound()
 	return nil
 }
 
+func (se *ScoringEngine) finishScoredRound() {
+	slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
+	se.CurrentRound++
+	se.RedisClient.Publish(context.Background(), "events", "round_finish")
+}
+
+// preflight runs the same checks as rvb but stores the results apart from
+// scoring. The round row is written even when no results arrived so a timed-out
+// round is visible to admins.
 func (se *ScoringEngine) preflight() error {
-	round := se.PreflightRound + 1
-	results, err := se.runChecks(round, true)
+	last, err := se.DB.GetLastPreflightRoundID()
 	if err != nil {
 		return err
 	}
-	se.PreflightRound = round
-	if len(results) == 0 {
-		slog.Warn("No results collected for preflight round", "preflight_round", round)
-		return nil
+	round := db.PreflightRoundSchema{ID: last + 1, StartTime: se.CurrentRoundStartTime}
+	slog.Info("Starting preflight round", "preflight_round", round.ID)
+	results, err := se.runChecks(round.ID, true)
+	if err != nil {
+		return err
 	}
-
-	rows := make([]db.PreflightCheckSchema, 0, len(results))
+	if len(results) == 0 {
+		slog.Warn("No results collected for preflight round", "preflight_round", round.ID)
+	}
 	for _, result := range results {
-		rows = append(rows, db.PreflightCheckSchema{
-			RoundID:     round,
-			StartTime:   se.CurrentRoundStartTime,
+		round.Checks = append(round.Checks, db.PreflightCheckSchema{
 			TeamID:      result.TeamID,
 			ServiceName: sanitizeDBString(result.ServiceName),
 			ServiceType: result.ServiceType,
@@ -424,9 +413,10 @@ func (se *ScoringEngine) preflight() error {
 			Debug:       sanitizeDBString(result.Debug),
 		})
 	}
-	if err := se.DB.CreatePreflightChecks(rows); err != nil {
-		slog.Error("failed to save preflight round", "preflight_round", round, "error", err)
+	if err := se.DB.CreatePreflightRound(round); err != nil {
+		slog.Error("failed to save preflight round", "preflight_round", round.ID, "error", err)
 	}
+	slog.Info(fmt.Sprintf("Preflight round %d complete", round.ID))
 	return nil
 }
 

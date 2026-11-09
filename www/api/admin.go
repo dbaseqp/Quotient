@@ -165,10 +165,10 @@ func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetPreflight(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.eng.DB.GetLatestPreflightChecks()
+	round, err := a.eng.DB.GetLatestPreflightRound()
 	if err != nil {
-		slog.Error("failed to get preflight checks", "error", err)
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve preflight checks"})
+		slog.Error("failed to get preflight round", "error", err)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve preflight round"})
 		return
 	}
 
@@ -185,9 +185,11 @@ func (a *API) GetPreflight(w http.ResponseWriter, r *http.Request) {
 		Round     uint       `json:"round"`
 		StartTime *time.Time `json:"start_time"`
 		Checks    []check    `json:"checks"`
-	}{Checks: make([]check, 0, len(rows))}
-	for _, row := range rows {
-		resp.Round, resp.StartTime = row.RoundID, &row.StartTime
+	}{Round: round.ID, Checks: make([]check, 0, len(round.Checks))}
+	if round.ID != 0 {
+		resp.StartTime = &round.StartTime
+	}
+	for _, row := range round.Checks {
 		resp.Checks = append(resp.Checks, check{row.TeamID, row.Team.Name, row.ServiceName, row.ServiceType, row.Result, row.Error, row.Debug})
 	}
 	WriteJSON(w, http.StatusOK, resp)

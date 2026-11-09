@@ -56,7 +56,7 @@ func (d *DB) migrate() {
 		&VulnSchema{}, &BoxSchema{}, &VectorSchema{}, &AttackSchema{}, &CompetitionStateSchema{},
 		// credential schemas for PCR management
 		&OriginalCredentialSchema{}, &CredentialSchema{}, &PCRHistorySchema{},
-		&PreflightCheckSchema{})
+		&PreflightRoundSchema{}, &PreflightCheckSchema{})
 	if err != nil {
 		log.Fatalln("Failed to auto migrate:", err)
 	}
@@ -148,9 +148,11 @@ func (d *DB) AddTeams(conf *config.ConfigSettings) error {
 	return nil
 }
 
+// ResetScores returns the event to the state before any round ran: scored and
+// preflight rounds are dropped and the competition is no longer started, so the
+// engine runs preflight rounds again.
 func (d *DB) ResetScores() error {
-	// truncate servicecheckschemas, slaschemas, and roundschemas with cascade
-	if err := d.db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas CASCADE").Error; err != nil {
+	if err := d.db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas, preflight_check_schemas, preflight_round_schemas, competition_state_schemas CASCADE").Error; err != nil {
 		return err
 	}
 

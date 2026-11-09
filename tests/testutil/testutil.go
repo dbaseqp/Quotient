@@ -72,16 +72,15 @@ func startPostgres(t *testing.T) *PostgresContainer {
 	return &PostgresContainer{DB: db.Connect(connString), connString: connString}
 }
 
-// ResetCompetitionState forgets that the competition ever started, which the
-// DB layer never does on its own: StartedAt is kept once set.
-func (p *PostgresContainer) ResetCompetitionState(t *testing.T) {
+// Exec runs raw SQL for test setups the DB layer has no API for.
+func (p *PostgresContainer) Exec(t *testing.T, sql string) {
 	t.Helper()
 	conn, err := gorm.Open(postgres.Open(p.connString), &gorm.Config{})
 	require.NoError(t, err)
 	sqlDB, err := conn.DB()
 	require.NoError(t, err)
 	defer sqlDB.Close() //nolint:errcheck
-	require.NoError(t, conn.Exec("DELETE FROM competition_state_schemas").Error)
+	require.NoError(t, conn.Exec(sql).Error)
 }
 
 // testTeamCounter provides unique team IDs across test runs
