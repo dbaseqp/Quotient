@@ -30,12 +30,8 @@ func (a *API) PauseEngine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Debug("pause engine requested", "wasEnginePausedWhenRequestIssued", a.eng.IsEnginePaused, "setPauseTo", form.Pause)
-	if a.eng.IsEnginePaused && !form.Pause {
-		a.eng.ResumeEngine()
-	} else if !a.eng.IsEnginePaused && form.Pause {
-		a.eng.PauseEngine()
-	} else {
+	slog.Debug("pause engine requested", "setPauseTo", form.Pause)
+	if !a.eng.SetPaused(form.Pause) {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid engine state transition"})
 		return
 	}
@@ -162,7 +158,7 @@ func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
 		"last_round":          lastRound,
 		"current_round_time":  a.eng.CurrentRoundStartTime,
 		"next_round_time":     a.eng.NextRoundStartTime,
-		"running":             !a.eng.IsEnginePaused,
+		"running":             !a.eng.Paused(),
 		"competition_started": a.eng.DB.GetCompetitionStarted(),
 	})
 }
