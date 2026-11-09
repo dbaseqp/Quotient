@@ -46,10 +46,8 @@ type ScoringEngine struct {
 	pauseMu sync.Mutex
 	// resume is closed while the engine runs; while paused it is open and the round loop blocks on it.
 	resume chan struct{}
-	// pausedAtEnd is the competition end the round loop paused itself at, nil
-	// for a manual pause. Owned by the round loop (pauseAtCompetitionEnd), no
-	// mutex: the loop is the only goroutine that pauses at the end and later
-	// observes the resume, so it alone decides and persists overtime.
+	// pausedAtEnd is the competition end the round loop paused itself at (nil
+	// for a manual pause); owned by the round loop, which alone decides overtime.
 	pausedAtEnd *time.Time
 }
 
@@ -126,6 +124,7 @@ func (se *ScoringEngine) Start() {
 	}
 
 	se.NextRoundStartTime = time.Time{}
+	se.pausedAtEnd = nil
 
 	stop := make(chan struct{})
 	loopDone := make(chan struct{})
@@ -331,15 +330,15 @@ func (se *ScoringEngine) Paused() bool {
 	return se.pausedLocked()
 }
 
-// pauseAtCompetitionEnd pauses the engine once CompetitionEndTime has passed,
-// unless an admin already resumed after that end (overtime, persisted in the
-// DB). Called by the round loop before each round: when the loop finds itself
-// released from a pause it took at this same end, that resume is overtime and
-// is persisted here, so the round loop is the only writer of OvertimeEnd.
+// pauseAtCompetitionEnd pauses once CompetitionEndTime has passed unless an
+// admin resumed after that end; a resume from its own end-pause is recorded
+// here as overtime (OvertimeEnd), which only ResetScores clears.
 func (se *ScoringEngine) pauseAtCompetitionEnd() bool {
 	end := se.Config.InjectSettings.End
-	if end == nil || time.Now().Before(*end) {
+	if se.pausedAtEnd != nil && (end == nil || !se.pausedAtEnd.Equal(*end)) {
 		se.pausedAtEnd = nil
+	}
+	if end == nil || time.Now().Before(*end) {
 		return false
 	}
 	overtime, err := se.DB.GetOvertimeEnd()
@@ -361,12 +360,11 @@ func (se *ScoringEngine) pauseAtCompetitionEnd() bool {
 	se.pauseMu.Lock()
 	defer se.pauseMu.Unlock()
 	if se.pausedLocked() {
-		return false
+		return true
 	}
 	se.resume = make(chan struct{})
-	pausedAt := *end
-	se.pausedAtEnd = &pausedAt
-	slog.Info("Competition end reached, pausing scoring", "end", pausedAt)
+	se.pausedAtEnd = end
+	slog.Info("Competition end reached, pausing scoring", "end", *end)
 	return true
 }
 

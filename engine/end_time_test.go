@@ -75,14 +75,17 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		require.True(t, se.pauseAtCompetitionEnd())
 		require.True(t, se.SetPaused(false))
 
-		pg.Exec(t, `CREATE OR REPLACE FUNCTION reject_competition_state_write() RETURNS trigger LANGUAGE plpgsql AS
-			$$ BEGIN RAISE EXCEPTION 'competition_state write rejected by test'; END $$`)
-		pg.Exec(t, "CREATE TRIGGER reject_write BEFORE UPDATE ON competition_state_schemas EXECUTE FUNCTION reject_competition_state_write()")
 		dropTrigger := func() { pg.Exec(t, "DROP TRIGGER IF EXISTS reject_write ON competition_state_schemas") }
+		dropFunction := func() { pg.Exec(t, "DROP FUNCTION IF EXISTS reject_competition_state_write()") }
 		t.Cleanup(func() {
 			dropTrigger()
-			pg.Exec(t, "DROP FUNCTION IF EXISTS reject_competition_state_write()")
+			dropFunction()
 		})
+		dropTrigger() // a killed earlier run may have left these behind
+		dropFunction()
+		pg.Exec(t, `CREATE FUNCTION reject_competition_state_write() RETURNS trigger LANGUAGE plpgsql AS
+			$$ BEGIN RAISE EXCEPTION 'competition_state write rejected by test'; END $$`)
+		pg.Exec(t, "CREATE TRIGGER reject_write BEFORE UPDATE ON competition_state_schemas EXECUTE FUNCTION reject_competition_state_write()")
 
 		assert.False(t, se.pauseAtCompetitionEnd(), "a failed overtime write does not pause the loop again")
 		assert.True(t, overtime(t).IsZero())
@@ -110,6 +113,15 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		assert.True(t, se.Config.InjectSettings.End.Equal(overtime(t)))
 	})
 
+	t.Run("an admin pause landing before the end check re-blocks the loop", func(t *testing.T) {
+		fresh(t)
+		se := newEngine(t, at(-2*time.Hour))
+		require.True(t, se.SetPaused(true))
+		assert.True(t, se.pauseAtCompetitionEnd(), "the loop waits on the admin's pause instead of running a round")
+		assert.Nil(t, se.pausedAtEnd, "the admin's pause is not an end-pause")
+		assert.True(t, overtime(t).IsZero())
+	})
+
 	t.Run("an end moved into the future forgets a pending end-pause", func(t *testing.T) {
 		fresh(t)
 		se := newEngine(t, at(-2*time.Hour))
@@ -120,6 +132,50 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		assert.False(t, se.pauseAtCompetitionEnd())
 		assert.Nil(t, se.pausedAtEnd)
 		assert.True(t, overtime(t).IsZero(), "a resume after a superseded end is not overtime")
+	})
+
+	t.Run("a pending end-pause for a superseded end is forgotten even when the new end is overtime", func(t *testing.T) {
+		fresh(t)
+		old := at(-2 * time.Hour)
+		se := newEngine(t, old)
+		require.True(t, se.pauseAtCompetitionEnd())
+		require.True(t, se.SetPaused(false))
+
+		later := at(-time.Hour)
+		require.NoError(t, pg.DB.SetOvertimeEnd(later), "an earlier run already resumed past the new end")
+		se.Config.InjectSettings.End = later
+		assert.False(t, se.pauseAtCompetitionEnd())
+		assert.Nil(t, se.pausedAtEnd)
+
+		se.Config.InjectSettings.End = old
+		assert.True(t, se.pauseAtCompetitionEnd(), "reverting to the old end pauses instead of granting its overtime")
+		assert.True(t, later.Equal(overtime(t)))
+	})
+
+	t.Run("a score reset while paused at the end forgets the pending end-pause", func(t *testing.T) {
+		fresh(t)
+		end := at(-2 * time.Hour)
+		se := newEngine(t, end)
+		require.True(t, se.pauseAtCompetitionEnd())
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			se.Start()
+		}()
+		require.Eventually(t, func() bool {
+			return redis.Client.PubSubNumSub(t.Context(), "events").Val()["events"] >= 1
+		}, 2*time.Second, 20*time.Millisecond)
+		require.NoError(t, se.ResetScores())
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatal("Start did not return after ResetScores")
+		}
+
+		require.True(t, se.SetPaused(false))
+		assert.True(t, se.pauseAtCompetitionEnd(), "the resume after a reset is not overtime for the old end")
+		assert.True(t, overtime(t).IsZero())
 	})
 
 	t.Run("a restart after an overtime resume keeps running", func(t *testing.T) {
