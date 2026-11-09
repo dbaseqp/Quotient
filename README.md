@@ -284,7 +284,7 @@ CompetitionEndTime = "2027-03-19 16:30"    # No round starts after this; the eng
 CompetitionTimezone = "America/Los_Angeles"
 ```
 
-When `CompetitionEndTime` passes, the engine pauses before the next round. Resuming after that runs overtime until you pause again.
+When `CompetitionEndTime` passes, the engine pauses itself before the next round. If an admin resumes after that pause, the resume is persisted as overtime (`overtime_end` in the competition state) and the engine keeps running past the end — across restarts — until scores are reset or `CompetitionEndTime` is changed. A manual pause that merely spans the end is not overtime: the engine still pauses at the next round boundary.
 
 #### UI Settings
 

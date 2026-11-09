@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dbaseqp/Quotient/engine/config"
 	"github.com/dbaseqp/Quotient/tests/testutil"
 
 	"github.com/stretchr/testify/assert"
@@ -18,21 +17,30 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 	}
 
 	redis, pg := testutil.StartContainers(t)
-	at := func(d time.Duration) string { return time.Now().UTC().Add(d).Format("2006-01-02 15:04") }
-	newEngine := func(t *testing.T, end string) *ScoringEngine {
+	at := func(d time.Duration) *time.Time {
+		end := time.Now().Add(d).Truncate(time.Second)
+		return &end
+	}
+	newEngine := func(t *testing.T, end *time.Time) *ScoringEngine {
 		t.Helper()
 		se := NewTestEngine(t, redis, pg, 3)
-		se.Config.InjectSettings = config.InjectConfig{CompetitionEndTime: end, CompetitionTimezone: "UTC"}
+		se.Config.InjectSettings.End = end
 		return se
 	}
 	fresh := func(t *testing.T) {
 		pg.ResetCompetitionState(t)
 		t.Cleanup(func() { pg.ResetCompetitionState(t) })
 	}
+	overtime := func(t *testing.T) time.Time {
+		t.Helper()
+		got, err := pg.DB.GetOvertimeEnd()
+		require.NoError(t, err)
+		return got
+	}
 
 	t.Run("no end configured", func(t *testing.T) {
 		fresh(t)
-		se := newEngine(t, "")
+		se := newEngine(t, nil)
 		assert.False(t, se.pauseAtCompetitionEnd())
 		assert.False(t, se.Paused())
 	})
@@ -46,21 +54,31 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 
 	t.Run("after the end pauses once and honors a resume", func(t *testing.T) {
 		fresh(t)
-		se := newEngine(t, at(-2*time.Hour))
+		end := at(-2 * time.Hour)
+		se := newEngine(t, end)
 		assert.True(t, se.pauseAtCompetitionEnd())
 		assert.True(t, se.Paused())
+		assert.True(t, overtime(t).IsZero(), "pausing at the end is not overtime yet")
 
 		require.True(t, se.SetPaused(false))
+		assert.True(t, end.Equal(overtime(t)), "the resume is persisted as overtime")
 		assert.False(t, se.pauseAtCompetitionEnd(), "an admin resume after the end runs overtime")
 		assert.False(t, se.Paused())
 	})
 
-	t.Run("a manual pause and resume after the end runs overtime", func(t *testing.T) {
+	t.Run("a manual pause before the end is not overtime after it", func(t *testing.T) {
 		fresh(t)
-		se := newEngine(t, at(-2*time.Hour))
+		se := newEngine(t, at(time.Hour))
 		require.True(t, se.SetPaused(true))
+
+		se.Config.InjectSettings.End = at(-time.Hour) // the end passes while paused
 		require.True(t, se.SetPaused(false))
-		assert.False(t, se.pauseAtCompetitionEnd())
+		assert.True(t, overtime(t).IsZero(), "a resume from a manual pause records no overtime")
+		assert.True(t, se.pauseAtCompetitionEnd(), "the end is enforced at the next round boundary")
+		assert.True(t, se.Paused())
+
+		require.True(t, se.SetPaused(false))
+		assert.False(t, se.pauseAtCompetitionEnd(), "resuming after the engine paused at the end runs overtime")
 	})
 
 	t.Run("a restart after an overtime resume keeps running", func(t *testing.T) {
@@ -85,7 +103,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		require.True(t, se.pauseAtCompetitionEnd())
 		require.True(t, se.SetPaused(false))
 
-		se.Config.InjectSettings.CompetitionEndTime = at(-time.Hour)
+		se.Config.InjectSettings.End = at(-time.Hour)
 		assert.True(t, se.pauseAtCompetitionEnd())
 		assert.True(t, se.Paused())
 	})
@@ -144,4 +162,36 @@ func TestCompetitionState_ConcurrentStartAndOvertime(t *testing.T) {
 	gotEnd, err := pg.DB.GetOvertimeEnd()
 	require.NoError(t, err)
 	assert.True(t, end.Equal(gotEnd))
+}
+
+func TestCompetitionState_LegacyRowIsNormalized(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	_, pg := testutil.StartContainers(t)
+	pg.ResetCompetitionState(t)
+	t.Cleanup(func() { pg.ResetCompetitionState(t) })
+
+	startedAt := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	pg.Exec(t, "INSERT INTO competition_state_schemas (id, started, started_at) VALUES (5, true, ?)", startedAt)
+
+	d := pg.Reconnect(t)
+	assert.True(t, d.GetCompetitionStarted(), "the legacy row is read as the singleton")
+	gotStart, err := d.GetCompetitionStart()
+	require.NoError(t, err)
+	require.NotNil(t, gotStart)
+	assert.True(t, startedAt.Equal(*gotStart))
+
+	end := time.Date(2026, 10, 31, 23, 30, 0, 0, time.UTC)
+	require.NoError(t, d.SetOvertimeEnd(end))
+	require.NoError(t, d.SetCompetitionStarted(false))
+	assert.False(t, d.GetCompetitionStarted())
+	gotEnd, err := d.GetOvertimeEnd()
+	require.NoError(t, err)
+	assert.True(t, end.Equal(gotEnd), "writes land on the same row as reads")
+	gotStart, err = d.GetCompetitionStart()
+	require.NoError(t, err)
+	require.NotNil(t, gotStart)
+	assert.True(t, startedAt.Equal(*gotStart), "the first start survives normalization and later writes")
 }

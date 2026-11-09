@@ -8,83 +8,102 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// CompetitionStateSchema is a singleton: every reader and writer uses row
+// competitionStateID, which migrate normalizes legacy rows to.
 type CompetitionStateSchema struct {
 	ID        uint `gorm:"primarykey"`
 	Started   bool
 	StartedAt *time.Time
-	// OvertimeEnd is the configured end an admin resumed scoring after.
+	// OvertimeEnd is the competition end an admin resumed scoring after.
 	OvertimeEnd *time.Time
 }
 
-func (d *DB) GetCompetitionStarted() bool {
+const competitionStateID = 1
+
+// competitionState reads the singleton row; a missing row is the zero state.
+func (d *DB) competitionState() (CompetitionStateSchema, error) {
 	var state CompetitionStateSchema
-	result := d.db.First(&state)
-	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return false
+	err := d.db.Where("id = ?", competitionStateID).First(&state).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return CompetitionStateSchema{}, nil
+	}
+	return state, err
+}
+
+// updateCompetitionState is the only writer of the singleton row: it creates
+// the row if absent, locks it, applies fn and saves every column. fn runs in
+// the same transaction.
+func (d *DB) updateCompetitionState(fn func(tx *gorm.DB, state *CompetitionStateSchema) error) error {
+	return d.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&CompetitionStateSchema{ID: competitionStateID}).Error; err != nil {
+			return err
 		}
+		var state CompetitionStateSchema
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", competitionStateID).First(&state).Error; err != nil {
+			return err
+		}
+		if err := fn(tx, &state); err != nil {
+			return err
+		}
+		return tx.Save(&state).Error
+	})
+}
+
+// normalizeCompetitionState moves a legacy state row created with an
+// auto-assigned id onto competitionStateID.
+func (d *DB) normalizeCompetitionState() error {
+	return d.db.Exec(`UPDATE competition_state_schemas SET id = ?
+		WHERE id = (SELECT MIN(id) FROM competition_state_schemas)
+		AND NOT EXISTS (SELECT 1 FROM competition_state_schemas WHERE id = ?)`,
+		competitionStateID, competitionStateID).Error
+}
+
+func (d *DB) GetCompetitionStarted() bool {
+	state, err := d.competitionState()
+	if err != nil {
 		return false
 	}
 	return state.Started
 }
 
 func (d *DB) SetCompetitionStarted(started bool) error {
-	return d.db.Transaction(func(tx *gorm.DB) error {
-		var state CompetitionStateSchema
-		result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&state)
-		if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return result.Error
-		}
-
-		firstStart := started && state.StartedAt == nil
+	return d.updateCompetitionState(func(tx *gorm.DB, state *CompetitionStateSchema) error {
 		state.Started = started
-		if firstStart {
-			now := time.Now()
-			state.StartedAt = &now
+		if !started || state.StartedAt != nil {
+			return nil
 		}
-
-		state.ID = 1
-		if err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"started", "started_at"}),
-		}).Create(&state).Error; err != nil {
-			return err
-		}
-
-		if firstStart {
-			return recalculateImportedInjectTimes(tx, *state.StartedAt)
-		}
-		return nil
+		now := time.Now()
+		state.StartedAt = &now
+		return recalculateImportedInjectTimes(tx, now)
 	})
 }
 
 func (d *DB) GetCompetitionStart() (*time.Time, error) {
-	var state CompetitionStateSchema
-	result := d.db.First(&state)
-	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, nil
-		}
-		return nil, result.Error
+	state, err := d.competitionState()
+	if err != nil {
+		return nil, err
 	}
 	return state.StartedAt, nil
 }
 
 func (d *DB) GetOvertimeEnd() (time.Time, error) {
-	var state CompetitionStateSchema
-	result := d.db.First(&state)
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return time.Time{}, nil
-	}
-	if result.Error != nil || state.OvertimeEnd == nil {
-		return time.Time{}, result.Error
+	state, err := d.competitionState()
+	if err != nil || state.OvertimeEnd == nil {
+		return time.Time{}, err
 	}
 	return *state.OvertimeEnd, nil
 }
 
 func (d *DB) SetOvertimeEnd(end time.Time) error {
-	return d.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"overtime_end"}),
-	}).Create(&CompetitionStateSchema{ID: 1, OvertimeEnd: &end}).Error
+	return d.updateCompetitionState(func(_ *gorm.DB, state *CompetitionStateSchema) error {
+		state.OvertimeEnd = &end
+		return nil
+	})
+}
+
+func (d *DB) clearOvertimeEnd() error {
+	return d.updateCompetitionState(func(_ *gorm.DB, state *CompetitionStateSchema) error {
+		state.OvertimeEnd = nil
+		return nil
+	})
 }

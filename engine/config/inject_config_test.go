@@ -8,55 +8,62 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCompetitionStartUsesNamedTimezone(t *testing.T) {
-	conf := ConfigSettings{InjectSettings: InjectConfig{
+func TestInjectConfigParseUsesNamedTimezone(t *testing.T) {
+	settings := InjectConfig{
 		CompetitionStartTime: "2027-03-19 08:00",
+		CompetitionEndTime:   "2027-03-19 16:30",
 		CompetitionTimezone:  "America/Los_Angeles",
-	}}
-
-	start, err := conf.CompetitionStart()
-	require.NoError(t, err)
-	assert.Equal(t, time.Date(2027, time.March, 19, 15, 0, 0, 0, time.UTC), start.UTC())
+	}
+	require.NoError(t, settings.parse())
+	require.NotNil(t, settings.Start)
+	require.NotNil(t, settings.End)
+	assert.Equal(t, time.Date(2027, time.March, 19, 15, 0, 0, 0, time.UTC), settings.Start.UTC())
+	assert.Equal(t, time.Date(2027, time.March, 19, 23, 30, 0, 0, time.UTC), settings.End.UTC())
 }
 
-func TestCompetitionStartRejectsIncompleteSettings(t *testing.T) {
-	conf := ConfigSettings{InjectSettings: InjectConfig{CompetitionStartTime: "2027-03-19 08:00"}}
-	_, err := conf.CompetitionStart()
-	require.Error(t, err)
+func TestInjectConfigParseUnsetIsNil(t *testing.T) {
+	settings := InjectConfig{CompetitionTimezone: "UTC"}
+	require.NoError(t, settings.parse())
+	assert.Nil(t, settings.Start)
+	assert.Nil(t, settings.End)
 }
 
-func TestCompetitionStartRejectsNonexistentLocalTime(t *testing.T) {
-	conf := ConfigSettings{InjectSettings: InjectConfig{
+func TestInjectConfigParseRequiresTimezone(t *testing.T) {
+	for _, settings := range []InjectConfig{
+		{CompetitionStartTime: "2027-03-19 08:00"},
+		{CompetitionEndTime: "2027-03-19 16:30"},
+	} {
+		require.Error(t, settings.parse())
+	}
+}
+
+func TestInjectConfigParseRejectsNonexistentLocalTime(t *testing.T) {
+	settings := InjectConfig{
 		CompetitionStartTime: "2027-03-14 02:30",
 		CompetitionTimezone:  "America/Los_Angeles",
-	}}
-	_, err := conf.CompetitionStart()
+	}
+	err := settings.parse()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not exist")
 }
 
-func TestCompetitionEndUnsetIsNotConfigured(t *testing.T) {
-	conf := ConfigSettings{}
-	_, ok, err := conf.CompetitionEnd()
-	require.NoError(t, err)
-	assert.False(t, ok)
-}
-
-func TestCompetitionEndUsesNamedTimezone(t *testing.T) {
-	conf := ConfigSettings{InjectSettings: InjectConfig{
+func TestInjectConfigParseEndOnly(t *testing.T) {
+	settings := InjectConfig{
 		CompetitionEndTime:  "2027-03-19 16:30",
 		CompetitionTimezone: "America/Los_Angeles",
-	}}
-	end, ok, err := conf.CompetitionEnd()
-	require.NoError(t, err)
-	assert.True(t, ok)
-	assert.Equal(t, time.Date(2027, time.March, 19, 23, 30, 0, 0, time.UTC), end.UTC())
+	}
+	require.NoError(t, settings.parse())
+	assert.Nil(t, settings.Start)
+	require.NotNil(t, settings.End)
+	assert.Equal(t, time.Date(2027, time.March, 19, 23, 30, 0, 0, time.UTC), settings.End.UTC())
 }
 
-func TestCompetitionEndRequiresTimezone(t *testing.T) {
-	conf := ConfigSettings{InjectSettings: InjectConfig{CompetitionEndTime: "2027-03-19 16:30"}}
-	_, _, err := conf.CompetitionEnd()
-	require.Error(t, err)
+func TestInjectConfigParseClearsStaleTimes(t *testing.T) {
+	end := time.Date(2027, time.March, 19, 23, 30, 0, 0, time.UTC)
+	settings := InjectConfig{Start: &end, End: &end}
+	require.NoError(t, settings.parse())
+	assert.Nil(t, settings.Start)
+	assert.Nil(t, settings.End)
 }
 
 func TestCheckConfigRejectsEndNotAfterStart(t *testing.T) {
@@ -83,7 +90,7 @@ func TestCheckConfigRejectsInvalidEnd(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid competition end time")
 }
 
-func TestCheckConfigAllowsEndWithoutStart(t *testing.T) {
+func TestCheckConfigParsesSchedule(t *testing.T) {
 	conf := &ConfigSettings{
 		RequiredSettings: RequiredConfig{EventName: "Test", EventType: "rvb", DBConnectURL: "postgres://localhost/db", BindAddress: "127.0.0.1"},
 		InjectSettings: InjectConfig{
@@ -93,4 +100,7 @@ func TestCheckConfigAllowsEndWithoutStart(t *testing.T) {
 		Box: []Box{{Name: "box01", IP: "10.0.0.1"}},
 	}
 	require.NoError(t, checkConfig(conf))
+	assert.Nil(t, conf.InjectSettings.Start)
+	require.NotNil(t, conf.InjectSettings.End)
+	assert.Equal(t, time.Date(2027, time.March, 19, 23, 30, 0, 0, time.UTC), conf.InjectSettings.End.UTC())
 }
