@@ -70,7 +70,7 @@ func (a *API) SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("competition started toggle requested", "started", form.Started)
-	if err := a.eng.DB.SetCompetitionStarted(form.Started); err != nil {
+	if err := a.eng.SetCompetitionStarted(form.Started); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update competition status"})
 		return
 	}

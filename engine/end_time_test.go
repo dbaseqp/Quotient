@@ -2,6 +2,7 @@ package engine
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -255,7 +256,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 
 		newEnd := at(-time.Hour)
 		require.NoError(t, se.SetCompetitionSchedule(nil, newEnd))
-		require.NotNil(t, pausedAtEnd(se), "the write touches nothing in the loop; the next boundary decides")
+		require.NotNil(t, pausedAtEnd(se), "the write does not touch pausedAtEnd; the next boundary decides")
 		assert.True(t, oldEnd.Equal(*pausedAtEnd(se)))
 
 		require.True(t, se.SetPaused(false))
@@ -404,7 +405,39 @@ func TestCompetitionState_SeededOnMigrate(t *testing.T) {
 	assert.True(t, d.GetCompetitionStarted())
 }
 
-func TestCompetitionSchedule_Override(t *testing.T) {
+func TestCompetitionState_ConcurrentStartOnce(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	_, pg := testutil.StartContainers(t)
+	pg.ResetCompetitionState(t)
+	t.Cleanup(func() { pg.ResetCompetitionState(t) })
+
+	start := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	var wg sync.WaitGroup
+	var started atomic.Int32
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ok, err := pg.DB.StartCompetitionOnce(start)
+			require.NoError(t, err)
+			if ok {
+				started.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	assert.Equal(t, int32(1), started.Load(), "exactly one caller starts the competition on an empty table")
+	gotStart, err := pg.DB.GetCompetitionStart()
+	require.NoError(t, err)
+	require.NotNil(t, gotStart)
+	assert.True(t, start.Equal(*gotStart))
+}
+
+func TestCompetitionSchedule_OverrideAndAutoStart(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -417,6 +450,48 @@ func TestCompetitionSchedule_Override(t *testing.T) {
 	at := func(d time.Duration) *time.Time {
 		instant := time.Now().Add(d).Truncate(time.Millisecond)
 		return &instant
+	}
+	// waitInBackground runs waitForRoundReady until the test ends.
+	waitInBackground := func(t *testing.T, se *ScoringEngine) <-chan bool {
+		t.Helper()
+		stop := make(chan struct{})
+		t.Cleanup(func() { close(stop) })
+		ready := make(chan bool, 1)
+		go func() {
+			_, ok := se.waitForRoundReady(stop)
+			ready <- ok
+		}()
+		return ready
+	}
+	expectReady := func(t *testing.T, ready <-chan bool, within time.Duration) {
+		t.Helper()
+		select {
+		case ok := <-ready:
+			require.True(t, ok)
+		case <-time.After(within):
+			t.Fatal("waitForRoundReady did not return")
+		}
+	}
+	expectBlocked := func(t *testing.T, ready <-chan bool, d time.Duration) {
+		t.Helper()
+		select {
+		case ok := <-ready:
+			t.Fatalf("waitForRoundReady returned %v", ok)
+		case <-time.After(d):
+		}
+	}
+	pendingStart := func(t *testing.T, se *ScoringEngine) bool {
+		t.Helper()
+		s, err := se.CompetitionSchedule()
+		require.NoError(t, err)
+		_, pending := s.nextScheduledStart()
+		return pending
+	}
+	overtime := func(t *testing.T) *time.Time {
+		t.Helper()
+		state, err := pg.DB.GetCompetitionState()
+		require.NoError(t, err)
+		return state.OvertimeEnd
 	}
 
 	t.Run("a runtime schedule replaces event.conf and clearing restores it", func(t *testing.T) {
@@ -461,5 +536,114 @@ func TestCompetitionSchedule_Override(t *testing.T) {
 		s, err := se.CompetitionSchedule()
 		require.NoError(t, err)
 		assert.Equal(t, "none", s.Source)
+	})
+
+	t.Run("the round loop performs a due start while paused", func(t *testing.T) {
+		fresh(t)
+		se := NewTestEngine(t, redis, pg, 3)
+		require.True(t, se.SetPaused(true))
+		pastStart := at(-time.Minute)
+		require.NoError(t, se.SetCompetitionSchedule(pastStart, at(time.Hour)))
+		assert.False(t, pg.DB.GetCompetitionStarted(), "writing the schedule does not start the competition")
+
+		expectReady(t, waitInBackground(t, se), 2*time.Second)
+		assert.False(t, se.Paused())
+		s, err := se.CompetitionSchedule()
+		require.NoError(t, err)
+		assert.True(t, s.Started)
+		require.NotNil(t, s.StartedAt)
+		assert.True(t, pastStart.Equal(*s.StartedAt), "the competition starts as of its scheduled start")
+
+		require.NoError(t, se.SetCompetitionStarted(false))
+		assert.False(t, pendingStart(t, se), "a competition that was ever started is not started again")
+	})
+
+	t.Run("a scheduled start fires while the engine runs between rounds", func(t *testing.T) {
+		fresh(t)
+		se := NewTestEngine(t, redis, pg, 3)
+		se.NextRoundStartTime = time.Now().Add(time.Hour)
+		start := at(1500 * time.Millisecond)
+		require.NoError(t, se.SetCompetitionSchedule(start, nil))
+
+		ready := waitInBackground(t, se)
+		require.Eventually(t, pg.DB.GetCompetitionStarted, 2500*time.Millisecond, 20*time.Millisecond)
+		assert.Less(t, time.Since(*start), time.Second, "the start is performed at the scheduled instant, not at the next round")
+		s, err := se.CompetitionSchedule()
+		require.NoError(t, err)
+		require.NotNil(t, s.StartedAt)
+		assert.True(t, start.Equal(*s.StartedAt))
+		expectBlocked(t, ready, 200*time.Millisecond)
+	})
+
+	t.Run("an expired schedule never starts the competition", func(t *testing.T) {
+		fresh(t)
+		se := NewTestEngine(t, redis, pg, 3)
+		require.True(t, se.SetPaused(true))
+		require.NoError(t, se.SetCompetitionSchedule(at(-2*time.Hour), at(-time.Hour)))
+
+		assert.False(t, pendingStart(t, se))
+		expectBlocked(t, waitInBackground(t, se), 300*time.Millisecond)
+		assert.False(t, pg.DB.GetCompetitionStarted())
+		assert.True(t, se.Paused())
+	})
+
+	t.Run("a schedule written while waiting wakes the loop", func(t *testing.T) {
+		fresh(t)
+		se := NewTestEngine(t, redis, pg, 3)
+		require.True(t, se.SetPaused(true))
+		ready := waitInBackground(t, se)
+		expectBlocked(t, ready, 100*time.Millisecond)
+
+		require.NoError(t, se.SetCompetitionSchedule(at(-time.Minute), nil))
+		expectReady(t, ready, 2*time.Second)
+		assert.True(t, pg.DB.GetCompetitionStarted())
+		assert.False(t, se.Paused())
+	})
+
+	t.Run("a manual start before the scheduled start wins", func(t *testing.T) {
+		fresh(t)
+		se := NewTestEngine(t, redis, pg, 3)
+		require.True(t, se.SetPaused(true))
+		require.NoError(t, se.SetCompetitionSchedule(at(time.Hour), nil))
+		ready := waitInBackground(t, se)
+
+		require.NoError(t, se.SetCompetitionStarted(true))
+		assert.False(t, pendingStart(t, se))
+		expectBlocked(t, ready, 200*time.Millisecond)
+		assert.True(t, se.Paused(), "a manual start does not resume scoring")
+	})
+
+	t.Run("a pause during the inter-round sleep holds before the next round", func(t *testing.T) {
+		fresh(t)
+		se := NewTestEngine(t, redis, pg, 3)
+		se.NextRoundStartTime = time.Now().Add(400 * time.Millisecond)
+		ready := waitInBackground(t, se)
+
+		time.Sleep(50 * time.Millisecond)
+		require.True(t, se.SetPaused(true))
+		expectBlocked(t, ready, time.Second)
+
+		require.True(t, se.SetPaused(false))
+		expectReady(t, ready, time.Second)
+	})
+
+	t.Run("a scheduled start lifting an end-pause records no overtime", func(t *testing.T) {
+		fresh(t)
+		se := NewTestEngine(t, redis, pg, 3)
+		se.Config.InjectSettings.End = at(-2 * time.Hour)
+		s, err := se.CompetitionSchedule()
+		require.NoError(t, err)
+		require.True(t, se.pauseAtCompetitionEnd(s))
+
+		require.NoError(t, se.SetCompetitionSchedule(at(-time.Minute), at(time.Hour)))
+		expectReady(t, waitInBackground(t, se), 2*time.Second)
+		assert.False(t, se.Paused())
+		assert.True(t, pg.DB.GetCompetitionStarted())
+
+		s, err = se.CompetitionSchedule()
+		require.NoError(t, err)
+		assert.False(t, se.pauseAtCompetitionEnd(s), "the new end is ahead")
+		assert.Nil(t, se.pausedAtEnd, "the pause at the superseded end is forgotten")
+		assert.Nil(t, overtime(t), "the old end was superseded, not resumed after")
 	})
 }
