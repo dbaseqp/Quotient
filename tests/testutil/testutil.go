@@ -92,12 +92,14 @@ func (p *PostgresContainer) Reconnect(t *testing.T) *db.DB {
 	return d
 }
 
-// ResetCompetitionState forgets that the competition ever started, now and
-// again at test cleanup, which the DB layer never does on its own: StartedAt is
-// kept once set. The singleton row stays, as migrate seeded it.
+// ResetCompetitionState clears every column of the singleton state row
+// (started, first start, runtime schedule, overtime) but keeps the row, as
+// migrate seeded it, now and again at test cleanup. The first start is the one
+// column production never clears.
 func (p *PostgresContainer) ResetCompetitionState(t *testing.T) {
 	t.Helper()
-	const reset = "UPDATE competition_state_schemas SET started = false, started_at = NULL, overtime_end = NULL"
+	const reset = `UPDATE competition_state_schemas SET started = false, started_at = NULL,
+		scheduled_start = NULL, scheduled_end = NULL, overtime_end = NULL`
 	p.Exec(t, reset)
 	t.Cleanup(func() { p.Exec(t, reset) })
 }

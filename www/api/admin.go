@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/dbaseqp/Quotient/engine"
 )
 
 var validIdentifierRegex = regexp.MustCompile(`^[0-9]{1,3}$`)
@@ -21,6 +23,9 @@ func isValidIdentifier(identifier string) bool {
 }
 
 func (a *API) PauseEngine(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
 	type Form struct {
 		Pause bool `json:"pause"`
 	}
@@ -51,6 +56,9 @@ func (a *API) ResetScores(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
 	type Form struct {
 		Started bool `json:"started"`
 	}
@@ -64,6 +72,63 @@ func (a *API) SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
 	slog.Info("competition started toggle requested", "started", form.Started)
 	if err := a.eng.DB.SetCompetitionStarted(form.Started); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update competition status"})
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
+}
+
+// parseScheduleInput parses an RFC 3339 time, truncated to the microsecond
+// Postgres stores, so the saved schedule compares equal to the input.
+func parseScheduleInput(raw string) (*time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil, err
+	}
+	parsed = parsed.Truncate(time.Microsecond)
+	return &parsed, nil
+}
+
+// SetCompetitionSchedule replaces the competition schedule at runtime; both
+// times blank clears it so event.conf applies again.
+func (a *API) SetCompetitionSchedule(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
+	type Form struct {
+		StartTime string `json:"start_time"`
+		EndTime   string `json:"end_time"`
+	}
+
+	var form Form
+	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
+		return
+	}
+
+	start, err := parseScheduleInput(form.StartTime)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "start_time must be RFC 3339"})
+		return
+	}
+	end, err := parseScheduleInput(form.EndTime)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "end_time must be RFC 3339"})
+		return
+	}
+
+	slog.Info("competition schedule change requested", "start", start, "end", end)
+	if err := a.eng.SetCompetitionSchedule(start, end); err != nil {
+		if errors.Is(err, engine.ErrEndBeforeStart) {
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "End time must be after start time"})
+			return
+		}
+		slog.Error("failed to update competition schedule", "error", err)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update competition schedule"})
 		return
 	}
 
@@ -155,12 +220,20 @@ func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	schedule, err := a.eng.CompetitionSchedule()
+	if err != nil {
+		slog.Warn("failed to resolve competition schedule", "error", err)
+	}
+
 	WriteJSON(w, http.StatusOK, map[string]any{
-		"last_round":          lastRound,
-		"current_round_time":  a.eng.CurrentRoundStartTime,
-		"next_round_time":     a.eng.NextRoundStartTime,
-		"running":             !a.eng.Paused(),
-		"competition_started": a.eng.DB.GetCompetitionStarted(),
+		"last_round":           lastRound,
+		"current_round_time":   a.eng.CurrentRoundStartTime,
+		"next_round_time":      a.eng.NextRoundStartTime,
+		"running":              !a.eng.Paused(),
+		"competition_started":  schedule.Started,
+		"scheduled_start_time": schedule.Start,
+		"scheduled_end_time":   schedule.End,
+		"schedule_source":      schedule.Source,
 	})
 }
 

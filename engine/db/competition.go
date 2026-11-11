@@ -13,14 +13,24 @@ type CompetitionStateSchema struct {
 	ID        uint `gorm:"primarykey"`
 	Started   bool
 	StartedAt *time.Time
-	// OvertimeEnd is the competition end an admin resumed scoring after.
+	// ScheduledStart and ScheduledEnd are the runtime schedule; when either
+	// is set they replace the event.conf schedule as a whole.
+	ScheduledStart *time.Time
+	ScheduledEnd   *time.Time
+	// OvertimeEnd is the competition end (configured or scheduled) an admin
+	// resumed scoring after.
 	OvertimeEnd *time.Time
 }
 
 const competitionStateID = 1
 
-// competitionState reads the singleton row, which migrate seeds.
-func (d *DB) competitionState() (CompetitionStateSchema, error) {
+// RuntimeScheduled reports whether a runtime schedule replaces event.conf's.
+func (s CompetitionStateSchema) RuntimeScheduled() bool {
+	return s.ScheduledStart != nil || s.ScheduledEnd != nil
+}
+
+// GetCompetitionState reads the singleton row, which migrate seeds.
+func (d *DB) GetCompetitionState() (CompetitionStateSchema, error) {
 	var state CompetitionStateSchema
 	err := d.db.Where("id = ?", competitionStateID).First(&state).Error
 	return state, err
@@ -54,13 +64,15 @@ func (d *DB) initCompetitionState() error {
 }
 
 func (d *DB) GetCompetitionStarted() bool {
-	state, err := d.competitionState()
+	state, err := d.GetCompetitionState()
 	if err != nil {
 		return false
 	}
 	return state.Started
 }
 
+// SetCompetitionStarted opens or closes the competition; the first start is
+// recorded as of now and re-anchors imported injects to it.
 func (d *DB) SetCompetitionStarted(started bool) error {
 	return d.updateCompetitionState(func(tx *gorm.DB, state *CompetitionStateSchema) error {
 		state.Started = started
@@ -74,19 +86,38 @@ func (d *DB) SetCompetitionStarted(started bool) error {
 }
 
 func (d *DB) GetCompetitionStart() (*time.Time, error) {
-	state, err := d.competitionState()
+	state, err := d.GetCompetitionState()
 	if err != nil {
 		return nil, err
 	}
 	return state.StartedAt, nil
 }
 
-func (d *DB) GetOvertimeEnd() (time.Time, error) {
-	state, err := d.competitionState()
-	if err != nil || state.OvertimeEnd == nil {
-		return time.Time{}, err
+// SetCompetitionSchedule stores the runtime schedule (both nil clears it);
+// effectiveStart/effectiveEnd are the schedule in force afterwards: a changed
+// end forgets overtime and, before the first start, imported injects re-anchor
+// to effectiveStart (noStart: there is none).
+func (d *DB) SetCompetitionSchedule(start, end, effectiveStart, effectiveEnd *time.Time) (noStart bool, err error) {
+	err = d.updateCompetitionState(func(tx *gorm.DB, state *CompetitionStateSchema) error {
+		state.ScheduledStart, state.ScheduledEnd = start, end
+		state.forgetOvertimeUnless(effectiveEnd)
+		if state.StartedAt != nil {
+			return nil
+		}
+		if effectiveStart == nil {
+			noStart = true
+			return nil
+		}
+		return recalculateImportedInjectTimes(tx, *effectiveStart)
+	})
+	return noStart, err
+}
+
+// forgetOvertimeUnless drops OvertimeEnd unless end is the end it was granted for.
+func (state *CompetitionStateSchema) forgetOvertimeUnless(end *time.Time) {
+	if state.OvertimeEnd != nil && (end == nil || !end.Equal(*state.OvertimeEnd)) {
+		state.OvertimeEnd = nil
 	}
-	return *state.OvertimeEnd, nil
 }
 
 // SetOvertimeEnd records the end an admin resumed scoring after; nil forgets it.

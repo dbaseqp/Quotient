@@ -275,16 +275,18 @@ In rvb events, rounds that run while the competition is not started and no score
 
 #### Competition Start and End
 
-`[InjectSettings]` holds the competition schedule; both inject imports and the scoring engine read it.
+`[InjectSettings]` holds the competition schedule used unless an admin sets one at runtime (below); both inject imports and the scoring engine read the effective schedule.
 
 ```toml
 [InjectSettings]
-CompetitionStartTime = "2027-03-19 08:00"  # Planned start, used to preview imported inject schedules
+CompetitionStartTime = "2027-03-19 08:00"  # Planned start; anchors imported inject schedules until the competition starts
 CompetitionEndTime = "2027-03-19 16:30"    # No round starts after this unless an admin resumes (overtime)
 CompetitionTimezone = "America/Los_Angeles"
 ```
 
-When `CompetitionEndTime` passes, the engine pauses itself before the next round. If an admin resumes after that pause, the round loop persists the resume as overtime (`overtime_end` in the competition state) before its next round, and the engine keeps running past the end — across restarts — until scores are reset or `CompetitionEndTime` is changed. A manual pause that merely spans the end is not overtime: the engine still pauses at the next round boundary.
+When the end time passes, the engine pauses itself before the next round. If an admin resumes after that pause, the round loop persists the resume as overtime (`overtime_end` in the competition state) before its next round, and the engine keeps running past the end — across restarts — while that end stays the effective end. A changed end pauses again at the new end (saving a runtime schedule with a different end forgets the overtime outright); the loop records a new one only after an admin resumes past the new end. A score reset forgets overtime too. A manual pause that merely spans the end is not overtime: the engine still pauses at the next round boundary.
+
+**Runtime schedule.** Admins can replace the schedule from `/admin/engine` (`POST /api/competition/schedule`, admin-only, JSON `start_time`/`end_time` in RFC 3339). A saved schedule replaces the `event.conf` one as a whole — a blank field means "no start" / "no end", not "keep the configured value" — and survives restarts; *Clear* forgets it so `event.conf` applies again. `GET /api/engine` reports the effective schedule and its `schedule_source` (`config`, `runtime` or `none`). Saving or clearing re-anchors imported injects to the new planned start while the competition has not started.
 
 #### UI Settings
 
