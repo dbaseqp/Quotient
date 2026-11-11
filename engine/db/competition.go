@@ -75,14 +75,31 @@ func (d *DB) GetCompetitionStarted() bool {
 // recorded as of now and re-anchors imported injects to it.
 func (d *DB) SetCompetitionStarted(started bool) error {
 	return d.updateCompetitionState(func(tx *gorm.DB, state *CompetitionStateSchema) error {
-		state.Started = started
-		if !started || state.StartedAt != nil {
+		return state.start(tx, started, time.Now())
+	})
+}
+
+// StartCompetitionOnce opens the competition as of its scheduled start unless
+// it has ever been started; it reports whether it did.
+func (d *DB) StartCompetitionOnce(at time.Time) (bool, error) {
+	var started bool
+	err := d.updateCompetitionState(func(tx *gorm.DB, state *CompetitionStateSchema) error {
+		if state.StartedAt != nil {
 			return nil
 		}
-		now := time.Now()
-		state.StartedAt = &now
-		return recalculateImportedInjectTimes(tx, now)
+		started = true
+		return state.start(tx, true, at)
 	})
+	return started, err
+}
+
+func (state *CompetitionStateSchema) start(tx *gorm.DB, started bool, at time.Time) error {
+	state.Started = started
+	if !started || state.StartedAt != nil {
+		return nil
+	}
+	state.StartedAt = &at
+	return recalculateImportedInjectTimes(tx, at)
 }
 
 func (d *DB) GetCompetitionStart() (*time.Time, error) {
