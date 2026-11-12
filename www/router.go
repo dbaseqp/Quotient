@@ -162,7 +162,7 @@ func (router *Router) Start() {
 
 	ADMINAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication(a, "admin"))
 	mux.HandleFunc("POST /api/engine/pause", ADMINAUTH(a.PauseEngine))
-	mux.HandleFunc("GET /api/engine/reset", ADMINAUTH(a.ResetScores))
+	mux.HandleFunc("POST /api/engine/reset", ADMINAUTH(a.ResetScores))
 	mux.HandleFunc("GET /api/engine", ADMINAUTH(a.GetEngine))
 	mux.HandleFunc("GET /api/engine/tasks", ADMINAUTH(a.GetActiveTasks))
 	mux.HandleFunc("GET /api/engine/preflight", ADMINAUTH(a.GetPreflight))
