@@ -58,6 +58,7 @@ type Result struct {
 	Points      int    `json:"points,omitempty"`
 	ServiceType string `json:"service_type,omitempty"`
 	RoundID     uint   `json:"round_id"`
+	Preflight   bool   `json:"preflight,omitempty"`
 
 	// Added for runner visualization
 	RunnerID   string `json:"runner_id,omitempty"`

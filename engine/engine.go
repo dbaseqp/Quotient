@@ -144,17 +144,19 @@ func (se *ScoringEngine) Start() {
 			default:
 			}
 
-			slog.Info("Starting round", "round", se.CurrentRound)
 			se.CurrentRoundStartTime = time.Now()
 			se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
 
-			// run the round logic
 			var err error
 			switch se.Config.RequiredSettings.EventType {
 			case "koth":
 				err = se.koth()
 			case "rvb":
-				err = se.rvb()
+				if se.preflightPending() {
+					err = se.preflight()
+				} else {
+					err = se.rvb()
+				}
 			default:
 				slog.Error("Unknown event type", "eventType", se.Config.RequiredSettings.EventType)
 			}
@@ -163,11 +165,7 @@ func (se *ScoringEngine) Start() {
 				return
 			}
 
-			slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
-			se.CurrentRound++
-
-			se.RedisClient.Publish(context.Background(), "events", "round_finish")
-			slog.Info(fmt.Sprintf("Round %d will start in %s, sleeping...", se.CurrentRound, time.Until(se.NextRoundStartTime).String()))
+			slog.Info(fmt.Sprintf("Next round will start in %s, sleeping...", time.Until(se.NextRoundStartTime).String()))
 			select {
 			case <-stop:
 				return
@@ -364,11 +362,77 @@ func (se *ScoringEngine) koth() error {
 	// enginePauseWg.Wait()
 
 	// do koth stuff
+	se.finishScoredRound()
 	return nil
 }
 
 // perform a round of rvb
 func (se *ScoringEngine) rvb() error {
+	slog.Info("Starting round", "round", se.CurrentRound)
+	results, err := se.runChecks(se.CurrentRound, false)
+	if err != nil {
+		return err
+	}
+	se.processCollectedResults(results)
+	se.finishScoredRound()
+	return nil
+}
+
+func (se *ScoringEngine) finishScoredRound() {
+	slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
+	se.CurrentRound++
+	se.RedisClient.Publish(context.Background(), "events", "round_finish")
+}
+
+// preflightPending reads the DB rather than CurrentRound, which also advances
+// on rounds that stored nothing and is reseeded on restart. A DB read error
+// runs a preflight round, delaying scoring by one round.
+func (se *ScoringEngine) preflightPending() bool {
+	if se.DB.GetCompetitionStarted() {
+		return false
+	}
+	scored, err := se.DB.HasScoredRound()
+	if err != nil {
+		slog.Error("failed to check for scored rounds, running a preflight round", "error", err)
+		return true
+	}
+	return !scored
+}
+
+// preflight runs the same checks as rvb but stores the results apart from
+// scoring.
+func (se *ScoringEngine) preflight() error {
+	last, err := se.DB.GetLastPreflightRoundID()
+	if err != nil {
+		return err
+	}
+	round := db.PreflightRoundSchema{ID: last + 1, StartTime: se.CurrentRoundStartTime}
+	slog.Info("Starting preflight round", "preflight_round", round.ID)
+	results, err := se.runChecks(round.ID, true)
+	if err != nil {
+		return err
+	}
+	if len(results) == 0 {
+		slog.Warn("No results collected for preflight round", "preflight_round", round.ID)
+	}
+	for _, result := range results {
+		round.Checks = append(round.Checks, db.PreflightCheckSchema{
+			TeamID:      result.TeamID,
+			ServiceName: sanitizeDBString(result.ServiceName),
+			ServiceType: result.ServiceType,
+			Result:      result.Status,
+			Error:       sanitizeDBString(result.Error),
+			Debug:       sanitizeDBString(result.Debug),
+		})
+	}
+	if err := se.DB.CreatePreflightRound(round); err != nil {
+		slog.Error("failed to save preflight round", "preflight_round", round.ID, "error", err)
+	}
+	slog.Info(fmt.Sprintf("Preflight round %d complete", round.ID))
+	return nil
+}
+
+func (se *ScoringEngine) runChecks(roundID uint, preflight bool) ([]checks.Result, error) {
 	// reassign the next round start time with jitter
 	// double the jitter and subtract it to get a random number between -jitter and jitter
 	randomJitter := rand.Intn(2*se.Config.MiscSettings.Jitter) - se.Config.MiscSettings.Jitter // #nosec G404 -- non-crypto randomization for timing jitter
@@ -382,18 +446,17 @@ func (se *ScoringEngine) rvb() error {
 	defer events.Close()
 	eventsChannel := events.Channel()
 
-	// do rvb stuff
 	teams, err := se.DB.GetTeams()
 	if err != nil {
 		slog.Error("failed to get teams:", "error", err)
-		return err
+		return nil, err
 	}
 
 	runners := 0
 	ctx, cancel := context.WithTimeout(context.Background(), time.Until(se.NextRoundStartTime))
 	defer cancel()
 
-	slog.Debug("Starting service checks", "round", se.CurrentRound)
+	slog.Debug("Starting service checks", "round", roundID, "preflight", preflight)
 	allRunners := se.Config.AllChecks()
 	slog.Info("Service check configuration",
 		"boxes", len(se.Config.Box),
@@ -409,12 +472,11 @@ func (se *ScoringEngine) rvb() error {
 	// results would otherwise be counted as this round's.
 	for _, key := range []string{"tasks", "results"} {
 		if stale := se.RedisClient.LLen(ctx, key).Val(); stale > 0 {
-			slog.Warn("Clearing stale entries from queue", "queue", key, "count", stale, "round", se.CurrentRound)
+			slog.Warn("Clearing stale entries from queue", "queue", key, "count", stale, "round", roundID, "preflight", preflight)
 			se.RedisClient.Del(ctx, key)
 		}
 	}
 
-	// 1) Enqueue
 	for _, team := range teams {
 		if !team.Active {
 			continue
@@ -443,7 +505,8 @@ func (se *ScoringEngine) rvb() error {
 				TeamIdentifier: team.Identifier,
 				ServiceType:    r.GetType(),
 				ServiceName:    r.GetName(),
-				RoundID:        se.CurrentRound,
+				RoundID:        roundID,
+				Preflight:      preflight,
 				Deadline:       se.NextRoundStartTime,
 				Attempts:       r.GetAttempts(),
 				AttemptDelay:   r.GetAttemptDelay(),
@@ -483,7 +546,6 @@ func (se *ScoringEngine) rvb() error {
 	}
 	slog.Info("Enqueued checks", "count", runners)
 
-	// 2) Collect results from Redis
 	results := make([]checks.Result, 0, runners)
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Until(se.NextRoundStartTime))
 	defer cancel()
@@ -496,7 +558,7 @@ COLLECTION:
 			slog.Info("Received message", "message", msg.Payload)
 			if msg.Payload == "reset" {
 				slog.Info("Reset event received, quitting...")
-				return fmt.Errorf("reset event received")
+				return nil, fmt.Errorf("reset event received")
 			} else {
 				continue
 			}
@@ -530,8 +592,8 @@ COLLECTION:
 				slog.Error("Failed to unmarshal check result", "error", err)
 				continue
 			}
-			if result.RoundID != se.CurrentRound {
-				slog.Warn("Ignoring out of round result", "receivedRound", result.RoundID, "currentRound", se.CurrentRound)
+			if result.RoundID != roundID || result.Preflight != preflight {
+				slog.Warn("Ignoring out of round result", "receivedRound", result.RoundID, "receivedPreflight", result.Preflight, "currentRound", roundID, "currentPreflight", preflight)
 				continue
 			}
 			results = append(results, result)
@@ -540,9 +602,7 @@ COLLECTION:
 		}
 	}
 
-	// 3) Process all collected results
-	se.processCollectedResults(results)
-	return nil
+	return results, nil
 }
 
 func sanitizeDBString(s string) string {

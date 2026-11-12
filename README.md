@@ -254,7 +254,7 @@ ShowDebugToBlueTeam = false # Show check debug info to teams
 Port = 80                   # Server port (443 default with SSL)
 LogoImage = "/static/assets/quotient.svg"
 LogFile = ""                # Optional log file path
-StartPaused = true          # Start with scoring paused
+StartPaused = true          # Start with the engine paused (no preflight or scored rounds until resumed)
 
 # Round timing
 Delay = 60                  # Seconds between rounds (default: 60)
@@ -270,6 +270,8 @@ AttemptDelay = 0            # Seconds to wait before retrying a failed attempt (
 ```
 
 Every attempt, plus the waits between them, must fit in the shortest round: `Attempts * Timeout + (Attempts - 1) * AttemptDelay` must be less than `Delay - Jitter`.
+
+In rvb events, rounds that run while the competition is not started and no scored round has been stored are **preflight rounds**. They run the same checks a scored round would (inactive teams, disabled team services and checks without seeded credentials are skipped alike), but their results are stored apart and never count toward points, uptime or SLAs. Leave `StartPaused = false` to have preflight rounds run as soon as the engine is up. `GET /api/engine/preflight` returns the latest preflight round, including one that collected no results, so you can confirm every team is green before handing over; it is admin-only because the stored error and debug text can contain credentials. Stopping a competition that has stored scored rounds does not bring preflight rounds back; `GET /api/engine/reset` while stopped (or stopping before the first scored round is stored) re-enters preflight, since the decision is made from the stored rounds. Injects keep their anchor: a reset does not forget when the competition first started. In custom checks the `ROUND` placeholder is the preflight round number during preflight and the scored round number afterwards, so both start at 1.
 
 #### UI Settings
 

@@ -49,10 +49,11 @@ func TestGraphsMarkOnlyCallersOwnSeries(t *testing.T) {
 
 	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
+	pg.ResetCompetitionState(t)
 	eng := engine.NewTestEngine(t, redis, pg, 3)
 	a := api.NewAPI(eng.Config, eng)
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
-	t.Cleanup(func() { pg.ResetCompetitionState(t) })
+	t.Cleanup(func() { assert.NoError(t, pg.DB.ResetScores()) })
 
 	suffix := time.Now().UnixNano()
 	teams := make([]db.TeamSchema, 3)

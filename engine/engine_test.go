@@ -298,49 +298,8 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 		},
 	}
 
-	// Start a goroutine that consumes tasks and pushes results
-	stopRunner := make(chan struct{})
-	runnerDone := make(chan struct{})
-	go func() {
-		defer close(runnerDone)
-		for {
-			select {
-			case <-stopRunner:
-				return
-			default:
-				val, err := redis.Client.BLPop(ctx, time.Second, "tasks").Result()
-				if err != nil {
-					continue
-				}
-				if len(val) < 2 {
-					continue
-				}
-
-				var task Task
-				if err := json.Unmarshal([]byte(val[1]), &task); err != nil {
-					t.Logf("Failed to unmarshal task: %v", err)
-					continue
-				}
-
-				// Push a successful result
-				result := checks.Result{
-					TeamID:      task.TeamID,
-					ServiceName: task.ServiceName,
-					ServiceType: task.ServiceType,
-					RoundID:     task.RoundID,
-					Status:      true,
-					Points:      10,
-				}
-				resultJSON, _ := json.Marshal(result)
-				redis.Client.RPush(ctx, "results", resultJSON)
-			}
-		}
-	}()
-
-	// Run one round
+	fakeRunner(t, redis, nil)
 	err := engine.rvb()
-	close(stopRunner)
-	<-runnerDone
 
 	require.NoError(t, err)
 
@@ -446,53 +405,17 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 		},
 	}
 
-	// Runner goroutine - returns different points based on service
-	stopRunner := make(chan struct{})
-	runnerDone := make(chan struct{})
-	go func() {
-		defer close(runnerDone)
-		for {
-			select {
-			case <-stopRunner:
-				return
-			default:
-				val, err := redis.Client.BLPop(ctx, time.Second, "tasks").Result()
-				if err != nil {
-					continue
-				}
-				if len(val) < 2 {
-					continue
-				}
-
-				var task Task
-				require.NoError(t, json.Unmarshal([]byte(val[1]), &task))
-
-				// Return points based on service name
-				points := 10
-				switch task.ServiceName {
-				case "box01-ssh":
-					points = 5
-				case "box01-dns":
-					points = 15
-				}
-
-				result := checks.Result{
-					TeamID:      task.TeamID,
-					ServiceName: task.ServiceName,
-					ServiceType: task.ServiceType,
-					RoundID:     task.RoundID,
-					Status:      true,
-					Points:      points,
-				}
-				resultJSON, _ := json.Marshal(result)
-				redis.Client.RPush(ctx, "results", resultJSON)
-			}
+	fakeRunner(t, redis, func(task Task) []checks.Result {
+		results := passResult(task)
+		switch task.ServiceName {
+		case "box01-ssh":
+			results[0].Points = 5
+		case "box01-dns":
+			results[0].Points = 15
 		}
-	}()
-
+		return results
+	})
 	err := engine.rvb()
-	close(stopRunner)
-	<-runnerDone
 
 	require.NoError(t, err)
 
@@ -656,35 +579,8 @@ func TestRvb_IgnoresStaleResultsFromRestartedRound(t *testing.T) {
 	stale, _ := json.Marshal(checks.Result{TeamID: team.ID, ServiceName: "box01-web", ServiceType: "Mock", RoundID: 1, Status: false})
 	require.NoError(t, redis.Client.RPush(ctx, "results", stale).Err())
 
-	stopRunner := make(chan struct{})
-	runnerDone := make(chan struct{})
-	go func() {
-		defer close(runnerDone)
-		for {
-			select {
-			case <-stopRunner:
-				return
-			default:
-				val, err := redis.Client.BLPop(ctx, time.Second, "tasks").Result()
-				if err != nil || len(val) < 2 {
-					continue
-				}
-				var task Task
-				if err := json.Unmarshal([]byte(val[1]), &task); err != nil {
-					continue
-				}
-				result, _ := json.Marshal(checks.Result{
-					TeamID: task.TeamID, ServiceName: task.ServiceName, ServiceType: task.ServiceType,
-					RoundID: task.RoundID, Status: true, Points: 10,
-				})
-				redis.Client.RPush(ctx, "results", result)
-			}
-		}
-	}()
-
+	fakeRunner(t, redis, nil)
 	err := engine.rvb()
-	close(stopRunner)
-	<-runnerDone
 	require.NoError(t, err)
 
 	round, err := pg.DB.GetLastRound()

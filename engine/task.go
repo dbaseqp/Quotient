@@ -18,6 +18,7 @@ type Task struct {
 	ServiceName    string          `json:"service_name"`
 	Deadline       time.Time       `json:"deadline"`
 	RoundID        uint            `json:"round_id"`
+	Preflight      bool            `json:"preflight,omitempty"`
 	Attempts       int             `json:"attempts"`
 	AttemptDelay   int             `json:"attempt_delay"` // seconds to wait before retrying a failed attempt
 	CheckData      json.RawMessage `json:"check_data"`

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var validIdentifierRegex = regexp.MustCompile(`^[0-9]{1,3}$`)
@@ -161,6 +162,37 @@ func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
 		"running":             !a.eng.Paused(),
 		"competition_started": a.eng.DB.GetCompetitionStarted(),
 	})
+}
+
+func (a *API) GetPreflight(w http.ResponseWriter, r *http.Request) {
+	round, err := a.eng.DB.GetLatestPreflightRound()
+	if err != nil {
+		slog.Error("failed to get preflight round", "error", err)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve preflight round"})
+		return
+	}
+
+	type check struct {
+		TeamID      uint   `json:"team_id"`
+		TeamName    string `json:"team_name"`
+		ServiceName string `json:"service_name"`
+		ServiceType string `json:"service_type"`
+		Result      bool   `json:"result"`
+		Error       string `json:"error"`
+		Debug       string `json:"debug"`
+	}
+	resp := struct {
+		Round     uint       `json:"round"`
+		StartTime *time.Time `json:"start_time"`
+		Checks    []check    `json:"checks"`
+	}{Round: round.ID, Checks: make([]check, 0, len(round.Checks))}
+	if round.ID != 0 {
+		resp.StartTime = &round.StartTime
+	}
+	for _, row := range round.Checks {
+		resp.Checks = append(resp.Checks, check{row.TeamID, row.Team.Name, row.ServiceName, row.ServiceType, row.Result, row.Error, row.Debug})
+	}
+	WriteJSON(w, http.StatusOK, resp)
 }
 
 func (a *API) UpdateTeams(w http.ResponseWriter, r *http.Request) {
