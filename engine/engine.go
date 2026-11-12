@@ -35,7 +35,10 @@ type ScoringEngine struct {
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
-	DB                    *db.DB
+
+	roundListenersMu sync.Mutex
+	roundListeners   map[chan struct{}]struct{}
+	DB               *db.DB
 
 	// Concurrency control for materialized view refresh
 	Refreshing atomic.Bool
@@ -201,6 +204,34 @@ func (se *ScoringEngine) waitForReset() {
 	}
 }
 
+func (se *ScoringEngine) SubscribeRounds() (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	se.roundListenersMu.Lock()
+	if se.roundListeners == nil {
+		se.roundListeners = make(map[chan struct{}]struct{})
+	}
+	se.roundListeners[ch] = struct{}{}
+	se.roundListenersMu.Unlock()
+
+	return ch, func() {
+		se.roundListenersMu.Lock()
+		delete(se.roundListeners, ch)
+		se.roundListenersMu.Unlock()
+	}
+}
+
+func (se *ScoringEngine) notifyRoundListeners() {
+	se.roundListenersMu.Lock()
+	defer se.roundListenersMu.Unlock()
+
+	for ch := range se.roundListeners {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
 func (se *ScoringEngine) GetUptimePerService() map[uint]map[string]db.Uptime {
 	return se.UptimePerService
 }
@@ -352,6 +383,7 @@ func (se *ScoringEngine) ResetScores() error {
 	se.UptimePerService = make(map[uint]map[string]db.Uptime)
 	se.uptimeMu.Unlock()
 	se.SlaPerService = make(map[uint]map[string]int)
+	se.notifyRoundListeners()
 	slog.Info("Scores reset and Redis queues cleared successfully")
 
 	return nil
@@ -382,6 +414,7 @@ func (se *ScoringEngine) finishScoredRound() {
 	slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
 	se.CurrentRound++
 	se.RedisClient.Publish(context.Background(), "events", "round_finish")
+	se.notifyRoundListeners()
 }
 
 // preflightPending reads the DB rather than CurrentRound, which also advances

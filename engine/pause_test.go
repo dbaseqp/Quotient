@@ -90,3 +90,38 @@ func TestStart_ExitsCleanlyOnResetWhilePaused(t *testing.T) {
 	}
 	assert.True(t, se.Paused(), "pause state set before Start is preserved")
 }
+
+func TestSubscribeRounds_BroadcastsAndUnsubscribes(t *testing.T) {
+	se := &ScoringEngine{}
+	ch1, unsub1 := se.SubscribeRounds()
+	defer unsub1()
+	ch2, unsub2 := se.SubscribeRounds()
+	defer unsub2()
+
+	se.notifyRoundListeners()
+	se.notifyRoundListeners()
+
+	select {
+	case <-ch1:
+	default:
+		t.Fatal("first subscriber did not receive round notification")
+	}
+	select {
+	case <-ch2:
+	default:
+		t.Fatal("second subscriber did not receive round notification")
+	}
+
+	unsub1()
+	se.notifyRoundListeners()
+	select {
+	case <-ch1:
+		t.Fatal("unsubscribed listener received notification")
+	default:
+	}
+	select {
+	case <-ch2:
+	default:
+		t.Fatal("remaining subscriber did not receive notification")
+	}
+}
