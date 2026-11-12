@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/dbaseqp/Quotient/engine/db"
@@ -44,9 +45,9 @@ func (a *API) GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
-	announcementID := r.PathValue("id")
-	if announcementID == "" {
-		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Missing announcement ID"})
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 32)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid announcement ID"})
 		return
 	}
 
@@ -56,39 +57,32 @@ func (a *API) DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	announcements, err := a.eng.DB.GetAnnouncements()
+	// Refused before the lookup so the answer does not reveal which IDs exist.
+	req_roles := CallerRoles(r.Context())
+	isAdmin := slices.Contains(req_roles, "admin")
+	if !isAdmin && slices.Contains(req_roles, "red") && !a.conf.UISettings.ShowAnnouncementsForRedTeam {
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
+		return
+	}
+
+	announcement, err := a.eng.DB.GetAnnouncementByID(uint(id))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Announcement not found"})
 			return
 		}
-		WriteInternalError(w, r, "Error retrieving announcements", err)
+		WriteInternalError(w, r, "Error retrieving the announcement", err)
 		return
 	}
 
-	var announcement db.AnnouncementSchema
-	for _, a := range announcements {
-		if fmt.Sprint(a.ID) == announcementID {
-			announcement = a
-			break
-		}
+	// An unopened announcement looks the same as a missing one to non-admins.
+	if !isAdmin && time.Now().Before(announcement.OpenTime) {
+		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Announcement not found"})
+		return
 	}
 
-	// if not admin check if the announcement is open
-	req_roles := CallerRoles(r.Context())
-	if !slices.Contains(req_roles, "admin") {
-		if slices.Contains(req_roles, "red") && !a.conf.UISettings.ShowAnnouncementsForRedTeam {
-			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
-			return
-		}
-		if time.Now().Before(announcement.OpenTime) {
-			WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Announcement not found"})
-			return
-		}
-	}
-
-	// open file safely using os.Root to prevent path traversal
-	baseDir := path.Join("submissions/announcements", announcementID)
+	// The directory comes from the stored ID, never the request.
+	baseDir := path.Join("submissions/announcements", fmt.Sprint(announcement.ID))
 	file, err := SafeOpen(baseDir, fileName)
 	if err != nil {
 		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "File not found"})
