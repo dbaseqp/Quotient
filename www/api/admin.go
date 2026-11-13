@@ -239,6 +239,7 @@ func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
 		"scheduled_end_time":   schedule.End,
 		"schedule_source":      schedule.Source,
 		"preflight":            preflight,
+		"competition_timezone": a.conf.InjectSettings.CompetitionTimezone,
 	})
 }
 
