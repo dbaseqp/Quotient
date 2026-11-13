@@ -516,6 +516,45 @@ func checkConfig(conf *ConfigSettings) error {
 		conf.Box[i].Runners = allChecks
 	}
 
+	// check for duplicate account names across all role lists
+	accountNames := make(map[string]bool)
+	for _, u := range conf.Admin {
+		if u.Name != "" {
+			if accountNames[u.Name] {
+				errResult = errors.Join(errResult, fmt.Errorf("duplicate account name found: %s", u.Name))
+			} else {
+				accountNames[u.Name] = true
+			}
+		}
+	}
+	for _, u := range conf.Team {
+		if u.Name != "" {
+			if accountNames[u.Name] {
+				errResult = errors.Join(errResult, fmt.Errorf("duplicate account name found: %s", u.Name))
+			} else {
+				accountNames[u.Name] = true
+			}
+		}
+	}
+	for _, u := range conf.Red {
+		if u.Name != "" {
+			if accountNames[u.Name] {
+				errResult = errors.Join(errResult, fmt.Errorf("duplicate account name found: %s", u.Name))
+			} else {
+				accountNames[u.Name] = true
+			}
+		}
+	}
+	for _, u := range conf.Inject {
+		if u.Name != "" {
+			if accountNames[u.Name] {
+				errResult = errors.Join(errResult, fmt.Errorf("duplicate account name found: %s", u.Name))
+			} else {
+				accountNames[u.Name] = true
+			}
+		}
+	}
+
 	// errResult is nil by default if no errors occured
 	return errResult
 }
