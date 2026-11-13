@@ -470,7 +470,7 @@
                     const markdown = document.createElement('div');
                     markdown.name = key;
                     markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
-                    markdown.innerHTML = marked.parse(data[key]);
+                    markdown.innerHTML = DOMPurify.sanitize(marked.parse(data[key]));
 
                     const textarea = document.createElement('textarea');
                     textarea.name = key;
@@ -489,7 +489,7 @@
                             } else if (button.textContent === 'Preview') {
                                 button.textContent = 'Edit';
                                 data[key] = textarea.value;
-                                markdown.innerHTML = marked.parse(data[key]);
+                                markdown.innerHTML = DOMPurify.sanitize(marked.parse(data[key]));
                                 container.replaceChildren(markdown);
                             }
                         });
@@ -855,7 +855,7 @@
 
         const markdown = document.createElement('div');
         markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
-        markdown.innerHTML = marked.parse(textarea.value);
+        markdown.innerHTML = DOMPurify.sanitize(marked.parse(textarea.value));
 
         const button = document.createElement('button');
         button.type = 'button';
@@ -870,7 +870,7 @@
             } else if (button.textContent === 'Preview') {
                 button.textContent = 'Edit';
                 content = textarea.value;
-                markdown.innerHTML = marked.parse(content);
+                markdown.innerHTML = DOMPurify.sanitize(marked.parse(content));
                 container.replaceChildren(markdown);
             }
         });
@@ -937,7 +937,7 @@
 
         const markdown = document.createElement('div');
         markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
-        markdown.innerHTML = marked.parse(textarea.value);
+        markdown.innerHTML = DOMPurify.sanitize(marked.parse(textarea.value));
 
         const button = document.createElement('button');
         button.type = 'button';
@@ -952,7 +952,7 @@
             } else if (button.textContent === 'Preview') {
                 button.textContent = 'Edit';
                 content = textarea.value;
-                markdown.innerHTML = marked.parse(content);
+                markdown.innerHTML = DOMPurify.sanitize(marked.parse(content));
                 container.replaceChildren(markdown);
             }
         });
