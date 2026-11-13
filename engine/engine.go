@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -46,7 +47,13 @@ type ScoringEngine struct {
 	pauseMu sync.Mutex
 	// resume is closed while the engine runs; while paused it is open and the round loop blocks on it.
 	resume chan struct{}
+
+	// roundFunc is called each round. Set by Start() from the event type, or
+	// overridden by NewTestEngine to inject faults without touching the DB.
+	roundFunc func() error
 }
+var errReset = errors.New("reset event received")
+
 
 func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 	// Ensure config is properly validated and runners are set up
@@ -147,7 +154,10 @@ func (se *ScoringEngine) Start() {
 			se.CurrentRoundStartTime = time.Now()
 			se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
 
-			var err error
+		var err error
+		if se.roundFunc != nil {
+			err = se.roundFunc()
+		} else {
 			switch se.Config.RequiredSettings.EventType {
 			case "koth":
 				err = se.koth()
@@ -160,10 +170,14 @@ func (se *ScoringEngine) Start() {
 			default:
 				slog.Error("Unknown event type", "eventType", se.Config.RequiredSettings.EventType)
 			}
-			if err != nil {
-				slog.Error("Round error. If this is a reset, ignore...", "error", err)
+		}
+		if err != nil {
+			if errors.Is(err, errReset) {
+				slog.Info("Round loop exiting for reset")
 				return
 			}
+			slog.Error("Round error, retrying next round", "error", err)
+		}
 
 			slog.Info(fmt.Sprintf("Next round will start in %s, sleeping...", time.Until(se.NextRoundStartTime).String()))
 			select {
@@ -558,7 +572,7 @@ COLLECTION:
 			slog.Info("Received message", "message", msg.Payload)
 			if msg.Payload == "reset" {
 				slog.Info("Reset event received, quitting...")
-				return nil, fmt.Errorf("reset event received")
+				return nil, errReset
 			} else {
 				continue
 			}
