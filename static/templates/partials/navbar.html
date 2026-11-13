@@ -55,7 +55,11 @@
                         <p class="m-0">{{ .username }}</p>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end dropdown-menu-md-start">
-                    <li><a class="dropdown-item" href="/logout">Logout</a></li>
+                    <li>
+                        <form action="/logout" method="post" class="d-inline">
+                            <button type="submit" class="dropdown-item">Logout</button>
+                        </form>
+                    </li>
                 </ul>
             </div>
         </div>
