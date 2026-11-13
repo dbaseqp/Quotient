@@ -14,7 +14,25 @@ const (
 	Down
 )
 
+func (a *API) checkGraphAccess(w http.ResponseWriter, r *http.Request) bool {
+	roles := CallerRoles(r.Context())
+	isAnon := len(roles) == 0
+	isAdmin := slices.Contains(roles, "admin")
+	if !a.conf.UISettings.EnablePublicGraphs && isAnon {
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "graphs are not publicly accessible"})
+		return false
+	}
+	if a.conf.UISettings.DisableGraphsForBlueTeam && !isAdmin && slices.Contains(roles, "team") {
+		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "graphs are disabled for team users"})
+		return false
+	}
+	return true
+}
+
 func (a *API) GetServiceStatus(w http.ResponseWriter, r *http.Request) {
+	if !a.checkGraphAccess(w, r) {
+		return
+	}
 	if !a.CheckCompetitionStarted(w, r) {
 		return
 	}
@@ -99,6 +117,9 @@ func (a *API) GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetScoreStatus(w http.ResponseWriter, r *http.Request) {
+	if !a.checkGraphAccess(w, r) {
+		return
+	}
 	if !a.CheckCompetitionStarted(w, r) {
 		return
 	}
@@ -170,6 +191,9 @@ func (a *API) GetScoreStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
+	if !a.checkGraphAccess(w, r) {
+		return
+	}
 	if !a.CheckCompetitionStarted(w, r) {
 		return
 	}
