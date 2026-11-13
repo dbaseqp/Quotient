@@ -76,13 +76,13 @@ func (router *Router) Start() {
 
 	ALLAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication(a, "team", "admin", "red", "inject"))
 	// general auth API routes
-	mux.HandleFunc("GET /api/logout", ALLAUTH(a.Logout))
+	mux.HandleFunc("POST /api/logout", ALLAUTH(a.Logout))
 
 	mux.HandleFunc("GET /api/announcements", ALLAUTH(a.GetAnnouncements))
 	mux.HandleFunc("GET /announcements/{id}/{file}", ALLAUTH(a.DownloadAnnouncementFile))
 
 	// general auth WWW routes
-	mux.HandleFunc("GET /logout", ALLAUTH(router.LogoutPage))
+	mux.HandleFunc("POST /logout", ALLAUTH(router.LogoutPage))
 	mux.HandleFunc("GET /announcements", ALLAUTH(router.AnnouncementsPage))
 	// mux.HandleFunc("GET /graphs", ALLAUTH(router.GraphPage))
 
