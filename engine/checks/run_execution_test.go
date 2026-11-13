@@ -158,6 +158,48 @@ func TestWebRun_ActualExecution(t *testing.T) {
 		})
 	}
 }
+// TestWebRun_NoFollowRedirect verifies that the web check does not follow redirects.
+// A target that returns 302 must fail when the expected status is 200.
+func TestWebRun_NoFollowRedirect(t *testing.T) {
+	// Healthy server that returns 200
+	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte("OK"))
+		require.NoError(t, err)
+	}))
+	defer healthy.Close()
+
+	// Target server that redirects to the healthy server
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, healthy.URL+"/", http.StatusFound)
+	}))
+	defer target.Close()
+
+	port := target.Listener.Addr().(*net.TCPAddr).Port
+
+	check := &Web{
+		Service: Service{
+			Target:  "127.0.0.1",
+			Port:    port,
+			Timeout: 5,
+		},
+		Scheme: "http",
+		Url:    []urlData{{Path: "/", Status: 200}},
+	}
+
+	resultsChan := make(chan Result, 1)
+	check.Run(1, "01", 1, resultsChan)
+
+	select {
+	case result := <-resultsChan:
+		// The check must see 302, not 200, so it must fail.
+		assert.False(t, result.Status, "redirect should not be followed; check must fail")
+		assert.Contains(t, result.Error, "status returned by webserver was incorrect", "expected wrong-status error")
+	case <-time.After(10 * time.Second):
+		t.Fatal("check timed out")
+	}
+}
+
 
 // TestTcpRun_ActualExecution tests TCP check Run() with real TCP server
 func TestTcpRun_ActualExecution(t *testing.T) {
