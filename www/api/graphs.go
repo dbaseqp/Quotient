@@ -19,7 +19,15 @@ func (a *API) GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	round, err := a.eng.DB.GetLastRound()
+	var (
+		round db.RoundSchema
+		err   error
+	)
+	if a.eng.PreflightPending() {
+		round, err = a.eng.DB.GetLastPreflightRound()
+	} else {
+		round, err = a.eng.DB.GetLastRound()
+	}
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving last round", err)
 		return
@@ -181,8 +189,18 @@ func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })
 
-	a.eng.RLockUptime()
-	uptime := a.eng.GetUptimePerService()
+	var uptime map[uint]map[string]db.Uptime
+	if a.eng.PreflightPending() {
+		uptime, err = a.eng.DB.GetPreflightUptimes()
+		if err != nil {
+			WriteInternalError(w, r, "Error retrieving uptimes", err)
+			return
+		}
+	} else {
+		a.eng.RLockUptime()
+		defer a.eng.RUnlockUptime()
+		uptime = a.eng.GetUptimePerService()
+	}
 
 	// TODO: make db unique function or get from config
 	uniqueServicesMap := make(map[string]bool)
@@ -215,7 +233,7 @@ func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 		for _, servicename := range uniqueServices {
 			percentage := -0.01
 			for service, uptime := range uptime[team.ID] {
-				if service == servicename {
+				if service == servicename && uptime.TotalChecks > 0 {
 					percentage = float64(uptime.PassedChecks) / float64(uptime.TotalChecks)
 				}
 			}
@@ -224,7 +242,6 @@ func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 		s.Data = points
 		series = append(series, s)
 	}
-	a.eng.RUnlockUptime()
 
 	if a.shouldScrub(r) {
 		for i := range series {

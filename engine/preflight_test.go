@@ -94,6 +94,12 @@ func TestPreflight_StoresResultsApartFromScoring(t *testing.T) {
 	team := pg.CreateTestTeam(t, "Team Preflight", "01")
 	se := newPreflightEngine(t, redis, pg)
 
+	events := redis.Client.Subscribe(ctx, "events")
+	defer events.Close() //nolint:errcheck
+	_, err := events.Receive(ctx)
+	require.NoError(t, err)
+	eventsCh := events.Channel()
+
 	var scoredTasks atomic.Int64
 	fakeRunner(t, redis, func(task Task) []checks.Result {
 		if !task.Preflight {
@@ -104,6 +110,15 @@ func TestPreflight_StoresResultsApartFromScoring(t *testing.T) {
 	se.CurrentRoundStartTime = time.Now().Truncate(time.Microsecond)
 	require.NoError(t, se.preflight())
 	require.NoError(t, se.preflight())
+
+	for range 2 {
+		select {
+		case msg := <-eventsCh:
+			assert.Equal(t, "round_finish", msg.Payload, "preflight rounds publish round_finish for divisor")
+		case <-time.After(time.Second):
+			t.Fatal("expected round_finish event after preflight round")
+		}
+	}
 
 	assert.Zero(t, scoredTasks.Load(), "preflight tasks are marked for the runner")
 
@@ -184,18 +199,18 @@ func TestPreflightPending_StopReturnsToPreflightOnlyBeforeScoring(t *testing.T) 
 	pg.ResetCompetitionState(t)
 	se := newPreflightEngine(t, redis, pg)
 
-	assert.True(t, se.preflightPending())
+	assert.True(t, se.PreflightPending())
 
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
-	assert.False(t, se.preflightPending())
+	assert.False(t, se.PreflightPending())
 
 	_, err := pg.DB.CreateRound(db.RoundSchema{ID: 1, StartTime: time.Now()})
 	require.NoError(t, err)
 	require.NoError(t, pg.DB.SetCompetitionStarted(false))
-	assert.False(t, se.preflightPending(), "stopping after a scored round doesn't return to preflight")
+	assert.False(t, se.PreflightPending(), "stopping after a scored round doesn't return to preflight")
 
 	require.NoError(t, pg.DB.ResetScores())
-	assert.True(t, se.preflightPending(), "stopping before any scored round returns to preflight")
+	assert.True(t, se.PreflightPending(), "stopping before any scored round returns to preflight")
 }
 
 func TestPreflightPending_IgnoresRoundCounterAfterEmptyRound(t *testing.T) {
@@ -220,7 +235,7 @@ func TestPreflightPending_IgnoresRoundCounterAfterEmptyRound(t *testing.T) {
 	require.Zero(t, last.ID, "a round without results is not stored")
 
 	require.NoError(t, pg.DB.SetCompetitionStarted(false))
-	assert.True(t, se.preflightPending(), "stopping before any scored round was stored returns to preflight")
+	assert.True(t, se.PreflightPending(), "stopping before any scored round was stored returns to preflight")
 }
 
 func TestPreflightPending_LegacyRowWithoutStartedAt(t *testing.T) {
@@ -238,7 +253,7 @@ func TestPreflightPending_LegacyRowWithoutStartedAt(t *testing.T) {
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
 	pg.Exec(t, "UPDATE competition_state_schemas SET started_at = NULL")
 
-	assert.False(t, se.preflightPending())
+	assert.False(t, se.PreflightPending())
 }
 
 func TestResetScores_ReentersPreflight(t *testing.T) {
@@ -261,13 +276,14 @@ func TestResetScores_ReentersPreflight(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, startedAt)
 	require.NoError(t, se.rvb())
-	assert.False(t, se.preflightPending())
+	assert.False(t, se.PreflightPending())
 
 	require.NoError(t, pg.DB.SetCompetitionStarted(false))
-	assert.False(t, se.preflightPending(), "stopping alone doesn't drop the scored round")
+	assert.False(t, se.PreflightPending(), "stopping alone doesn't drop the scored round")
+	require.NoError(t, pg.DB.SetCompetitionStarted(true))
 	require.NoError(t, se.ResetScores())
-	assert.True(t, se.preflightPending(), "reset while stopped returns the engine to preflight rounds")
-
+	assert.False(t, pg.DB.GetCompetitionStarted(), "reset stops the competition")
+	assert.True(t, se.PreflightPending(), "reset returns the engine to preflight rounds")
 	afterReset, err := pg.DB.GetCompetitionStart()
 	require.NoError(t, err)
 	require.NotNil(t, afterReset, "reset keeps the competition start, the anchor of imported injects")
