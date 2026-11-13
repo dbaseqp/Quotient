@@ -72,24 +72,36 @@ func startPostgres(t *testing.T) *PostgresContainer {
 	return &PostgresContainer{DB: db.Connect(connString), connString: connString}
 }
 
-// Exec runs raw SQL for test setups the DB layer has no API for.
-func (p *PostgresContainer) Exec(t *testing.T, sql string) {
+// Exec runs raw SQL against the test database for fixtures the DB layer
+// cannot create.
+func (p *PostgresContainer) Exec(t *testing.T, sql string, args ...any) {
 	t.Helper()
 	conn, err := gorm.Open(postgres.Open(p.connString), &gorm.Config{})
 	require.NoError(t, err)
 	sqlDB, err := conn.DB()
 	require.NoError(t, err)
 	defer sqlDB.Close() //nolint:errcheck
-	require.NoError(t, conn.Exec(sql).Error)
+	require.NoError(t, conn.Exec(sql, args...).Error)
 }
 
-// ResetCompetitionState forgets that the competition ever started, now and
-// again at test cleanup, which the DB layer never does on its own: StartedAt is
-// kept once set.
+// Reconnect opens a fresh connection, re-running the migrations.
+func (p *PostgresContainer) Reconnect(t *testing.T) *db.DB {
+	t.Helper()
+	d := db.Connect(p.connString)
+	t.Cleanup(func() { require.NoError(t, d.Close()) })
+	return d
+}
+
+// ResetCompetitionState clears every column of the singleton state row
+// (started, first start, runtime schedule, overtime) but keeps the row, as
+// migrate seeded it, now and again at test cleanup. The first start is the one
+// column production never clears.
 func (p *PostgresContainer) ResetCompetitionState(t *testing.T) {
 	t.Helper()
-	p.Exec(t, "DELETE FROM competition_state_schemas")
-	t.Cleanup(func() { p.Exec(t, "DELETE FROM competition_state_schemas") })
+	const reset = `UPDATE competition_state_schemas SET started = false, started_at = NULL,
+		scheduled_start = NULL, scheduled_end = NULL, overtime_end = NULL`
+	p.Exec(t, reset)
+	t.Cleanup(func() { p.Exec(t, reset) })
 }
 
 // testTeamCounter provides unique team IDs across test runs

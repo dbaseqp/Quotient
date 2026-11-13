@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -46,6 +47,11 @@ type ScoringEngine struct {
 	pauseMu sync.Mutex
 	// resume is closed while the engine runs; while paused it is open and the round loop blocks on it.
 	resume chan struct{}
+	// scheduleChanged is closed and replaced whenever the competition schedule changes.
+	scheduleChanged chan struct{}
+	// pausedAtEnd is the competition end the round loop paused itself at (nil
+	// for a manual pause); owned by the round loop, which alone decides overtime.
+	pausedAtEnd *time.Time
 }
 
 func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
@@ -90,6 +96,7 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 		if err := se.EnsureCredentialsSeeded(); err != nil {
 			slog.Error("failed to seed credentials on config reload", "error", err)
 		}
+		se.signalScheduleChanged()
 	}); err != nil {
 		slog.Error("Failed to start config watcher", "error", err)
 	}
@@ -121,6 +128,7 @@ func (se *ScoringEngine) Start() {
 	}
 
 	se.NextRoundStartTime = time.Time{}
+	se.pausedAtEnd = nil
 
 	stop := make(chan struct{})
 	loopDone := make(chan struct{})
@@ -130,20 +138,18 @@ func (se *ScoringEngine) Start() {
 		defer close(loopDone)
 		for {
 			slog.Info("Queueing up for round", "round", se.CurrentRound)
-			se.pauseMu.Lock()
-			resume := se.resume
-			se.pauseMu.Unlock()
-			select {
-			case <-stop:
+			schedule, ok := se.waitForRoundReady(stop)
+			if !ok {
 				return
-			case <-resume:
 			}
 			select {
 			case <-stop:
 				return
 			default:
 			}
-
+			if se.pauseAtCompetitionEnd(schedule) {
+				continue
+			}
 			se.CurrentRoundStartTime = time.Now()
 			se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
 
@@ -166,11 +172,6 @@ func (se *ScoringEngine) Start() {
 			}
 
 			slog.Info(fmt.Sprintf("Next round will start in %s, sleeping...", time.Until(se.NextRoundStartTime).String()))
-			select {
-			case <-stop:
-				return
-			case <-time.After(time.Until(se.NextRoundStartTime)):
-			}
 		}
 	}()
 	se.waitForReset()
@@ -293,6 +294,7 @@ func (se *ScoringEngine) resetPauseState() {
 	if !se.Config.MiscSettings.StartPaused {
 		close(se.resume)
 	}
+	se.scheduleChanged = make(chan struct{})
 }
 
 func (se *ScoringEngine) pausedLocked() bool {
@@ -312,9 +314,9 @@ func (se *ScoringEngine) SetPaused(pause bool) bool {
 	}
 	if pause {
 		se.resume = make(chan struct{})
-		return true
+	} else {
+		close(se.resume)
 	}
-	close(se.resume)
 	return true
 }
 
@@ -324,7 +326,199 @@ func (se *ScoringEngine) Paused() bool {
 	return se.pausedLocked()
 }
 
-// ResetScores resets the engine to the initial state and stops the engine
+// Schedule is the effective competition schedule — the runtime schedule set
+// through the API when there is one, else event.conf — and where the
+// competition stands against it.
+type Schedule struct {
+	Start, End *time.Time
+	// Source is "runtime", "config" or "none".
+	Source string
+	// Started is whether the competition is open to teams right now.
+	Started bool
+	// StartedAt is the first start, the anchor of imported injects; nil until then.
+	StartedAt *time.Time
+	// OvertimeEnd is the end an admin resumed scoring after; scoring continues
+	// past End while they are equal.
+	OvertimeEnd *time.Time
+}
+
+// scheduleRetryDelay is how soon the round loop re-reads the schedule after a
+// failed read or a failed scheduled start.
+const scheduleRetryDelay = 5 * time.Second
+
+// effectiveSchedule merges the persisted state with event.conf: a runtime
+// schedule (any saved start or end) replaces the configured one as a whole.
+func effectiveSchedule(state db.CompetitionStateSchema, conf config.InjectConfig) Schedule {
+	s := Schedule{Source: "none", Started: state.Started, StartedAt: state.StartedAt, OvertimeEnd: state.OvertimeEnd}
+	switch {
+	case state.RuntimeScheduled():
+		s.Start, s.End, s.Source = state.ScheduledStart, state.ScheduledEnd, "runtime"
+	case conf.Start != nil || conf.End != nil:
+		s.Start, s.End, s.Source = conf.Start, conf.End, "config"
+	}
+	return s
+}
+
+// nextScheduledStart reports the scheduled start the round loop still has to
+// perform. Nothing is pending once the competition has ever started or its
+// end has passed.
+func (s Schedule) nextScheduledStart() (start time.Time, pending bool) {
+	if s.StartedAt != nil || s.Start == nil {
+		return time.Time{}, false
+	}
+	if s.End != nil && !time.Now().Before(*s.End) {
+		return time.Time{}, false
+	}
+	return *s.Start, true
+}
+
+// ErrEndBeforeStart rejects a schedule whose end is not after its start.
+var ErrEndBeforeStart = errors.New("competition end time must be after start time")
+
+func (se *ScoringEngine) CompetitionSchedule() (Schedule, error) {
+	state, err := se.DB.GetCompetitionState()
+	if err != nil {
+		return Schedule{}, err
+	}
+	return effectiveSchedule(state, se.Config.InjectSettings), nil
+}
+
+// SetCompetitionSchedule stores a runtime schedule that replaces event.conf's
+// as a whole; both nil clears it so event.conf applies again.
+func (se *ScoringEngine) SetCompetitionSchedule(start, end *time.Time) error {
+	if start != nil && end != nil && !end.After(*start) {
+		return ErrEndBeforeStart
+	}
+	next := effectiveSchedule(db.CompetitionStateSchema{ScheduledStart: start, ScheduledEnd: end}, se.Config.InjectSettings)
+	noStart, err := se.DB.SetCompetitionSchedule(start, end, next.Start, next.End)
+	if err != nil {
+		return err
+	}
+	if noStart {
+		slog.Warn("competition schedule has no start; imported inject times keep their previous anchor")
+	}
+	se.signalScheduleChanged()
+	return nil
+}
+
+// SetCompetitionStarted opens or closes the competition to teams by hand.
+func (se *ScoringEngine) SetCompetitionStarted(started bool) error {
+	if err := se.DB.SetCompetitionStarted(started); err != nil {
+		return err
+	}
+	se.signalScheduleChanged()
+	return nil
+}
+
+// signalScheduleChanged wakes the round loop to re-read the schedule.
+func (se *ScoringEngine) signalScheduleChanged() {
+	se.pauseMu.Lock()
+	close(se.scheduleChanged)
+	se.scheduleChanged = make(chan struct{})
+	se.pauseMu.Unlock()
+}
+
+// startScheduledCompetition performs a due scheduled start if the competition
+// was never started, resuming scoring when it does. It reports false only when
+// the write failed.
+func (se *ScoringEngine) startScheduledCompetition(start time.Time) bool {
+	started, err := se.DB.StartCompetitionOnce(start)
+	if err != nil {
+		slog.Error("failed to start competition at scheduled start", "error", err)
+		return false
+	}
+	if started {
+		slog.Info("Competition start reached, starting competition", "start", start)
+		se.SetPaused(false)
+	}
+	return true
+}
+
+// waitForRoundReady blocks until the next round may start: the engine is not
+// paused, NextRoundStartTime has passed and the schedule was read in the same
+// pass. While waiting it performs a due scheduled competition start, whether
+// paused or between rounds. It returns that schedule, and false once stop is
+// closed.
+func (se *ScoringEngine) waitForRoundReady(stop <-chan struct{}) (Schedule, bool) {
+	for {
+		var resume <-chan struct{}
+		var roundDue <-chan time.Time
+		se.pauseMu.Lock()
+		if se.pausedLocked() {
+			resume = se.resume
+		} else {
+			roundDue = time.After(time.Until(se.NextRoundStartTime))
+		}
+		scheduleChanged := se.scheduleChanged
+		se.pauseMu.Unlock()
+
+		var startDue, retry <-chan time.Time
+		schedule, err := se.CompetitionSchedule()
+		if err != nil {
+			// Never start a round blind: wait for the retry instead of the round timer.
+			slog.Error("failed to read competition schedule; retrying", "error", err, "in", scheduleRetryDelay)
+			roundDue, retry = nil, time.After(scheduleRetryDelay)
+		} else if start, pending := schedule.nextScheduledStart(); pending {
+			if wait := time.Until(start); wait > 0 {
+				startDue = time.After(wait)
+			} else if se.startScheduledCompetition(start) {
+				continue
+			} else {
+				retry = time.After(scheduleRetryDelay)
+			}
+		}
+
+		select {
+		case <-stop:
+			return Schedule{}, false
+		case <-resume:
+		case <-roundDue:
+			// A pause issued during the inter-round sleep must hold before the
+			// next round; it does not wake this select.
+			if !se.Paused() {
+				return schedule, true
+			}
+		case <-scheduleChanged:
+		case <-startDue:
+		case <-retry:
+		}
+	}
+}
+
+// pauseAtCompetitionEnd pauses once the effective end has passed unless an
+// admin resumed after that end; a resume from its own end-pause is recorded
+// here as overtime (OvertimeEnd), which a score reset or a runtime schedule
+// write with a different end clears.
+func (se *ScoringEngine) pauseAtCompetitionEnd(s Schedule) bool {
+	if se.pausedAtEnd != nil && (s.End == nil || !se.pausedAtEnd.Equal(*s.End)) {
+		se.pausedAtEnd = nil
+	}
+	if s.End == nil || time.Now().Before(*s.End) {
+		return false
+	}
+	end := *s.End
+	if s.OvertimeEnd != nil && s.OvertimeEnd.Equal(end) {
+		return false
+	}
+	if se.pausedAtEnd != nil {
+		if err := se.DB.SetOvertimeEnd(&end); err != nil {
+			slog.Error("failed to save competition overtime; retrying next round", "error", err)
+			return false
+		}
+		se.pausedAtEnd = nil
+		return false
+	}
+	se.pauseMu.Lock()
+	defer se.pauseMu.Unlock()
+	if se.pausedLocked() {
+		return true
+	}
+	se.resume = make(chan struct{})
+	se.pausedAtEnd = &end
+	slog.Info("Competition end reached, pausing scoring", "end", end)
+	return true
+}
+
 func (se *ScoringEngine) ResetScores() error {
 	slog.Info("Resetting scores and clearing Redis queues")
 
@@ -357,11 +551,7 @@ func (se *ScoringEngine) ResetScores() error {
 	return nil
 }
 
-// perform a round of koth
 func (se *ScoringEngine) koth() error {
-	// enginePauseWg.Wait()
-
-	// do koth stuff
 	se.finishScoredRound()
 	return nil
 }

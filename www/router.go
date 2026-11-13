@@ -167,6 +167,7 @@ func (router *Router) Start() {
 	mux.HandleFunc("GET /api/engine/tasks", ADMINAUTH(a.GetActiveTasks))
 	mux.HandleFunc("GET /api/engine/preflight", ADMINAUTH(a.GetPreflight))
 	mux.HandleFunc("POST /api/competition/start", ADMINAUTH(a.SetCompetitionStarted))
+	mux.HandleFunc("POST /api/competition/schedule", ADMINAUTH(a.SetCompetitionSchedule))
 	mux.HandleFunc("POST /api/admin/teams", ADMINAUTH(a.UpdateTeams))
 	mux.HandleFunc("GET /api/admin/teamchecks", ADMINAUTH(a.GetTeamChecks))
 	mux.HandleFunc("POST /api/admin/teamchecks", ADMINAUTH(a.UpdateTeamChecks))

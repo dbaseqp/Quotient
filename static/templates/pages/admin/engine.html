@@ -13,6 +13,27 @@
                 </div>
                 <div class="row mb-3">
                     <div class="col">
+                        <h3>Competition Schedule</h3>
+                        <form id="scheduleForm" class="row g-3 align-items-end">
+                            <div class="col-md-4">
+                                <label for="scheduleStartTime" class="form-label">Start Time</label>
+                                <input type="datetime-local" id="scheduleStartTime" class="form-control">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="scheduleEndTime" class="form-label">End Time</label>
+                                <input type="datetime-local" id="scheduleEndTime" class="form-control">
+                            </div>
+                            <div class="col-md-4 d-flex gap-2">
+                                <button type="submit" id="saveScheduleButton" class="btn btn-primary">Save Schedule</button>
+                                <button type="button" id="clearScheduleButton" class="btn btn-outline-secondary" title="Forget the runtime schedule and use event.conf">Clear</button>
+                            </div>
+                        </form>
+                        <div id="scheduleSummary" class="form-text mt-2">No schedule: set one here or in event.conf.</div>
+                        <div id="scheduleFeedback" class="alert mt-2 py-2 d-none" role="alert"></div>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col">
                         <h3>Round Progress</h3>
                         <p id="round__number"></p>
                         <div class="progress">
@@ -117,6 +138,7 @@
                                 Round ${LASTROUND.ID + 1} started at ${current_round_time} and should end at ${next_round_time}.`;
 
                                 const PAUSE_BUTTON = document.getElementById('pauseButton')
+                                PAUSE_BUTTON.classList.remove('btn-warning', 'btn-success');
                                 if (RUNNING) {
                                     PAUSE_BUTTON.textContent = 'Pause Engine';
                                     PAUSE_BUTTON.classList.add('btn-warning');
@@ -126,6 +148,7 @@
                                 }
 
                                 const COMP_START_BUTTON = document.getElementById('competitionStartButton')
+                                COMP_START_BUTTON.classList.remove('btn-danger', 'btn-success');
                                 if (COMPETITION_STARTED) {
                                     COMP_START_BUTTON.textContent = 'Stop Competition';
                                     COMP_START_BUTTON.classList.add('btn-danger');
@@ -133,9 +156,96 @@
                                     COMP_START_BUTTON.textContent = 'Start Competition';
                                     COMP_START_BUTTON.classList.add('btn-success');
                                 }
+
+                                updateScheduleInputs(data["scheduled_start_time"], data["scheduled_end_time"], data["schedule_source"]);
                             })
                             .catch(error => console.error('Error fetching engine status:', error));
                     }
+                    // SCHEDULE mirrors the server's effective schedule; the inputs are dirty when they differ from it.
+                    let SCHEDULE = { start: null, end: null, source: 'none' };
+                    const SCHEDULE_START_INPUT = document.getElementById('scheduleStartTime');
+                    const SCHEDULE_END_INPUT = document.getElementById('scheduleEndTime');
+                    const SCHEDULE_SOURCES = {
+                        runtime: 'set here, replacing event.conf',
+                        config: 'from event.conf',
+                    };
+                    function toDateTimeLocalValue(isoString) {
+                        if (!isoString) {
+                            return '';
+                        }
+                        const date = new Date(isoString);
+                        if (Number.isNaN(date.getTime())) {
+                            return '';
+                        }
+                        const tzOffset = date.getTimezoneOffset() * 60000;
+                        return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+                    }
+                    function scheduleFormDirty() {
+                        return SCHEDULE_START_INPUT.value !== toDateTimeLocalValue(SCHEDULE.start)
+                            || SCHEDULE_END_INPUT.value !== toDateTimeLocalValue(SCHEDULE.end);
+                    }
+                    function renderScheduleSummary() {
+                        const summary = document.getElementById('scheduleSummary');
+                        const parts = [];
+                        if (SCHEDULE.start) {
+                            parts.push(`Planned start ${new Date(SCHEDULE.start).toLocaleString()}`);
+                        }
+                        if (SCHEDULE.end) {
+                            parts.push(`Ends ${new Date(SCHEDULE.end).toLocaleString()}`);
+                        }
+                        summary.textContent = parts.length > 0
+                            ? `${parts.join(' · ')} (${SCHEDULE_SOURCES[SCHEDULE.source]})`
+                            : 'No schedule: set one here or in event.conf.';
+                    }
+                    function updateScheduleInputs(startISO, endISO, source) {
+                        SCHEDULE = { start: startISO, end: endISO, source: source };
+                        SCHEDULE_START_INPUT.value = toDateTimeLocalValue(startISO);
+                        SCHEDULE_END_INPUT.value = toDateTimeLocalValue(endISO);
+                        renderScheduleSummary();
+                    }
+                    function showScheduleFeedback(message, isError) {
+                        const feedback = document.getElementById('scheduleFeedback');
+                        feedback.textContent = message;
+                        feedback.className = `alert mt-2 py-2 ${isError ? 'alert-danger' : 'alert-success'}`;
+                    }
+                    async function saveSchedule(startValue, endValue) {
+                        const saveBtn = document.getElementById('saveScheduleButton');
+                        const clearBtn = document.getElementById('clearScheduleButton');
+                        const startISO = startValue ? new Date(startValue).toISOString() : '';
+                        const endISO = endValue ? new Date(endValue).toISOString() : '';
+
+                        saveBtn.disabled = true;
+                        clearBtn.disabled = true;
+                        try {
+                            const response = await fetch('/api/competition/schedule', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    start_time: startISO,
+                                    end_time: endISO,
+                                }),
+                            });
+                            const data = await response.json().catch(() => ({}));
+                            if (!response.ok || data.error) {
+                                showScheduleFeedback(data.error || `Failed to save schedule (${response.status})`, true);
+                                return;
+                            }
+                            showScheduleFeedback(startISO || endISO ? 'Schedule saved.' : 'Runtime schedule cleared; event.conf applies.', false);
+                            getEngineData();
+                        } catch (error) {
+                            showScheduleFeedback('Failed to save schedule: ' + error.message, true);
+                        } finally {
+                            saveBtn.disabled = false;
+                            clearBtn.disabled = false;
+                        }
+                    }
+                    document.getElementById('scheduleForm').addEventListener('submit', (event) => {
+                        event.preventDefault();
+                        saveSchedule(SCHEDULE_START_INPUT.value, SCHEDULE_END_INPUT.value);
+                    });
+                    document.getElementById('clearScheduleButton').addEventListener('click', () => {
+                        saveSchedule('', '');
+                    });
                     function updateProgress() {
                         const now = Date.now() / 1000; // current time in seconds
                         let last_round_start_time = new Date(CURRENTROUND) / 1000;
@@ -150,7 +260,7 @@
                             PROGRESS.textContent = '100%';
                             PROGRESS.style.width = '100%';
                             PROGRESS.setAttribute('aria-valuenow', 100);
-                            if (RUNNING) {
+                            if (RUNNING && !scheduleFormDirty()) {
                                 window.location.reload();
                             }
                             return;
