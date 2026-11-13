@@ -70,24 +70,6 @@ After starting the engine:
 
 Inject schedules can be imported from a TOML manifest with times relative to the persisted competition start. See [Importing Injects](docs/inject-import.md).
 
-<details>
-<summary>Common IANA timezone names for <code>CompetitionTimezone</code></summary>
-
-`[InjectSettings].CompetitionTimezone` requires a full IANA timezone name (not abbreviations like `PST` or `EST`), so daylight-saving rules are applied for the competition date:
-
-| Region | `CompetitionTimezone` | Standard | Daylight |
-|--------|-----------------------|----------|----------|
-| US Pacific (WRCCDC / PRCCDC) | `America/Los_Angeles` | PST (UTC−08:00) | PDT (UTC−07:00) |
-| US Mountain | `America/Denver` | MST (UTC−07:00) | MDT (UTC−06:00) |
-| US Mountain — Arizona (no DST) | `America/Phoenix` | MST (UTC−07:00) | MST (UTC−07:00) |
-| US Central | `America/Chicago` | CST (UTC−06:00) | CDT (UTC−05:00) |
-| US Eastern | `America/New_York` | EST (UTC−05:00) | EDT (UTC−04:00) |
-| US Alaska | `America/Anchorage` | AKST (UTC−09:00) | AKDT (UTC−08:00) |
-| US Hawaii (no DST) | `Pacific/Honolulu` | HST (UTC−10:00) | HST (UTC−10:00) |
-| Coordinated Universal Time | `UTC` | UTC (+00:00) | UTC (+00:00) |
-
-</details>
-
 1. How to Create Configuration File
 2. Configuration Sections
 
