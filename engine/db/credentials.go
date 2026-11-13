@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"log/slog"
 	"time"
 
 	"gorm.io/gorm"
@@ -39,7 +40,7 @@ type PCRHistorySchema struct {
 	ChangedAt    time.Time `gorm:"autoCreateTime"`
 }
 
-// SeedOriginalCredentials syncs original and unrotated team credentials with the credlist records.
+// SeedOriginalCredentials syncs credentials for credlistName; no-ops if credentials contains no valid rows.
 func (d *DB) SeedOriginalCredentials(credlistName string, credentials [][]string) error {
 	return d.db.Transaction(func(tx *gorm.DB) error {
 		usernames := make([]string, 0, len(credentials))
@@ -90,10 +91,8 @@ func (d *DB) SeedOriginalCredentials(credlistName string, credentials [][]string
 		}
 
 		if len(usernames) == 0 {
-			if err := tx.Where("credlist_name = ?", credlistName).Delete(&OriginalCredentialSchema{}).Error; err != nil {
-				return err
-			}
-			return tx.Where("credlist_name = ?", credlistName).Delete(&CredentialSchema{}).Error
+			slog.Warn("credlist has no valid rows, skipping removal of unlisted usernames to prevent truncation on empty file", "credlist", credlistName)
+			return nil
 		}
 		if err := tx.Where("credlist_name = ? AND username NOT IN ?", credlistName, usernames).Delete(&OriginalCredentialSchema{}).Error; err != nil {
 			return err
