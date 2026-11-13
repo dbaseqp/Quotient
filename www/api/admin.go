@@ -156,11 +156,12 @@ func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSON(w, http.StatusOK, map[string]any{
-		"last_round":          lastRound,
-		"current_round_time":  a.eng.CurrentRoundStartTime,
-		"next_round_time":     a.eng.NextRoundStartTime,
-		"running":             !a.eng.Paused(),
-		"competition_started": a.eng.DB.GetCompetitionStarted(),
+		"last_round":           lastRound,
+		"current_round_time":   a.eng.CurrentRoundStartTime,
+		"next_round_time":      a.eng.NextRoundStartTime,
+		"running":              !a.eng.Paused(),
+		"competition_started":  a.eng.DB.GetCompetitionStarted(),
+		"competition_timezone": a.conf.InjectSettings.CompetitionTimezone,
 	})
 }
 

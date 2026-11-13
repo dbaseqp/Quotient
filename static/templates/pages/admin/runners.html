@@ -89,7 +89,7 @@
                         .then(response => response.json())
                         .then(tasks => {
                             // Update last updated timestamp
-                            document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+                            document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString(undefined, { timeZoneName: 'short' });
 
                             // Get tasks from each category
                             const runningTasks = tasks.running || [];
@@ -285,9 +285,10 @@
                             const endTime = new Date(NEXTROUND).getTime() / 1000;
                             ROUNDDURATION = Math.round(endTime - startTime);
 
-                            let last_round_start_time = new Date(LASTROUND.StartTime).toLocaleString();
-                            let current_round_time = new Date(CURRENTROUND).toLocaleString();
-                            let next_round_time = new Date(NEXTROUND).toLocaleString();
+                            const tzOpts = { timeZoneName: 'short' };
+                            let last_round_start_time = new Date(LASTROUND.StartTime).toLocaleString(undefined, tzOpts);
+                            let current_round_time = new Date(CURRENTROUND).toLocaleString(undefined, tzOpts);
+                            let next_round_time = new Date(NEXTROUND).toLocaleString(undefined, tzOpts);
 
                             document.getElementById('round__number').textContent = `Round ${LASTROUND.ID} was at ${last_round_start_time}.
                             Round ${LASTROUND.ID + 1} started at ${current_round_time} and should end at ${next_round_time}.`;

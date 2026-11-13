@@ -404,7 +404,7 @@
                                 icon.height = 25
                                 icon.width = 25
                                 icon.setAttribute("data-bs-toggle", "tooltip")
-                                icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString())
+                                icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString(undefined, { timeZoneName: 'short' }))
                                 checks.appendChild(icon)
                             }
                         }
@@ -414,7 +414,7 @@
                             icon.height = 25
                             icon.width = 25
                             icon.setAttribute("data-bs-toggle", "tooltip")
-                            icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString())
+                            icon.setAttribute("data-bs-title", (new Date(round.StartTime)).toLocaleString(undefined, { timeZoneName: 'short' }))
                             checks.appendChild(icon)
                         }
                     }
@@ -473,7 +473,7 @@
                                     let row = DRILLDOWN_PLACEHOLDER.cloneNode(true)
                                     row.id = ""
                                     row.childNodes[1].textContent = a.Round.ID
-                                    row.childNodes[3].textContent = (new Date(a.Round.StartTime)).toLocaleString()
+                                    row.childNodes[3].textContent = (new Date(a.Round.StartTime)).toLocaleString(undefined, { timeZoneName: 'short' })
                                     row.childNodes[5].textContent = a.Result
                                     row.childNodes[7].textContent = a.Debug
                                     row.childNodes[9].textContent = a.Error

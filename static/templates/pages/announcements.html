@@ -189,7 +189,7 @@
             let panes = [];
 
             for (const announcement of (data || [])) {
-                announcement.OpenTime = (new Date(announcement.OpenTime)).toLocaleString()
+                announcement.OpenTime = (new Date(announcement.OpenTime)).toLocaleString(undefined, { timeZoneName: 'short' })
                 let tab = PLACEHOLDER_TAB.cloneNode(true)
                 let pane = PLACEHOLDER_PANE.cloneNode(true)
                 tab.classList.remove("placeholder-glow", "d-none")
