@@ -147,16 +147,14 @@ type Uptime struct {
 	TotalChecks  int
 }
 
-func (d *DB) LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
-	rows, err := d.db.Raw(`
-		SELECT team_id, service_name, 
-			   SUM(CASE WHEN result = true THEN 1 ELSE 0 END) as passed_checks, 
-			   COUNT(*) as total_checks 
-		FROM service_check_schemas 
-		GROUP BY team_id, service_name
-	`).Rows()
+func (d *DB) loadUptimes(table string) (map[uint]map[string]Uptime, error) {
+	uptimes := make(map[uint]map[string]Uptime)
+	rows, err := d.db.Table(table).
+		Select("team_id, service_name, SUM(CASE WHEN result = true THEN 1 ELSE 0 END) as passed_checks, COUNT(*) as total_checks").
+		Group("team_id, service_name").
+		Rows()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// nolint:errcheck
 	defer rows.Close()
@@ -168,18 +166,25 @@ func (d *DB) LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
 		var totalChecks int
 
 		if err := rows.Scan(&teamID, &serviceName, &passedChecks, &totalChecks); err != nil {
-			return err
+			return nil, err
 		}
-
-		if (*uptimePerService)[teamID] == nil {
-			(*uptimePerService)[teamID] = make(map[string]Uptime)
+		if uptimes[teamID] == nil {
+			uptimes[teamID] = make(map[string]Uptime)
 		}
-
-		(*uptimePerService)[teamID][serviceName] = Uptime{
+		uptimes[teamID][serviceName] = Uptime{
 			PassedChecks: passedChecks,
 			TotalChecks:  totalChecks,
 		}
 	}
+	return uptimes, rows.Err()
+}
+
+func (d *DB) LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
+	uptimes, err := d.loadUptimes("service_check_schemas")
+	if err != nil {
+		return err
+	}
+	*uptimePerService = uptimes
 	return nil
 }
 

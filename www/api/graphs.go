@@ -19,7 +19,7 @@ func (a *API) GetServiceStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	round, err := a.eng.DB.GetLastRound()
+	round, _, err := a.eng.LastRound()
 	if err != nil {
 		WriteInternalError(w, r, "Error retrieving last round", err)
 		return
@@ -181,21 +181,6 @@ func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	teams = slices.DeleteFunc(teams, func(team db.TeamSchema) bool { return !team.Active })
 
-	a.eng.RLockUptime()
-	uptime := a.eng.GetUptimePerService()
-
-	// TODO: make db unique function or get from config
-	uniqueServicesMap := make(map[string]bool)
-	for _, team := range teams {
-		for service := range uptime[team.ID] {
-			uniqueServicesMap[service] = true
-		}
-	}
-	uniqueServices := make([]string, 0)
-	for service := range uniqueServicesMap {
-		uniqueServices = append(uniqueServices, service)
-	}
-
 	type Point struct {
 		Service string
 		Uptime  float64
@@ -207,24 +192,41 @@ func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	callerTeamID, hasTeam := CallerTeamID(r.Context())
-	series := make([]Series, 0, len(uptime))
-	for _, team := range teams {
-		s := Series{Name: team.Name, Self: hasTeam && team.ID == callerTeamID}
-
-		points := make([]Point, 0, len(uniqueServices))
-		for _, servicename := range uniqueServices {
-			percentage := -0.01
-			for service, uptime := range uptime[team.ID] {
-				if service == servicename {
-					percentage = float64(uptime.PassedChecks) / float64(uptime.TotalChecks)
-				}
+	var series []Series
+	if err := a.eng.WithUptimes(func(uptime map[uint]map[string]db.Uptime) {
+		// TODO: make db unique function or get from config
+		uniqueServicesMap := make(map[string]bool)
+		for _, team := range teams {
+			for service := range uptime[team.ID] {
+				uniqueServicesMap[service] = true
 			}
-			points = append(points, Point{Service: servicename, Uptime: percentage})
 		}
-		s.Data = points
-		series = append(series, s)
+		uniqueServices := make([]string, 0, len(uniqueServicesMap))
+		for service := range uniqueServicesMap {
+			uniqueServices = append(uniqueServices, service)
+		}
+
+		series = make([]Series, 0, len(uptime))
+		for _, team := range teams {
+			s := Series{Name: team.Name, Self: hasTeam && team.ID == callerTeamID}
+
+			points := make([]Point, 0, len(uniqueServices))
+			for _, servicename := range uniqueServices {
+				percentage := -0.01
+				for service, u := range uptime[team.ID] {
+					if service == servicename && u.TotalChecks > 0 {
+						percentage = float64(u.PassedChecks) / float64(u.TotalChecks)
+					}
+				}
+				points = append(points, Point{Service: servicename, Uptime: percentage})
+			}
+			s.Data = points
+			series = append(series, s)
+		}
+	}); err != nil {
+		WriteInternalError(w, r, "Error retrieving uptimes", err)
+		return
 	}
-	a.eng.RUnlockUptime()
 
 	if a.shouldScrub(r) {
 		for i := range series {
