@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -46,11 +45,13 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				InsecureSkipVerify: true, // #nosec G402 -- competition services may use self-signed certs
 			},
 		}
-		// Set client timeout to slightly less than check timeout to get better error messages
 		clientTimeout := time.Duration(c.Timeout) * time.Second
 		client := &http.Client{
 			Transport: tr,
 			Timeout:   clientTimeout,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		}
 
 		requestURL := fmt.Sprintf("%s://%s:%d%s", c.Scheme, c.Target, c.Port, u.Path)
@@ -86,6 +87,9 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
+		// nolint:errcheck
+		defer resp.Body.Close()
+
 		if u.Status != 0 && resp.StatusCode != u.Status {
 			checkResult.Error = "status returned by webserver was incorrect"
 			checkResult.Debug = "status was " + strconv.Itoa(resp.StatusCode) + " wanted " + strconv.Itoa(u.Status) + " for url " + u.Path
@@ -93,11 +97,6 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
-		defer func() {
-			if err := resp.Body.Close(); err != nil {
-				slog.Error("failed to close http response body", "error", err)
-			}
-		}()
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			checkResult.Error = "error reading page content"
