@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -109,22 +110,27 @@ func (d *DB) createCumulativeScoresView() {
 }
 
 func (d *DB) AddTeams(conf *config.ConfigSettings) error {
-	for _, team := range conf.Team {
-		t := TeamSchema{Name: team.Name}
+	ensureTeam := func(name string) error {
+		t := TeamSchema{Name: name}
 		result := d.db.Where(&t).First(&t)
-		if result.Error != nil {
-			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-				if _, err := d.CreateTeam(t); err != nil {
-					return err
-				}
-			} else {
-				return result.Error
-			}
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			_, err := d.CreateTeam(t)
+			return err
+		}
+		return result.Error
+	}
+
+	for i := 1; i <= conf.MiscSettings.TeamCount; i++ {
+		if err := ensureTeam(fmt.Sprintf("team%02d", i)); err != nil {
+			return err
+		}
+	}
+	for _, team := range conf.Team {
+		if err := ensureTeam(team.Name); err != nil {
+			return err
 		}
 	}
 
-	// check for teams from other sources
-	// ldap
 	if conf.LdapSettings != (config.LdapAuthConfig{}) {
 		teamNames, err := ldapdir.TeamMembers(conf.LdapSettings)
 		if err != nil {
@@ -132,16 +138,8 @@ func (d *DB) AddTeams(conf *config.ConfigSettings) error {
 		}
 
 		for _, teamName := range teamNames {
-			t := TeamSchema{Name: teamName}
-			result := d.db.Where(&t).First(&t)
-			if result.Error != nil {
-				if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-					if _, err := d.CreateTeam(t); err != nil {
-						return err
-					}
-				} else {
-					return result.Error
-				}
+			if err := ensureTeam(teamName); err != nil {
+				return err
 			}
 		}
 	}
