@@ -172,7 +172,7 @@ func (service *Service) Run(teamID uint, teamIdentifier string, roundID uint, re
 	}
 
 	slog.Debug("Running check", "teamID", teamID, "serviceName", service.Name, "target", service.Target)
-	response := make(chan Result)
+	response := make(chan Result, 1)
 
 	go definition(teamID, teamIdentifier, checkResult, response)
 

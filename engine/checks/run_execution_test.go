@@ -505,6 +505,42 @@ func TestServiceTimeout(t *testing.T) {
 	})
 }
 
+// TestBufferedChannelPreventsGoroutineLeak verifies that check goroutines
+// are not leaked when the caller times out before the check completes.
+func TestBufferedChannelPreventsGoroutineLeak(t *testing.T) {
+	// done is closed by the check goroutine when it finishes.
+	done := make(chan struct{})
+
+	svc := &Service{
+		Name:    "leak-test",
+		Target:  "127.0.0.1",
+		Timeout: 1, // 1-second timeout, check sleeps 2 s
+	}
+
+	// definition sleeps longer than the timeout, then sends; with a buffered
+	// channel the send succeeds immediately regardless of the caller's state.
+	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
+		defer close(done)
+		time.Sleep(2 * time.Second)
+		checkResult.Status = true
+		response <- checkResult // must not block
+	}
+
+	resultsChan := make(chan Result, 1)
+
+
+	svc.Run(1, "01", 1, resultsChan, definition)
+
+	// Run returned on timeout; now wait for the check goroutine to exit.
+	select {
+	case <-done:
+		// goroutine exited; buffered channel let it send without blocking
+	case <-time.After(5 * time.Second):
+		t.Fatal("check goroutine did not exit — possible goroutine leak")
+	}
+
+}
+
 func TestSshRun_DomainExecution(t *testing.T) {
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
