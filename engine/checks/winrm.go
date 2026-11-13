@@ -111,7 +111,6 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 			}
 		}
 		checkResult.Status = true
-		checkResult.Points = c.Points
 		checkResult.Debug = "creds used were " + username + ":" + password
 		response <- checkResult
 	}

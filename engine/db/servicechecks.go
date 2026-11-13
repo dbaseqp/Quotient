@@ -184,9 +184,11 @@ func (d *DB) LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
 }
 
 type ServiceScoreData struct {
-	TeamID       uint
-	ServiceName  string
-	Points       int
+	TeamID      uint
+	ServiceName string
+	Points      int
+	// MaxPoints is what the team would hold had every one of its checks of the service passed.
+	MaxPoints    int
 	Violations   int
 	TotalPenalty int
 }
@@ -197,9 +199,11 @@ func (d *DB) GetServiceScores() ([]ServiceScoreData, error) {
 	// Create a map to store intermediate results keyed by team_id and service_name
 	scoreMap := make(map[uint]map[string]*ServiceScoreData)
 
-	// First get the total points per service per team
+	// First get the earned and the possible points per service per team
 	pointsRows, err := d.db.Raw(`
-		SELECT team_id, service_name, SUM(CASE WHEN result = true THEN points ELSE 0 END) as total_points
+		SELECT team_id, service_name,
+			   SUM(CASE WHEN result = true THEN points ELSE 0 END) as total_points,
+			   SUM(points) as max_points
 		FROM service_check_schemas
 		GROUP BY team_id, service_name
 	`).Rows()
@@ -213,8 +217,9 @@ func (d *DB) GetServiceScores() ([]ServiceScoreData, error) {
 		var teamID uint
 		var serviceName string
 		var points int
+		var maxPoints int
 
-		if err := pointsRows.Scan(&teamID, &serviceName, &points); err != nil {
+		if err := pointsRows.Scan(&teamID, &serviceName, &points, &maxPoints); err != nil {
 			return nil, err
 		}
 
@@ -226,6 +231,7 @@ func (d *DB) GetServiceScores() ([]ServiceScoreData, error) {
 			TeamID:      teamID,
 			ServiceName: serviceName,
 			Points:      points,
+			MaxPoints:   maxPoints,
 		}
 	}
 

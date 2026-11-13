@@ -231,7 +231,6 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			}
 		}
 		checkResult.Status = true
-		checkResult.Points = c.Points
 		checkResult.Debug = "creds used were " + username + ":" + password
 		response <- checkResult
 	}

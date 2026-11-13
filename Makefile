@@ -7,7 +7,7 @@ test-unit:
 	go test -v -race -short ./engine/... ./www/... ./runner/...
 
 test-integration: test-deps-start
-	go test -v -race -p 1 ./tests/integration/... ./engine/... -timeout 10m
+	go test -v -race -p 1 ./tests/integration/... ./engine/... ./runner/... -timeout 10m
 	@$(MAKE) test-deps-stop
 
 test-deps-start:

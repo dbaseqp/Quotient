@@ -74,6 +74,7 @@ func (a *API) ExportScores(w http.ResponseWriter, r *http.Request) {
 	type ServiceScore struct {
 		ServiceName   string `json:"service_name"`
 		Points        int    `json:"service_points"`
+		MaxPoints     int    `json:"max_points"`
 		SlaViolations int    `json:"sla_violations"`
 		SlaPenalty    int    `json:"sla_penalty"`
 	}
@@ -114,6 +115,7 @@ func (a *API) ExportScores(w http.ResponseWriter, r *http.Request) {
 			service := ServiceScore{
 				ServiceName:   sd.ServiceName,
 				Points:        sd.Points,
+				MaxPoints:     sd.MaxPoints,
 				SlaViolations: sd.Violations,
 				SlaPenalty:    sd.TotalPenalty,
 			}
