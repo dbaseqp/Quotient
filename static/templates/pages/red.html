@@ -35,6 +35,12 @@
     let teams;
     let boxes;
     let vectors = [];
+    if (typeof DOMPurify === 'undefined') {
+        document.body.innerHTML = '<p style="padding:1em;color:red">Error: DOMPurify failed to load. Refresh or contact your administrator.</p>';
+        throw new Error('DOMPurify not loaded');
+    }
+    function renderMarkdown(src) { return DOMPurify.sanitize(marked.parse(src)); }
+
     function init() {
 
         myDiagram = new go.Diagram('graph', {
@@ -470,7 +476,7 @@
                     const markdown = document.createElement('div');
                     markdown.name = key;
                     markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
-                    markdown.innerHTML = DOMPurify.sanitize(marked.parse(data[key]));
+                    markdown.innerHTML = renderMarkdown(data[key]);
 
                     const textarea = document.createElement('textarea');
                     textarea.name = key;
@@ -489,7 +495,7 @@
                             } else if (button.textContent === 'Preview') {
                                 button.textContent = 'Edit';
                                 data[key] = textarea.value;
-                                markdown.innerHTML = DOMPurify.sanitize(marked.parse(data[key]));
+                                markdown.innerHTML = renderMarkdown(data[key]);
                                 container.replaceChildren(markdown);
                             }
                         });
@@ -855,7 +861,7 @@
 
         const markdown = document.createElement('div');
         markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
-        markdown.innerHTML = DOMPurify.sanitize(marked.parse(textarea.value));
+        markdown.innerHTML = renderMarkdown(textarea.value);
 
         const button = document.createElement('button');
         button.type = 'button';
@@ -870,7 +876,7 @@
             } else if (button.textContent === 'Preview') {
                 button.textContent = 'Edit';
                 content = textarea.value;
-                markdown.innerHTML = DOMPurify.sanitize(marked.parse(content));
+                markdown.innerHTML = renderMarkdown(content);
                 container.replaceChildren(markdown);
             }
         });
@@ -937,7 +943,7 @@
 
         const markdown = document.createElement('div');
         markdown.classList.add('border', 'border-1', 'mb-2', 'p-2');
-        markdown.innerHTML = DOMPurify.sanitize(marked.parse(textarea.value));
+        markdown.innerHTML = renderMarkdown(textarea.value);
 
         const button = document.createElement('button');
         button.type = 'button';
@@ -952,7 +958,7 @@
             } else if (button.textContent === 'Preview') {
                 button.textContent = 'Edit';
                 content = textarea.value;
-                markdown.innerHTML = DOMPurify.sanitize(marked.parse(content));
+                markdown.innerHTML = renderMarkdown(content);
                 container.replaceChildren(markdown);
             }
         });
