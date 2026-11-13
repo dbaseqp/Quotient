@@ -32,9 +32,12 @@
   SlaPenalty = 25
 
 [InjectSettings]
-  # Planned local start used to preview imported inject schedules. When an admin
-  # starts the competition, the actual start is persisted and becomes the anchor.
+  # Planned local start; imported inject schedules are anchored to it until an
+  # admin starts the competition, when the actual start becomes the anchor. The
+  # admin engine page can replace this schedule at runtime.
   CompetitionStartTime = "2027-03-19 08:00"
+  # No round starts after the end; the engine pauses itself (resume to run overtime).
+  CompetitionEndTime = "2027-03-19 16:30"
   CompetitionTimezone = "America/Los_Angeles"
 
 [CredlistSettings]
