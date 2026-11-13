@@ -191,13 +191,11 @@ func TestPreflightWebUIEndpoints(t *testing.T) {
 		return w
 	}
 
-	// Non-admins are blocked during preflight.
 	for _, h := range []http.HandlerFunc{a.GetServiceStatus, a.GetUptimeStatus, a.GetTeamSummary, a.GetServiceAll} {
 		w := callWithIdentity(http.MethodGet, "/", map[string]string{"team_id": fmt.Sprint(team.ID), "service_name": "box01-ssh"}, teamUserID, h)
 		assert.Equal(t, http.StatusForbidden, w.Code)
 	}
 
-	// Admin sees preflight service status on /api/graphs/services.
 	w := callWithIdentity(http.MethodGet, "/api/graphs/services", nil, adminID, a.GetServiceStatus)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var statusResp struct {
@@ -227,7 +225,6 @@ func TestPreflightWebUIEndpoints(t *testing.T) {
 	}
 	assert.True(t, foundTeamStatus, "preflight service status includes active team")
 
-	// Admin sees preflight uptimes on /api/graphs/uptimes.
 	w = callWithIdentity(http.MethodGet, "/api/graphs/uptimes", nil, adminID, a.GetUptimeStatus)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var uptimeResp struct {
@@ -254,25 +251,26 @@ func TestPreflightWebUIEndpoints(t *testing.T) {
 	}
 	assert.True(t, foundTeamUptime, "preflight uptimes include active team")
 
-	// Admin sees preflight team summary on /api/services/{team_id}.
+	require.NoError(t, pg.DB.CreatePreflightRound(db.PreflightRoundSchema{
+		ID:        2,
+		StartTime: roundTime.Add(time.Minute),
+	}))
+
 	w = callWithIdentity(http.MethodGet, "/api/services/"+fmt.Sprint(team.ID), map[string]string{"team_id": fmt.Sprint(team.ID)}, adminID, a.GetTeamSummary)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	var summaries []struct {
-		ServiceName  string
-		SlaCount     int
-		Last10Rounds []db.RoundSchema
-		Uptime       float64
-	}
+	var summaries []db.ServiceSummary
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &summaries))
 	require.Len(t, summaries, 2)
 	assert.Equal(t, "box01-ssh", summaries[0].ServiceName)
 	assert.InDelta(t, 1.0, summaries[0].Uptime, 1e-6)
-	require.Len(t, summaries[0].Last10Rounds, 1)
-	assert.Equal(t, uint(1), summaries[0].Last10Rounds[0].ID)
+	require.Len(t, summaries[0].Last10Rounds, 2)
+	assert.Equal(t, uint(2), summaries[0].Last10Rounds[0].ID)
+	assert.NotNil(t, summaries[0].Last10Rounds[0].Checks, "empty preflight round checks must serialize as [] not null")
+	assert.Empty(t, summaries[0].Last10Rounds[0].Checks)
+	assert.Equal(t, uint(1), summaries[0].Last10Rounds[1].ID)
 	assert.Equal(t, "box01-web", summaries[1].ServiceName)
 	assert.InDelta(t, 0.0, summaries[1].Uptime, 1e-6)
 
-	// Admin sees preflight drilldown on /api/services/{team_id}/{service_name}.
 	w = callWithIdentity(http.MethodGet, "/api/services/"+fmt.Sprint(team.ID)+"/box01-ssh", map[string]string{"team_id": fmt.Sprint(team.ID), "service_name": "box01-ssh"}, adminID, a.GetServiceAll)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var drilldown []db.ServiceCheckSchema
@@ -282,7 +280,6 @@ func TestPreflightWebUIEndpoints(t *testing.T) {
 	assert.True(t, drilldown[0].Result)
 	assert.Equal(t, "creds used were admin:secret", drilldown[0].Debug)
 
-	// Admin sees preflight round in /api/engine.
 	w = callWithIdentity(http.MethodGet, "/api/engine", nil, adminID, a.GetEngine)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var engineResp struct {
@@ -291,7 +288,7 @@ func TestPreflightWebUIEndpoints(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &engineResp))
 	assert.True(t, engineResp.Preflight)
-	assert.Equal(t, uint(1), engineResp.LastRound.ID)
+	assert.Equal(t, uint(2), engineResp.LastRound.ID)
 
 	// Starting the competition immediately stops serving preflight data even before scored round 1 finishes.
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))

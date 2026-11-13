@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"github.com/dbaseqp/Quotient/engine/db"
 )
 
 var validIdentifierRegex = regexp.MustCompile(`^[0-9]{1,3}$`)
@@ -150,21 +148,11 @@ func (a *API) GetActiveTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
-	preflight := a.eng.PreflightPending()
-	var (
-		lastRound db.RoundSchema
-		err       error
-	)
-	if preflight {
-		lastRound, err = a.eng.DB.GetLastPreflightRound()
-	} else {
-		lastRound, err = a.eng.DB.GetLastRound()
-	}
+	lastRound, preflight, err := a.eng.LastRound()
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve engine status"})
 		return
 	}
-
 	WriteJSON(w, http.StatusOK, map[string]any{
 		"last_round":          lastRound,
 		"current_round_time":  a.eng.CurrentRoundStartTime,

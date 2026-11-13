@@ -53,49 +53,11 @@ func (a *API) GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var (
-		summaries []map[string]any
-		uptimeMap map[uint]map[string]db.Uptime
-	)
-	if a.eng.PreflightPending() {
-		summaries, err = a.eng.DB.GetPreflightTeamSummary(teamID)
-		if err == nil {
-			uptimeMap, err = a.eng.DB.GetPreflightUptimes()
-		}
-	} else {
-		summaries, err = a.eng.DB.GetTeamSummary(teamID)
-	}
+	s, err := a.eng.TeamSummary(teamID)
 	if err != nil {
 		slog.Error("Failed to get team summary", "teamID", teamID, "err", err)
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving team summary"})
 		return
-	}
-
-	type summary struct {
-		ServiceName  string           `json:"ServiceName"`
-		SlaCount     int              `json:"SlaCount"`
-		Last10Rounds []db.RoundSchema `json:"Last10Rounds"`
-		Uptime       float64          `json:"Uptime"`
-	}
-
-	if uptimeMap == nil {
-		a.eng.RLockUptime()
-		defer a.eng.RUnlockUptime()
-		uptimeMap = a.eng.GetUptimePerService()
-	}
-	var s []summary
-	for _, v := range summaries {
-		uptime := uptimeMap[teamID][v["ServiceName"].(string)]
-		var pct float64
-		if uptime.TotalChecks > 0 {
-			pct = float64(uptime.PassedChecks) / float64(uptime.TotalChecks)
-		}
-		s = append(s, summary{
-			ServiceName:  v["ServiceName"].(string),
-			SlaCount:     v["SlaCount"].(int),
-			Last10Rounds: v["Last10Rounds"].([]db.RoundSchema),
-			Uptime:       pct,
-		})
 	}
 
 	WriteJSON(w, http.StatusOK, s)
@@ -120,12 +82,7 @@ func (a *API) GetServiceAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var service []db.ServiceCheckSchema
-	if a.eng.PreflightPending() {
-		service, err = a.eng.DB.GetPreflightServiceAllChecksByTeam(teamID, serviceID)
-	} else {
-		service, err = a.eng.DB.GetServiceAllChecksByTeam(teamID, serviceID)
-	}
+	service, err := a.eng.ServiceAllChecksByTeam(teamID, serviceID)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving service data"})
 		return

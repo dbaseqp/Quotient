@@ -201,16 +201,66 @@ func (se *ScoringEngine) waitForReset() {
 	}
 }
 
-func (se *ScoringEngine) GetUptimePerService() map[uint]map[string]db.Uptime {
-	return se.UptimePerService
+func (se *ScoringEngine) LastRound() (db.RoundSchema, bool, error) {
+	if se.PreflightPending() {
+		r, err := se.DB.GetLastPreflightRound()
+		return r, true, err
+	}
+	r, err := se.DB.GetLastRound()
+	return r, false, err
 }
 
-func (se *ScoringEngine) RLockUptime() {
+func (se *ScoringEngine) WithUptimes(fn func(map[uint]map[string]db.Uptime)) error {
+	if se.PreflightPending() {
+		u, err := se.DB.GetPreflightUptimes()
+		if err != nil {
+			return err
+		}
+		fn(u)
+		return nil
+	}
 	se.uptimeMu.RLock()
+	defer se.uptimeMu.RUnlock()
+	fn(se.UptimePerService)
+	return nil
 }
 
-func (se *ScoringEngine) RUnlockUptime() {
+func populateSummaryUptimes(summaries []db.ServiceSummary, uptimes map[string]db.Uptime) {
+	for i := range summaries {
+		if u := uptimes[summaries[i].ServiceName]; u.TotalChecks > 0 {
+			summaries[i].Uptime = float64(u.PassedChecks) / float64(u.TotalChecks)
+		}
+	}
+}
+
+func (se *ScoringEngine) TeamSummary(teamID uint) ([]db.ServiceSummary, error) {
+	if se.PreflightPending() {
+		summaries, err := se.DB.GetPreflightTeamSummary(teamID)
+		if err != nil || len(summaries) == 0 {
+			return summaries, err
+		}
+		uptimes, err := se.DB.GetPreflightUptimes()
+		if err != nil {
+			return nil, err
+		}
+		populateSummaryUptimes(summaries, uptimes[teamID])
+		return summaries, nil
+	}
+	summaries, err := se.DB.GetTeamSummary(teamID)
+	if err != nil || len(summaries) == 0 {
+		return summaries, err
+	}
+	se.uptimeMu.RLock()
+	populateSummaryUptimes(summaries, se.UptimePerService[teamID])
 	se.uptimeMu.RUnlock()
+	return summaries, nil
+}
+
+func (se *ScoringEngine) ServiceAllChecksByTeam(teamID uint, serviceID string) ([]db.ServiceCheckSchema, error) {
+	if se.PreflightPending() {
+		return se.DB.GetPreflightServiceAllChecksByTeam(teamID, serviceID)
+	}
+	return se.DB.GetServiceAllChecksByTeam(teamID, serviceID)
 }
 
 // GetActiveTasks returns all active and recently completed tasks
@@ -384,9 +434,8 @@ func (se *ScoringEngine) finishScoredRound() {
 	se.RedisClient.Publish(context.Background(), "events", "round_finish")
 }
 
-// PreflightPending reads the DB rather than CurrentRound, which also advances
-// on rounds that stored nothing and is reseeded on restart. A DB read error
-// runs a preflight round, delaying scoring by one round.
+// PreflightPending reads the DB rather than CurrentRound (which advances on
+// empty rounds and resets on restart), returning true on DB read error.
 func (se *ScoringEngine) PreflightPending() bool {
 	if se.DB.GetCompetitionStarted() {
 		return false
