@@ -273,6 +273,19 @@ Every attempt, plus the waits between them, must fit in the shortest round: `Att
 
 In rvb events, rounds that run while the competition is not started and no scored round has been stored are **preflight rounds**. They run the same checks a scored round would (inactive teams, disabled team services and checks without seeded credentials are skipped alike), but their results are stored apart and never count toward points, uptime or SLAs. Leave `StartPaused = false` to have preflight rounds run as soon as the engine is up. `GET /api/engine/preflight` returns the latest preflight round, including one that collected no results, so you can confirm every team is green before handing over; it is admin-only because the stored error and debug text can contain credentials. Stopping a competition that has stored scored rounds does not bring preflight rounds back; `GET /api/engine/reset` while stopped (or stopping before the first scored round is stored) re-enters preflight, since the decision is made from the stored rounds. Injects keep their anchor: a reset does not forget when the competition first started. In custom checks the `ROUND` placeholder is the preflight round number during preflight and the scored round number afterwards, so both start at 1.
 
+#### Competition Start and End
+
+`[InjectSettings]` holds the competition schedule; both inject imports and the scoring engine read it.
+
+```toml
+[InjectSettings]
+CompetitionStartTime = "2027-03-19 08:00"  # Planned start, used to preview imported inject schedules
+CompetitionEndTime = "2027-03-19 16:30"    # No round starts after this unless an admin resumes (overtime)
+CompetitionTimezone = "America/Los_Angeles"
+```
+
+When `CompetitionEndTime` passes, the engine pauses itself before the next round. If an admin resumes after that pause, the round loop persists the resume as overtime (`overtime_end` in the competition state) before its next round, and the engine keeps running past the end — across restarts — until scores are reset or `CompetitionEndTime` is changed. A manual pause that merely spans the end is not overtime: the engine still pauses at the next round boundary.
+
 #### UI Settings
 
 ```toml

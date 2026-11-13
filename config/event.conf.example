@@ -35,6 +35,8 @@
   # Planned local start used to preview imported inject schedules. When an admin
   # starts the competition, the actual start is persisted and becomes the anchor.
   CompetitionStartTime = "2027-03-19 08:00"
+  # No round starts after the end; the engine pauses itself (resume to run overtime).
+  CompetitionEndTime = "2027-03-19 16:30"
   CompetitionTimezone = "America/Los_Angeles"
 
 [CredlistSettings]
