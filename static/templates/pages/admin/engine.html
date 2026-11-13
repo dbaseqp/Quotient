@@ -111,11 +111,14 @@
                                 COMPETITION_STARTED = data["competition_started"];
 
                                 const tzOpts = { timeZoneName: 'short' };
-                                const formatInZone = (value, timeZone) => {
+                                const formatInZone = (value, timeZone) =>
+                                    new Date(value).toLocaleString(undefined, timeZone ? { timeZone, timeZoneName: 'short' } : tzOpts);
+                                const isValidZone = (timeZone) => {
                                     try {
-                                        return new Date(value).toLocaleString(undefined, timeZone ? { timeZone, timeZoneName: 'short' } : tzOpts);
+                                        Intl.DateTimeFormat(undefined, { timeZone });
+                                        return true;
                                     } catch {
-                                        return new Date(value).toLocaleString(undefined, tzOpts);
+                                        return false;
                                     }
                                 };
                                 let last_round_start_time = formatInZone(LASTROUND.StartTime);
@@ -128,7 +131,7 @@
                                 const zones = ['UTC'];
                                 const compTz = data["competition_timezone"];
                                 const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                                if (compTz && compTz !== 'UTC' && compTz !== browserTz) {
+                                if (compTz && compTz !== 'UTC' && compTz !== browserTz && isValidZone(compTz)) {
                                     zones.push(compTz);
                                 }
                                 document.getElementById('round__number__tz').textContent = zones.map((tz) =>
