@@ -171,6 +171,9 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 		RunnerID:    runnerID,
 		StartTime:   time.Now().Format(time.RFC3339),
 		StatusText:  "running",
+		// Set here, not from the check's answer, so the export's max_points counts a check the round deadline cuts
+		// off: it never answers, and is stored when the engine is still collecting as its result arrives.
+		Points: runner.GetPoints(),
 	}
 
 	// Set initial "running" status in Redis for visualization
@@ -204,10 +207,10 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 		go runner.Run(task.TeamID, task.TeamIdentifier, task.RoundID, resultsChan)
 
 		// Wait for either result or deadline. Only the fields a check produces
-		// are taken from it; task identity and runner metadata stay as set above.
+		// are taken from it; task identity, points and runner metadata stay as set above.
 		select {
 		case r := <-resultsChan:
-			result.Status, result.Error, result.Debug, result.Points, result.Target = r.Status, r.Error, r.Debug, r.Points, r.Target
+			result.Status, result.Error, result.Debug, result.Target = r.Status, r.Error, r.Debug, r.Target
 
 			slog.Info("check result received", "round_id", result.RoundID, "team_id", result.TeamID,
 				"service_type", result.ServiceType, "status", result.Status, "debug", result.Debug, "error", result.Error)
