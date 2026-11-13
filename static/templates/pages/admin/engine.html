@@ -14,7 +14,8 @@
                 <div class="row mb-3">
                     <div class="col">
                         <h3>Round Progress</h3>
-                        <p id="round__number"></p>
+                        <p id="round__number" class="mb-1"></p>
+                        <p id="round__number__tz" class="text-body-secondary small mb-2"></p>
                         <div class="progress">
                             <div id="roundProgress"
                                 class="progress-bar progress-bar-striped progress-bar-animated bg-success"
@@ -109,12 +110,30 @@
                                 RUNNING = data["running"];
                                 COMPETITION_STARTED = data["competition_started"];
 
-                                let last_round_start_time = new Date(LASTROUND.StartTime).toLocaleString();
-                                let current_round_time = new Date(CURRENTROUND).toLocaleString();
-                                let next_round_time = new Date(NEXTROUND).toLocaleString();
+                                const tzOpts = { timeZoneName: 'short' };
+                                const formatInZone = (value, timeZone) => {
+                                    try {
+                                        return new Date(value).toLocaleString(undefined, timeZone ? { timeZone, timeZoneName: 'short' } : tzOpts);
+                                    } catch {
+                                        return new Date(value).toLocaleString(undefined, tzOpts);
+                                    }
+                                };
+                                let last_round_start_time = formatInZone(LASTROUND.StartTime);
+                                let current_round_time = formatInZone(CURRENTROUND);
+                                let next_round_time = formatInZone(NEXTROUND);
 
                                 document.getElementById('round__number').textContent = `Round ${LASTROUND.ID} was at ${last_round_start_time}.
                                 Round ${LASTROUND.ID + 1} started at ${current_round_time} and should end at ${next_round_time}.`;
+
+                                const zones = ['UTC'];
+                                const compTz = data["competition_timezone"];
+                                const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                                if (compTz && compTz !== 'UTC' && compTz !== browserTz) {
+                                    zones.push(compTz);
+                                }
+                                document.getElementById('round__number__tz').textContent = zones.map((tz) =>
+                                    `${tz}: Round ${LASTROUND.ID} at ${formatInZone(LASTROUND.StartTime, tz)} · Round ${LASTROUND.ID + 1}: ${formatInZone(CURRENTROUND, tz)} – ${formatInZone(NEXTROUND, tz)}`
+                                ).join(' | ');
 
                                 const PAUSE_BUTTON = document.getElementById('pauseButton')
                                 if (RUNNING) {

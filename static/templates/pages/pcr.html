@@ -711,7 +711,7 @@ john.doe,SecurePassword!
 
                 data.forEach(entry => {
                     const row = document.createElement("tr");
-                    const time = new Date(entry.ChangedAt).toLocaleString();
+                    const time = new Date(entry.ChangedAt).toLocaleString(undefined, { timeZoneName: 'short' });
 
                     const cells = [
                         { text: entry.Username },
