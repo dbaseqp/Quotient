@@ -76,42 +76,11 @@ func (d *DB) GetLastPreflightRound() (RoundSchema, error) {
 }
 
 func (d *DB) GetPreflightUptimes() (map[uint]map[string]Uptime, error) {
-	uptimes := make(map[uint]map[string]Uptime)
-	rows, err := d.db.Raw(`
-		SELECT team_id, service_name,
-		       SUM(CASE WHEN result = true THEN 1 ELSE 0 END) as passed_checks,
-		       COUNT(*) as total_checks
-		FROM preflight_check_schemas
-		GROUP BY team_id, service_name
-	`).Rows()
-	if err != nil {
-		return nil, err
-	}
-	// nolint:errcheck
-	defer rows.Close()
-
-	for rows.Next() {
-		var teamID uint
-		var serviceName string
-		var passedChecks int
-		var totalChecks int
-
-		if err := rows.Scan(&teamID, &serviceName, &passedChecks, &totalChecks); err != nil {
-			return nil, err
-		}
-		if uptimes[teamID] == nil {
-			uptimes[teamID] = make(map[string]Uptime)
-		}
-		uptimes[teamID][serviceName] = Uptime{
-			PassedChecks: passedChecks,
-			TotalChecks:  totalChecks,
-		}
-	}
-	return uptimes, rows.Err()
+	return d.loadUptimes("preflight_check_schemas")
 }
 
-func (d *DB) GetPreflightTeamSummary(teamID uint) ([]map[string]any, error) {
-	serviceSummaries := []map[string]any{}
+func (d *DB) GetPreflightTeamSummary(teamID uint) ([]ServiceSummary, error) {
+	var serviceSummaries []ServiceSummary
 	var namePerService []string
 
 	if err := d.db.Model(&PreflightCheckSchema{}).
@@ -136,7 +105,7 @@ func (d *DB) GetPreflightTeamSummary(teamID uint) ([]map[string]any, error) {
 	for _, name := range namePerService {
 		last10Rounds := make([]RoundSchema, len(pfRounds))
 		for i, pf := range pfRounds {
-			var checks []ServiceCheckSchema
+			checks := []ServiceCheckSchema{}
 			for _, c := range pf.Checks {
 				if c.ServiceName == name {
 					checks = append(checks, ServiceCheckSchema{
@@ -153,10 +122,10 @@ func (d *DB) GetPreflightTeamSummary(teamID uint) ([]map[string]any, error) {
 				Checks:    checks,
 			}
 		}
-		serviceSummaries = append(serviceSummaries, map[string]any{
-			"ServiceName":  name,
-			"SlaCount":     0,
-			"Last10Rounds": last10Rounds,
+		serviceSummaries = append(serviceSummaries, ServiceSummary{
+			ServiceName:  name,
+			SlaCount:     0,
+			Last10Rounds: last10Rounds,
 		})
 	}
 	return serviceSummaries, nil
