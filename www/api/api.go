@@ -10,17 +10,29 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/dbaseqp/Quotient/engine"
 	"github.com/dbaseqp/Quotient/engine/config"
 )
 
+type loginAttempts struct {
+	mu          sync.Mutex
+	count       int
+	windowStart time.Time
+}
+
+const loginMaxAttempts = 10
+const loginWindow = time.Minute
+const loginBodyLimit = 4 << 10 // 4 KiB, well above any real credential pair
+
 type API struct {
-	conf *config.ConfigSettings
-	eng  *engine.ScoringEngine
-	oidc *oidcState
+	conf         *config.ConfigSettings
+	eng          *engine.ScoringEngine
+	oidc         *oidcState
+	loginLimiter sync.Map // IP string -> *loginAttempts
 }
 
 func NewAPI(c *config.ConfigSettings, e *engine.ScoringEngine) *API {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -90,19 +91,39 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 
-	var form Form
+	r.Body = http.MaxBytesReader(w, r.Body, loginBodyLimit)
 
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&form)
-	if err != nil {
-		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
-		slog.Error(err.Error())
+	var form Form
+	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			WriteJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "request body too large"})
+		} else {
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
+		}
 		return
 	}
 
-	// check credentials
 	auth, err := a.auth(form.Username, form.Password)
 	if err != nil {
+		ip, _, splitErr := net.SplitHostPort(r.RemoteAddr)
+		if splitErr == nil {
+			now := time.Now()
+			val, _ := a.loginLimiter.LoadOrStore(ip, &loginAttempts{windowStart: now})
+			la := val.(*loginAttempts)
+			la.mu.Lock()
+			if now.Sub(la.windowStart) > loginWindow {
+				la.count = 0
+				la.windowStart = now
+			}
+			la.count++
+			over := la.count > loginMaxAttempts
+			la.mu.Unlock()
+			if over {
+				WriteJSON(w, http.StatusTooManyRequests, map[string]any{"error": "too many login attempts"})
+				return
+			}
+		}
 		WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "Incorrect username/password"})
 		slog.Info("Failed logon", "username", form.Username)
 		return
