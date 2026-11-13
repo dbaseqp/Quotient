@@ -55,7 +55,6 @@ func (c Ping) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 		}
 
 		checkResult.Status = true
-		checkResult.Points = c.Points
 		response <- checkResult
 	}
 

@@ -171,8 +171,8 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 		RunnerID:    runnerID,
 		StartTime:   time.Now().Format(time.RFC3339),
 		StatusText:  "running",
-		// Set here, not from the check's answer, so the export's max_points counts a check the round deadline cuts
-		// off: it never answers, and is stored when the engine is still collecting as its result arrives.
+		// From the definition, not the check's answer: a check the round deadline cuts off never answers, and the
+		// export's max_points sums stored points.
 		Points: runner.GetPoints(),
 	}
 

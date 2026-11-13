@@ -170,7 +170,6 @@ func (service *Service) Run(teamID uint, teamIdentifier string, roundID uint, re
 		TeamID:      teamID,
 		ServiceName: service.Name,
 		Target:      service.Target,
-		Points:      service.Points,
 		Status:      false,
 		ServiceType: service.ServiceType,
 		RoundID:     roundID,
