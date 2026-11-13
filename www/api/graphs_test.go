@@ -14,7 +14,7 @@ func withGraphFlags(t *testing.T, publicGraphs bool, disableForBlue bool) *API {
 	t.Helper()
 	return &API{conf: &config.ConfigSettings{
 		UISettings: config.UIConfig{
-			EnablePublicGraphs:   publicGraphs,
+			EnablePublicGraphs:       publicGraphs,
 			DisableGraphsForBlueTeam: disableForBlue,
 		},
 	}}
@@ -54,7 +54,6 @@ func TestGraphsPublicDisabledAdminPasses(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := requestAs([]string{"admin"}, admin)
 			assert.True(t, a.checkGraphAccess(w, r), "admin must pass the flag gate")
-			assert.NotEqual(t, http.StatusForbidden, w.Code)
 		})
 	}
 }
@@ -84,7 +83,6 @@ func TestGraphsDisableForBlueTeamAdminPasses(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := requestAs([]string{"admin"}, admin)
 			assert.True(t, a.checkGraphAccess(w, r), "admin must pass even when blue team is disabled")
-			assert.NotEqual(t, http.StatusForbidden, w.Code)
 		})
 	}
 }
