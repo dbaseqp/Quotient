@@ -53,7 +53,18 @@ func (a *API) GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summaries, err := a.eng.DB.GetTeamSummary(teamID)
+	var (
+		summaries []map[string]any
+		uptimeMap map[uint]map[string]db.Uptime
+	)
+	if a.eng.PreflightPending() {
+		summaries, err = a.eng.DB.GetPreflightTeamSummary(teamID)
+		if err == nil {
+			uptimeMap, err = a.eng.DB.GetPreflightUptimes()
+		}
+	} else {
+		summaries, err = a.eng.DB.GetTeamSummary(teamID)
+	}
 	if err != nil {
 		slog.Error("Failed to get team summary", "teamID", teamID, "err", err)
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving team summary"})
@@ -67,19 +78,25 @@ func (a *API) GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		Uptime       float64          `json:"Uptime"`
 	}
 
-	a.eng.RLockUptime()
-	uptimeMap := a.eng.GetUptimePerService()
+	if uptimeMap == nil {
+		a.eng.RLockUptime()
+		defer a.eng.RUnlockUptime()
+		uptimeMap = a.eng.GetUptimePerService()
+	}
 	var s []summary
 	for _, v := range summaries {
 		uptime := uptimeMap[teamID][v["ServiceName"].(string)]
+		var pct float64
+		if uptime.TotalChecks > 0 {
+			pct = float64(uptime.PassedChecks) / float64(uptime.TotalChecks)
+		}
 		s = append(s, summary{
 			ServiceName:  v["ServiceName"].(string),
 			SlaCount:     v["SlaCount"].(int),
 			Last10Rounds: v["Last10Rounds"].([]db.RoundSchema),
-			Uptime:       float64(uptime.PassedChecks) / float64(uptime.TotalChecks),
+			Uptime:       pct,
 		})
 	}
-	a.eng.RUnlockUptime()
 
 	WriteJSON(w, http.StatusOK, s)
 }
@@ -103,7 +120,12 @@ func (a *API) GetServiceAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	service, err := a.eng.DB.GetServiceAllChecksByTeam(teamID, serviceID)
+	var service []db.ServiceCheckSchema
+	if a.eng.PreflightPending() {
+		service, err = a.eng.DB.GetPreflightServiceAllChecksByTeam(teamID, serviceID)
+	} else {
+		service, err = a.eng.DB.GetServiceAllChecksByTeam(teamID, serviceID)
+	}
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving service data"})
 		return

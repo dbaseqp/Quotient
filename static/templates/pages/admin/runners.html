@@ -289,8 +289,9 @@
                             let current_round_time = new Date(CURRENTROUND).toLocaleString();
                             let next_round_time = new Date(NEXTROUND).toLocaleString();
 
-                            document.getElementById('round__number').textContent = `Round ${LASTROUND.ID} was at ${last_round_start_time}.
-                            Round ${LASTROUND.ID + 1} started at ${current_round_time} and should end at ${next_round_time}.`;
+                            const roundLabel = data["preflight"] ? "Preflight round" : "Round";
+                            document.getElementById('round__number').textContent = `${roundLabel} ${LASTROUND.ID} was at ${last_round_start_time}.
+                            ${roundLabel} ${LASTROUND.ID + 1} started at ${current_round_time} and should end at ${next_round_time}.`;
                         })
                         .catch(error => console.error('Error fetching engine status:', error));
                 }

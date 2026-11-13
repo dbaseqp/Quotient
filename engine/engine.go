@@ -170,7 +170,7 @@ func (se *ScoringEngine) Start() {
 			case "koth":
 				err = se.koth()
 			case "rvb":
-				if se.preflightPending() {
+				if se.PreflightPending() {
 					err = se.preflight()
 				} else {
 					err = se.rvb()
@@ -620,10 +620,10 @@ func (se *ScoringEngine) finishScoredRound() {
 	se.notifyRoundListeners()
 }
 
-// preflightPending reads the DB rather than CurrentRound, which also advances
+// PreflightPending reads the DB rather than CurrentRound, which also advances
 // on rounds that stored nothing and is reseeded on restart. A DB read error
 // runs a preflight round, delaying scoring by one round.
-func (se *ScoringEngine) preflightPending() bool {
+func (se *ScoringEngine) PreflightPending() bool {
 	if se.DB.GetCompetitionStarted() {
 		return false
 	}
@@ -665,6 +665,7 @@ func (se *ScoringEngine) preflight() error {
 		slog.Error("failed to save preflight round", "preflight_round", round.ID, "error", err)
 	}
 	slog.Info(fmt.Sprintf("Preflight round %d complete", round.ID))
+	se.RedisClient.Publish(context.Background(), "events", "round_finish")
 	return nil
 }
 
