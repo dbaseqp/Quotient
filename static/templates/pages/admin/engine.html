@@ -66,7 +66,12 @@
                     });
                     document.getElementById('resetButton').addEventListener('click', () => {
                         if (confirm("This will reset all scores and the engine but keep injects and their submissions. Are you sure?")) {
-                            fetch('/api/engine/reset')
+                            fetch('/api/engine/reset', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                            })
                                 .then(response => response.json())
                                 .then((data) => {
                                     window.location.reload()
