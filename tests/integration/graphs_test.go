@@ -311,3 +311,25 @@ func TestPreflightWebUIEndpoints(t *testing.T) {
 	assert.False(t, engineResp.Preflight)
 	assert.Zero(t, engineResp.LastRound.ID)
 }
+
+func TestGetEngineReturnsCompetitionTimezone(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	redis, pg := testutil.StartContainers(t)
+	eng := engine.NewTestEngine(t, redis, pg, 3)
+	eng.Config.InjectSettings.CompetitionTimezone = "America/Los_Angeles"
+	a := api.NewAPI(eng.Config, eng)
+
+	r := httptest.NewRequest(http.MethodGet, "/api/engine", nil)
+	w := httptest.NewRecorder()
+	a.GetEngine(w, r)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var resp struct {
+		CompetitionTimezone string `json:"competition_timezone"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "America/Los_Angeles", resp.CompetitionTimezone)
+}

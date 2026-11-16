@@ -597,7 +597,7 @@
         isRefreshing = true;
         try {
             await Promise.all([fetchStatus(), fetchUptime(), fetchScores()]);
-            document.getElementById("updatedAt").innerText = new Date().toLocaleString();
+            document.getElementById("updatedAt").innerText = new Date().toLocaleString(undefined, { timeZoneName: 'short' });
         } catch (err) {
             console.error("Failed to refresh graphs:", err);
         } finally {

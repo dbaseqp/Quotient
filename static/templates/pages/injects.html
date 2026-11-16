@@ -108,9 +108,9 @@
                             const row = document.createElement("tr")
                             for (const value of [
                                 inject.title,
-                                new Date(inject.open_time).toLocaleString(),
-                                new Date(inject.due_time).toLocaleString(),
-                                new Date(inject.close_time).toLocaleString(),
+                                new Date(inject.open_time).toLocaleString(undefined, { timeZoneName: 'short' }),
+                                new Date(inject.due_time).toLocaleString(undefined, { timeZoneName: 'short' }),
+                                new Date(inject.close_time).toLocaleString(undefined, { timeZoneName: 'short' }),
                                 inject.files.length ? inject.files.join(", ") : "None",
                             ]) {
                                 const cell = document.createElement("td")
@@ -120,7 +120,7 @@
                             IMPORT_PREVIEW_BODY.appendChild(row)
                         }
                         const source = data.anchor_source === "actual" ? "actual" : "planned"
-                        IMPORT_ANCHOR.textContent = `Using the ${source} competition start: ${new Date(data.anchor).toLocaleString()}`
+                        IMPORT_ANCHOR.textContent = `Using the ${source} competition start: ${new Date(data.anchor).toLocaleString(undefined, { timeZoneName: 'short' })}`
                         IMPORT_PREVIEW.classList.remove("d-none")
                         IMPORT_MESSAGE.classList.add("d-none")
                         IMPORT_SUBMIT_BUTTON.disabled = false
@@ -759,7 +759,7 @@
                         attachment.appendChild(a)
                         team.textContent = submission.Team.Name
                         number.textContent = submission.Version
-                        time.textContent = new Date(submission.SubmissionTime).toLocaleString()
+                        time.textContent = new Date(submission.SubmissionTime).toLocaleString(undefined, { timeZoneName: 'short' })
                         tr.appendChild(team)
                         tr.appendChild(number)
                         tr.appendChild(time)
@@ -783,6 +783,7 @@
                     day: "numeric",
                     hour: "numeric",
                     minute: "2-digit",
+                    timeZoneName: "short",
                 })
 
                 let from = pane.querySelector("#pane__from--placeholder")
@@ -806,9 +807,9 @@
                 descTemp.innerHTML += `
                 <h5>Inject Details <span id="pane__countdown--${inject.ID}" class="inject-countdown-detail"></span></h5>
                 <ul>
-                    <li><p><strong>Release Time:</strong> <span id="pane__open--${inject.ID}">${inject.OpenTime.toLocaleString()}</span></p></li>
-                    <li><p><strong>Due Time:</strong> <span id="pane__due--${inject.ID}">${inject.DueTime.toLocaleString()}</span></p></li>
-                    <li><p><strong>Close Time:</strong> <span id="pane__close--${inject.ID}">${inject.CloseTime.toLocaleString()}</span></p></li>
+                    <li><p><strong>Release Time:</strong> <span id="pane__open--${inject.ID}">${inject.OpenTime.toLocaleString(undefined, { timeZoneName: 'short' })}</span></p></li>
+                    <li><p><strong>Due Time:</strong> <span id="pane__due--${inject.ID}">${inject.DueTime.toLocaleString(undefined, { timeZoneName: 'short' })}</span></p></li>
+                    <li><p><strong>Close Time:</strong> <span id="pane__close--${inject.ID}">${inject.CloseTime.toLocaleString(undefined, { timeZoneName: 'short' })}</span></p></li>
                     </ul>
                     `
                     description.appendChild(descTemp)
