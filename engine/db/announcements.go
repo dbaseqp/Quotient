@@ -38,6 +38,16 @@ func (d *DB) GetAnnouncements() ([]AnnouncementSchema, error) {
 	return announcements, nil
 }
 
+// GetAnnouncementByID retrieves a single announcement by ID
+func (d *DB) GetAnnouncementByID(id uint) (AnnouncementSchema, error) {
+	var announcement AnnouncementSchema
+	result := d.db.Table("announcement_schemas").First(&announcement, id)
+	if result.Error != nil {
+		return AnnouncementSchema{}, result.Error
+	}
+	return announcement, nil
+}
+
 // delete an announcement from the database
 func (d *DB) DeleteAnnouncement(announcement AnnouncementSchema) error {
 	result := d.db.Table("announcement_schemas").Delete(&announcement)

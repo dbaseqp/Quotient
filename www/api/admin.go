@@ -41,6 +41,10 @@ func (a *API) PauseEngine(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) ResetScores(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
+
 	slog.Debug("reset scores requested")
 	if err := a.eng.ResetScores(); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to reset scores"})

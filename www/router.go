@@ -76,13 +76,13 @@ func (router *Router) Start() {
 
 	ALLAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication(a, "team", "admin", "red", "inject"))
 	// general auth API routes
-	mux.HandleFunc("GET /api/logout", ALLAUTH(a.Logout))
+	mux.HandleFunc("POST /api/logout", ALLAUTH(a.Logout))
 
 	mux.HandleFunc("GET /api/announcements", ALLAUTH(a.GetAnnouncements))
 	mux.HandleFunc("GET /announcements/{id}/{file}", ALLAUTH(a.DownloadAnnouncementFile))
 
 	// general auth WWW routes
-	mux.HandleFunc("GET /logout", ALLAUTH(router.LogoutPage))
+	mux.HandleFunc("POST /logout", ALLAUTH(router.LogoutPage))
 	mux.HandleFunc("GET /announcements", ALLAUTH(router.AnnouncementsPage))
 	// mux.HandleFunc("GET /graphs", ALLAUTH(router.GraphPage))
 
@@ -96,6 +96,7 @@ func (router *Router) Start() {
 	// team auth API routes
 	mux.HandleFunc("GET /api/teams", TEAMAUTH(a.GetTeams))
 	mux.HandleFunc("GET /api/metadata", TEAMAUTH(a.GetMetadata))
+	mux.HandleFunc("GET /api/events", TEAMAUTH(a.StreamEvents))
 	mux.HandleFunc("GET /api/services/{team_id}", TEAMAUTH(a.GetTeamSummary))
 	mux.HandleFunc("GET /api/services/{team_id}/{service_name}", TEAMAUTH(a.GetServiceAll))
 	mux.HandleFunc("GET /api/injects", TEAMAUTH(a.GetInjects))
@@ -162,7 +163,7 @@ func (router *Router) Start() {
 
 	ADMINAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication(a, "admin"))
 	mux.HandleFunc("POST /api/engine/pause", ADMINAUTH(a.PauseEngine))
-	mux.HandleFunc("GET /api/engine/reset", ADMINAUTH(a.ResetScores))
+	mux.HandleFunc("POST /api/engine/reset", ADMINAUTH(a.ResetScores))
 	mux.HandleFunc("GET /api/engine", ADMINAUTH(a.GetEngine))
 	mux.HandleFunc("GET /api/engine/tasks", ADMINAUTH(a.GetActiveTasks))
 	mux.HandleFunc("GET /api/engine/preflight", ADMINAUTH(a.GetPreflight))

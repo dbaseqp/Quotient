@@ -132,7 +132,7 @@ func (a *API) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     COOKIENAME,
 		Value:    "",
-		MaxAge:   0,
+		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   a.cookieSecure(),
 		SameSite: http.SameSiteLaxMode,

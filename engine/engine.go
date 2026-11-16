@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -35,7 +36,10 @@ type ScoringEngine struct {
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
-	DB                    *db.DB
+
+	roundListenersMu sync.Mutex
+	roundListeners   map[chan struct{}]struct{}
+	DB               *db.DB
 
 	// Concurrency control for materialized view refresh
 	Refreshing atomic.Bool
@@ -49,7 +53,13 @@ type ScoringEngine struct {
 	// pausedAtEnd is the competition end the round loop paused itself at (nil
 	// for a manual pause); owned by the round loop, which alone decides overtime.
 	pausedAtEnd *time.Time
+
+	// roundFunc is called each round. Set by Start() from the event type, or
+	// overridden by NewTestEngine to inject faults without touching the DB.
+	roundFunc func() error
 }
+var errReset = errors.New("reset event received")
+
 
 func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 	// Ensure config is properly validated and runners are set up
@@ -153,7 +163,10 @@ func (se *ScoringEngine) Start() {
 			se.CurrentRoundStartTime = time.Now()
 			se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
 
-			var err error
+		var err error
+		if se.roundFunc != nil {
+			err = se.roundFunc()
+		} else {
 			switch se.Config.RequiredSettings.EventType {
 			case "koth":
 				err = se.koth()
@@ -166,10 +179,14 @@ func (se *ScoringEngine) Start() {
 			default:
 				slog.Error("Unknown event type", "eventType", se.Config.RequiredSettings.EventType)
 			}
-			if err != nil {
-				slog.Error("Round error. If this is a reset, ignore...", "error", err)
+		}
+		if err != nil {
+			if errors.Is(err, errReset) {
+				slog.Info("Round loop exiting for reset")
 				return
 			}
+			slog.Error("Round error, retrying next round", "error", err)
+		}
 
 			slog.Info(fmt.Sprintf("Next round will start in %s, sleeping...", time.Until(se.NextRoundStartTime).String()))
 			select {
@@ -203,6 +220,34 @@ func (se *ScoringEngine) waitForReset() {
 			return
 		} else {
 			continue
+		}
+	}
+}
+
+func (se *ScoringEngine) SubscribeRounds() (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	se.roundListenersMu.Lock()
+	if se.roundListeners == nil {
+		se.roundListeners = make(map[chan struct{}]struct{})
+	}
+	se.roundListeners[ch] = struct{}{}
+	se.roundListenersMu.Unlock()
+
+	return ch, func() {
+		se.roundListenersMu.Lock()
+		delete(se.roundListeners, ch)
+		se.roundListenersMu.Unlock()
+	}
+}
+
+func (se *ScoringEngine) notifyRoundListeners() {
+	se.roundListenersMu.Lock()
+	defer se.roundListenersMu.Unlock()
+
+	for ch := range se.roundListeners {
+		select {
+		case ch <- struct{}{}:
+		default:
 		}
 	}
 }
@@ -395,6 +440,7 @@ func (se *ScoringEngine) ResetScores() error {
 	se.UptimePerService = make(map[uint]map[string]db.Uptime)
 	se.uptimeMu.Unlock()
 	se.SlaPerService = make(map[uint]map[string]int)
+	se.notifyRoundListeners()
 	slog.Info("Scores reset and Redis queues cleared successfully")
 
 	return nil
@@ -421,6 +467,7 @@ func (se *ScoringEngine) finishScoredRound() {
 	slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
 	se.CurrentRound++
 	se.RedisClient.Publish(context.Background(), "events", "round_finish")
+	se.notifyRoundListeners()
 }
 
 // preflightPending reads the DB rather than CurrentRound, which also advances
@@ -597,7 +644,7 @@ COLLECTION:
 			slog.Info("Received message", "message", msg.Payload)
 			if msg.Payload == "reset" {
 				slog.Info("Reset event received, quitting...")
-				return nil, fmt.Errorf("reset event received")
+				return nil, errReset
 			} else {
 				continue
 			}

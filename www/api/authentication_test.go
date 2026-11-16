@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dbaseqp/Quotient/engine/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -76,5 +78,40 @@ func TestLogoutEndpoint(t *testing.T) {
 		require.Len(t, cookies, 1)
 		assert.Equal(t, COOKIENAME, cookies[0].Name)
 		assert.Equal(t, -1, cookies[0].MaxAge)
+	})
+}
+
+// TestLogoutMethodRestriction verifies that only POST is accepted on /api/logout.
+func TestLogoutMethodRestriction(t *testing.T) {
+	mux := http.NewServeMux()
+	a := &API{conf: &config.ConfigSettings{}}
+
+	// Register only POST, matching www/router.go.
+	mux.HandleFunc("POST /api/logout", a.Logout)
+
+	t.Run("GET returns 405", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/logout", nil)
+		req = req.WithContext(WithIdentity(context.Background(), Identity{Username: "u", Roles: []string{"team"}}))
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+	})
+
+	t.Run("POST clears session cookie", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/logout", nil)
+		req = req.WithContext(WithIdentity(context.Background(), Identity{Username: "u", Roles: []string{"team"}}))
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+
+		var found *http.Cookie
+		for _, c := range rr.Result().Cookies() {
+			if c.Name == COOKIENAME {
+				found = c
+				break
+			}
+		}
+		require.NotNil(t, found, "logout must set the session cookie")
+		// MaxAge -1 tells the browser to delete the cookie immediately.
+		assert.Equal(t, -1, found.MaxAge, "cookie must have MaxAge=-1 to force deletion")
 	})
 }

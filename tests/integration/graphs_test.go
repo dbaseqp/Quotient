@@ -51,6 +51,7 @@ func TestGraphsMarkOnlyCallersOwnSeries(t *testing.T) {
 	require.NoError(t, pg.DB.ResetScores())
 	pg.ResetCompetitionState(t)
 	eng := engine.NewTestEngine(t, redis, pg, 3)
+	eng.Config.UISettings.EnablePublicGraphs = true // the test verifies anon access to public graphs
 	a := api.NewAPI(eng.Config, eng)
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
 	t.Cleanup(func() { assert.NoError(t, pg.DB.ResetScores()) })
