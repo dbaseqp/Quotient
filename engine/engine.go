@@ -715,6 +715,7 @@ func (se *ScoringEngine) preflight() error {
 	}
 	slog.Info(fmt.Sprintf("Preflight round %d complete", round.ID))
 	se.RedisClient.Publish(context.Background(), "events", "round_finish")
+	se.notifyRoundListeners()
 	return nil
 }
 

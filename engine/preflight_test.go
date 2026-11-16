@@ -99,6 +99,8 @@ func TestPreflight_StoresResultsApartFromScoring(t *testing.T) {
 	_, err := events.Receive(ctx)
 	require.NoError(t, err)
 	eventsCh := events.Channel()
+	roundCh, unsubscribe := se.SubscribeRounds()
+	defer unsubscribe()
 
 	var scoredTasks atomic.Int64
 	fakeRunner(t, redis, func(task Task) []checks.Result {
@@ -118,6 +120,11 @@ func TestPreflight_StoresResultsApartFromScoring(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("expected round_finish event after preflight round")
 		}
+	}
+	select {
+	case <-roundCh:
+	default:
+		t.Fatal("preflight rounds notify /api/events subscribers so /services refreshes")
 	}
 
 	assert.Zero(t, scoredTasks.Load(), "preflight tasks are marked for the runner")
