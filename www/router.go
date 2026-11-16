@@ -96,6 +96,7 @@ func (router *Router) Start() {
 	// team auth API routes
 	mux.HandleFunc("GET /api/teams", TEAMAUTH(a.GetTeams))
 	mux.HandleFunc("GET /api/metadata", TEAMAUTH(a.GetMetadata))
+	mux.HandleFunc("GET /api/events", TEAMAUTH(a.StreamEvents))
 	mux.HandleFunc("GET /api/services/{team_id}", TEAMAUTH(a.GetTeamSummary))
 	mux.HandleFunc("GET /api/services/{team_id}/{service_name}", TEAMAUTH(a.GetServiceAll))
 	mux.HandleFunc("GET /api/injects", TEAMAUTH(a.GetInjects))
