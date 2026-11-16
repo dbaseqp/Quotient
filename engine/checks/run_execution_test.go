@@ -190,9 +190,10 @@ func TestWebRun_Redirects(t *testing.T) {
 		disable   bool
 		wantPass  bool
 		wantError string
+		wantDebug string
 	}{
 		{name: "same host redirect is followed", path: "/same-host", wantPass: true},
-		{name: "other host redirect is refused", path: "/other-host", wantError: "status returned by webserver was incorrect"},
+		{name: "other host redirect is refused", path: "/other-host", wantError: "status returned by webserver was incorrect", wantDebug: "(redirect to http://localhost:"},
 		{name: "same host redirect refused when disabled", path: "/same-host", disable: true, wantError: "status returned by webserver was incorrect"},
 		{name: "redirect loop fails", path: "/loop", wantError: "web request errored out"},
 	}
@@ -213,6 +214,7 @@ func TestWebRun_Redirects(t *testing.T) {
 				assert.Equal(t, tt.wantPass, result.Status, "debug: %s", result.Debug)
 				if !tt.wantPass {
 					assert.Contains(t, result.Error, tt.wantError)
+					assert.Contains(t, result.Debug, tt.wantDebug)
 				}
 			case <-time.After(10 * time.Second):
 				t.Fatal("check timed out")

@@ -20,17 +20,17 @@ type Web struct {
 	Service
 	Url    []urlData
 	Scheme string
-	// DisableRedirects makes the check evaluate a 3xx response itself. By default
-	// the check follows redirects that stay on the target host.
+	// DisableRedirects judges any 3xx as the response instead of following
+	// redirects to the same hostname.
 	DisableRedirects bool `toml:",omitempty"`
 }
 
 const maxRedirects = 10
 
-// redirectPolicy follows redirects only while they stay on the host the check
-// first requested, so a service cannot pass the check by redirecting it to a
-// healthy service elsewhere. A redirect it will not follow is returned as the
-// response, and the check judges its status code. disable refuses every redirect.
+// redirectPolicy follows redirects only while they stay on the first request's
+// hostname (any port or scheme); a redirect to another hostname is returned as
+// the response, and the check judges it when the URL sets a Status or Regex.
+// disable refuses every redirect.
 func redirectPolicy(disable bool) func(*http.Request, []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
 		if disable || !strings.EqualFold(req.URL.Hostname(), via[0].URL.Hostname()) {
@@ -112,6 +112,9 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		if u.Status != 0 && resp.StatusCode != u.Status {
 			checkResult.Error = "status returned by webserver was incorrect"
 			checkResult.Debug = "status was " + strconv.Itoa(resp.StatusCode) + " wanted " + strconv.Itoa(u.Status) + " for url " + u.Path
+			if loc := resp.Header.Get("Location"); loc != "" {
+				checkResult.Debug += " (redirect to " + loc + ")"
+			}
 			response <- checkResult
 			return
 		}
