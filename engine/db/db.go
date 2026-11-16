@@ -151,14 +151,19 @@ func (d *DB) AddTeams(conf *config.ConfigSettings) error {
 	return nil
 }
 
-// ResetScores drops scored and preflight rounds so the engine re-enters
-// preflight once the competition is stopped. Competition state is kept: the
-// start anchor of imported injects survives a reset.
+// ResetScores drops scored and preflight rounds, clears overtime and stops the
+// competition so the engine re-enters preflight. StartedAt is kept so the start
+// anchor of imported injects survives a reset.
 func (d *DB) ResetScores() error {
 	if err := d.db.Exec("TRUNCATE TABLE service_check_schemas, round_schemas, sla_schemas, preflight_check_schemas, preflight_round_schemas CASCADE").Error; err != nil {
 		return err
 	}
-	if err := d.SetOvertimeEnd(nil); err != nil {
+	err := d.updateCompetitionState(func(_ *gorm.DB, state *CompetitionStateSchema) error {
+		state.Started = false
+		state.OvertimeEnd = nil
+		return nil
+	})
+	if err != nil {
 		return err
 	}
 

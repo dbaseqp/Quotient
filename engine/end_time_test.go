@@ -318,7 +318,7 @@ func TestResetScoresForgetsOvertime(t *testing.T) {
 	state, err = pg.DB.GetCompetitionState()
 	require.NoError(t, err)
 	assert.Nil(t, state.OvertimeEnd, "an overtime resume from before a reset must not outlive it")
-	assert.True(t, pg.DB.GetCompetitionStarted(), "a reset leaves the competition started")
+	assert.False(t, pg.DB.GetCompetitionStarted(), "a reset stops the competition so the engine re-enters preflight")
 }
 
 func TestCompetitionState_ConcurrentStartAndOvertime(t *testing.T) {
