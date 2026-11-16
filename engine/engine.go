@@ -666,6 +666,11 @@ func (se *ScoringEngine) rvb() error {
 func (se *ScoringEngine) finishScoredRound() {
 	slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
 	se.CurrentRound++
+	se.announceRoundFinish()
+}
+
+// announceRoundFinish tells Divisor to rotate runner IPs and SSE clients to refresh.
+func (se *ScoringEngine) announceRoundFinish() {
 	se.RedisClient.Publish(context.Background(), "events", "round_finish")
 	se.notifyRoundListeners()
 }
@@ -714,8 +719,7 @@ func (se *ScoringEngine) preflight() error {
 		slog.Error("failed to save preflight round", "preflight_round", round.ID, "error", err)
 	}
 	slog.Info(fmt.Sprintf("Preflight round %d complete", round.ID))
-	se.RedisClient.Publish(context.Background(), "events", "round_finish")
-	se.notifyRoundListeners()
+	se.announceRoundFinish()
 	return nil
 }
 
