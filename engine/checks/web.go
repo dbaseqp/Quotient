@@ -20,6 +20,27 @@ type Web struct {
 	Service
 	Url    []urlData
 	Scheme string
+	// DisableRedirects makes the check evaluate a 3xx response itself. By default
+	// the check follows redirects that stay on the target host.
+	DisableRedirects bool `toml:",omitempty"`
+}
+
+const maxRedirects = 10
+
+// redirectPolicy follows redirects only while they stay on the host the check
+// first requested, so a service cannot pass the check by redirecting it to a
+// healthy service elsewhere. A redirect it will not follow is returned as the
+// response, and the check judges its status code. disable refuses every redirect.
+func redirectPolicy(disable bool) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if disable || !strings.EqualFold(req.URL.Hostname(), via[0].URL.Hostname()) {
+			return http.ErrUseLastResponse
+		}
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxRedirects)
+		}
+		return nil
+	}
 }
 
 type urlData struct {
@@ -47,11 +68,9 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		}
 		clientTimeout := time.Duration(c.Timeout) * time.Second
 		client := &http.Client{
-			Transport: tr,
-			Timeout:   clientTimeout,
-			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+			Transport:     tr,
+			Timeout:       clientTimeout,
+			CheckRedirect: redirectPolicy(c.DisableRedirects),
 		}
 
 		requestURL := fmt.Sprintf("%s://%s:%d%s", c.Scheme, c.Target, c.Port, u.Path)

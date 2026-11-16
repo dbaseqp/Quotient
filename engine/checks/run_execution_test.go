@@ -158,48 +158,68 @@ func TestWebRun_ActualExecution(t *testing.T) {
 		})
 	}
 }
-// TestWebRun_NoFollowRedirect verifies that the web check does not follow redirects.
-// A target that returns 302 must fail when the expected status is 200.
-func TestWebRun_NoFollowRedirect(t *testing.T) {
-	// Healthy server that returns 200
+
+// TestWebRun_Redirects verifies that the web check follows redirects only while
+// they stay on the target host, and none when DisableRedirects is set.
+func TestWebRun_Redirects(t *testing.T) {
 	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte("OK"))
-		require.NoError(t, err)
 	}))
 	defer healthy.Close()
+	healthyPort := healthy.Listener.Addr().(*net.TCPAddr).Port
 
-	// Target server that redirects to the healthy server
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, healthy.URL+"/", http.StatusFound)
+		switch r.URL.Path {
+		case "/same-host":
+			http.Redirect(w, r, "/landing", http.StatusFound)
+		case "/other-host":
+			// localhost is a different hostname from the 127.0.0.1 the check targets.
+			http.Redirect(w, r, fmt.Sprintf("http://localhost:%d/", healthyPort), http.StatusFound)
+		case "/loop":
+			http.Redirect(w, r, "/loop", http.StatusFound)
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
 	}))
 	defer target.Close()
-
 	port := target.Listener.Addr().(*net.TCPAddr).Port
 
-	check := &Web{
-		Service: Service{
-			Target:  "127.0.0.1",
-			Port:    port,
-			Timeout: 5,
-		},
-		Scheme: "http",
-		Url:    []urlData{{Path: "/", Status: 200}},
+	tests := []struct {
+		name      string
+		path      string
+		disable   bool
+		wantPass  bool
+		wantError string
+	}{
+		{name: "same host redirect is followed", path: "/same-host", wantPass: true},
+		{name: "other host redirect is refused", path: "/other-host", wantError: "status returned by webserver was incorrect"},
+		{name: "same host redirect refused when disabled", path: "/same-host", disable: true, wantError: "status returned by webserver was incorrect"},
+		{name: "redirect loop fails", path: "/loop", wantError: "web request errored out"},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := &Web{
+				Service:          Service{Target: "127.0.0.1", Port: port, Timeout: 5},
+				Scheme:           "http",
+				Url:              []urlData{{Path: tt.path, Status: 200}},
+				DisableRedirects: tt.disable,
+			}
 
-	resultsChan := make(chan Result, 1)
-	check.Run(1, "01", 1, resultsChan)
+			resultsChan := make(chan Result, 1)
+			check.Run(1, "01", 1, resultsChan)
 
-	select {
-	case result := <-resultsChan:
-		// The check must see 302, not 200, so it must fail.
-		assert.False(t, result.Status, "redirect should not be followed; check must fail")
-		assert.Contains(t, result.Error, "status returned by webserver was incorrect", "expected wrong-status error")
-	case <-time.After(10 * time.Second):
-		t.Fatal("check timed out")
+			select {
+			case result := <-resultsChan:
+				assert.Equal(t, tt.wantPass, result.Status, "debug: %s", result.Debug)
+				if !tt.wantPass {
+					assert.Contains(t, result.Error, tt.wantError)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("check timed out")
+			}
+		})
 	}
 }
-
 
 // TestTcpRun_ActualExecution tests TCP check Run() with real TCP server
 func TestTcpRun_ActualExecution(t *testing.T) {
