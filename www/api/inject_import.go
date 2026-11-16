@@ -170,11 +170,10 @@ func (a *API) injectScheduleAnchor() (time.Time, string, error) {
 		return *actualStart, "actual", nil
 	}
 
-	plannedStart, err := a.conf.CompetitionStart()
-	if err != nil {
-		return time.Time{}, "", err
+	if plannedStart := a.conf.InjectSettings.Start; plannedStart != nil {
+		return *plannedStart, "planned", nil
 	}
-	return plannedStart, "planned", nil
+	return time.Time{}, "", errors.New("InjectSettings.CompetitionStartTime and InjectSettings.CompetitionTimezone are required for inject imports")
 }
 
 func prepareInjectImport(archive *zip.Reader, anchor time.Time, existingTitles map[string]struct{}) ([]preparedInject, error) {
