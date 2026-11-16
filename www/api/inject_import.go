@@ -162,18 +162,17 @@ func (a *API) ImportInjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) injectScheduleAnchor() (time.Time, string, error) {
-	actualStart, err := a.eng.DB.GetCompetitionStart()
+	schedule, err := a.eng.CompetitionSchedule()
 	if err != nil {
-		return time.Time{}, "", fmt.Errorf("failed to read competition start: %w", err)
+		return time.Time{}, "", fmt.Errorf("failed to read competition schedule: %w", err)
 	}
-	if actualStart != nil {
-		return *actualStart, "actual", nil
+	if schedule.StartedAt != nil {
+		return *schedule.StartedAt, "actual", nil
 	}
-
-	if plannedStart := a.conf.InjectSettings.Start; plannedStart != nil {
-		return *plannedStart, "planned", nil
+	if schedule.Start != nil {
+		return *schedule.Start, "planned", nil
 	}
-	return time.Time{}, "", errors.New("InjectSettings.CompetitionStartTime and InjectSettings.CompetitionTimezone are required for inject imports")
+	return time.Time{}, "", errors.New("a competition start is required for inject imports: set one on /admin/engine or with InjectSettings.CompetitionStartTime and CompetitionTimezone in event.conf")
 }
 
 func prepareInjectImport(archive *zip.Reader, anchor time.Time, existingTitles map[string]struct{}) ([]preparedInject, error) {
