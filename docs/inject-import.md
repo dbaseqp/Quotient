@@ -27,7 +27,7 @@ The named timezone applies the correct daylight-saving rules for that date. The 
 <details>
 <summary>Common IANA timezone names for <code>CompetitionTimezone</code></summary>
 
-`CompetitionTimezone` requires a full IANA timezone name (not abbreviations like `PST` or `EST`), so daylight-saving rules are applied for the competition date:
+Use a full IANA timezone name for `CompetitionTimezone` (for example `America/Los_Angeles`) rather than an abbreviation, so daylight-saving rules are applied for the competition date:
 
 | Region | `CompetitionTimezone` | Standard | Daylight |
 |--------|-----------------------|----------|----------|
