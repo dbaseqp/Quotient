@@ -86,10 +86,20 @@ func TestWebCheckVerification(t *testing.T) {
 			check: &Web{
 				Service: Service{Target: "10.100.1_.2", Port: 80},
 				Scheme:  "http",
-				Url:     []urlData{{Path: "/", Status: 200}, {Path: "/health"}},
+				Url:     []urlData{{Path: "/", Status: 200}, {Path: "/health"}, {Path: "/status"}},
 			},
 			expectError: true,
 			errorMsg:    `url "/health" needs a status or regex`,
+		},
+		{
+			name: "every url without status or regex is reported",
+			check: &Web{
+				Service: Service{Target: "10.100.1_.2", Port: 80},
+				Scheme:  "http",
+				Url:     []urlData{{Path: "/health"}, {Path: "/status"}},
+			},
+			expectError: true,
+			errorMsg:    `url "/status" needs a status or regex`,
 		},
 		{
 			name: "url with only a regex is accepted",

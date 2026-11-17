@@ -186,9 +186,11 @@ func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty 
 	if c.Scheme == "" {
 		c.Scheme = "http"
 	}
+	var errs error
 	for _, u := range c.Url {
 		if u.Status == 0 && u.Regex == "" {
-			return fmt.Errorf("%s: url %q needs a status or regex, otherwise any response passes", c.Name, u.Path)
+			errs = errors.Join(errs, fmt.Errorf("%s: url %q needs a status or regex, otherwise any response passes", c.Name, u.Path))
+			continue
 		}
 		if u.Diff != 0 && u.CompareFile == "" {
 			return errors.New("need compare file for diff in web")
@@ -198,5 +200,5 @@ func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty 
 		}
 	}
 
-	return nil
+	return errs
 }

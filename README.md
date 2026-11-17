@@ -420,7 +420,7 @@ port = 53
 
 #### Web Check
 
-HTTP/HTTPS request. Each URL needs a `status`, a `regex`, or both; a URL with neither is rejected when the config loads, since it would pass on any response.
+HTTP/HTTPS request. Each URL needs a `status`, a `regex`, or both; a URL with neither is rejected at config load, so the server will not start with one.
 
 ```toml
 [[box.web]]
@@ -430,8 +430,8 @@ scheme = "https"  # "http" or "https"
 
     [[box.web.url]]
     path = "/index.html"
-    status = 200     # Expected status code (status or regex required)
-    regex = "Welcome"  # Content regex (status or regex required)
+    status = 200     # Expected status code
+    regex = "Welcome"  # Content regex
 
     [[box.web.url]]
     path = "/admin"
