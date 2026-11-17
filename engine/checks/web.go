@@ -29,7 +29,7 @@ const maxRedirects = 10
 
 // redirectPolicy follows redirects only while they stay on the first request's
 // hostname (any port or scheme); a redirect to another hostname is returned as
-// the response, and the check judges it when the URL sets a Status or Regex.
+// the response, and the check judges it against the URL's Status and Regex.
 // disable refuses every redirect.
 func redirectPolicy(disable bool) func(*http.Request, []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
@@ -187,6 +187,9 @@ func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty 
 		c.Scheme = "http"
 	}
 	for _, u := range c.Url {
+		if u.Status == 0 && u.Regex == "" {
+			return fmt.Errorf("%s: url %q needs a status or regex, otherwise any response passes", c.Name, u.Path)
+		}
 		if u.Diff != 0 && u.CompareFile == "" {
 			return errors.New("need compare file for diff in web")
 		}

@@ -340,6 +340,7 @@ ip = "10.100.1_.2"
 
         [[box.web.url]] # some checks have components you need to include
         path = "/index.html"
+        status = 200
 
         [[box.web.url]]
         path = "/admin"
@@ -419,7 +420,7 @@ port = 53
 
 #### Web Check
 
-HTTP/HTTPS request with optional status code and content matching.
+HTTP/HTTPS request. Each URL needs a `status`, a `regex`, or both; a URL with neither is rejected when the config loads, since it would pass on any response.
 
 ```toml
 [[box.web]]
@@ -429,8 +430,8 @@ scheme = "https"  # "http" or "https"
 
     [[box.web.url]]
     path = "/index.html"
-    status = 200     # Expected status code (optional)
-    regex = "Welcome"  # Content regex (optional)
+    status = 200     # Expected status code (status or regex required)
+    regex = "Welcome"  # Content regex (status or regex required)
 
     [[box.web.url]]
     path = "/admin"
@@ -440,7 +441,7 @@ scheme = "https"  # "http" or "https"
 **Default port:** 80 (http) or 443 (https)
 **Default scheme:** http
 
-**Redirects:** the check follows redirects (up to 10) that stay on the same hostname as the target, for example `/` to `/login` or `http` to `https`. A redirect to a different hostname is not followed; the check judges that 3xx response, so a `status` or `regex` is needed for it to fail. Set `disableredirects = true` on the box to judge every redirect as the 3xx response, for example to check for `status = 301`.
+**Redirects:** the check follows redirects (up to 10) that stay on the same hostname as the target, for example `/` to `/login` or `http` to `https`. A redirect to a different hostname is not followed; the check judges that 3xx response against the URL's `status` and `regex`. Set `disableredirects = true` on the box to judge every redirect as the 3xx response, for example to check for `status = 301`.
 
 #### SSH Check
 

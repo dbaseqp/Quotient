@@ -16,7 +16,7 @@ func TestPropertyVerifyPortDefaults(t *testing.T) {
 
 		webCheck := &Web{
 			Scheme: scheme,
-			Url:    []urlData{{Path: "/"}},
+			Url:    []urlData{{Path: "/", Status: 200}},
 			// Port intentionally 0 (should be set by Verify)
 		}
 
