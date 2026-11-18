@@ -215,7 +215,7 @@ func TestWebRun_Socks5Proxy(t *testing.T) {
 		w := &Web{
 			Service: Service{Target: "canonical.example.test", Port: backendPort, Timeout: 2},
 			Scheme:  "http",
-			Url:     []urlData{{Path: "/"}},
+			Url:     []urlData{{Path: "/", Status: 200}},
 			Proxy:   fmt.Sprintf("socks5h://127.0.0.1:%d", port),
 		}
 		r := runWebForTest(t, w, "01")
@@ -227,7 +227,7 @@ func TestWebRun_Socks5Proxy(t *testing.T) {
 		w := &Web{
 			Service: Service{Target: "canonical.example.test", Port: backendPort, Timeout: 2},
 			Scheme:  "http",
-			Url:     []urlData{{Path: "/"}},
+			Url:     []urlData{{Path: "/", Status: 200}},
 			Proxy:   "http://127.0.0.1:1080",
 		}
 		r := runWebForTest(t, w, "01")
@@ -259,7 +259,7 @@ func TestWebVerify_Proxy(t *testing.T) {
 			w := &Web{
 				Service: Service{Target: "10.100.1_.2"},
 				Scheme:  "http",
-				Url:     []urlData{{Path: "/"}},
+				Url:     []urlData{{Path: "/", Status: 200}},
 				Proxy:   tt.proxy,
 			}
 			err := w.Verify("web01", "10.100.1_.2", 1, 5, 0, 0)
