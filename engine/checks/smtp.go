@@ -5,26 +5,19 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"net"
 	"net/smtp"
 	"time"
 )
-
-// generateRandomContent creates random email content for variety.
-func generateRandomContent() (subject string, body string) {
-	// #nosec G404 -- non-crypto random for email content
-	subject = fmt.Sprintf("%016x", rand.Uint64())
-	// #nosec G404 -- non-crypto random for email content
-	body = fmt.Sprintf("%016x%016x%016x%016x", rand.Uint64(), rand.Uint64(), rand.Uint64(), rand.Uint64())
-	return
-}
 
 type Smtp struct {
 	Service
 	Encrypted   bool
 	Domain      string
 	RequireAuth bool
+	// HeloName is the name sent in EHLO/HELO. Empty means a workstation-style name (DESKTOP-XXXXXXX)
+	// that is fixed per team and check.
+	HeloName string `toml:",omitempty"`
 }
 
 type unencryptedAuth struct {
@@ -45,7 +38,10 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			Timeout: time.Duration(c.Timeout) * time.Second,
 		}
 
-		subject, body := generateRandomContent()
+		heloName := c.HeloName
+		if heloName == "" {
+			heloName = defaultHeloName(teamID, c.Name)
+		}
 
 		// ***********************************************
 		// Set up custom auth for bypassing net/smtp protections
@@ -111,6 +107,11 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 		// nolint:errcheck
 		defer sconn.Quit()
 
+		// Greet with a client name; net/smtp would otherwise send "EHLO localhost" (falling back to
+		// HELO as before). A failed greeting surfaces at the next command, exactly as it did when
+		// net/smtp greeted lazily.
+		_ = sconn.Hello(heloName)
+
 		// Login
 		if len(c.CredLists) > 0 {
 			authSupported, _ := sconn.Extension("AUTH")
@@ -157,7 +158,7 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			}
 		}()
 
-		message := fmt.Sprintf("Subject: %s\n\n%s\n\n", subject, body)
+		message := composeMessage(username, toUser, time.Now())
 
 		// Write the message using Fprint to avoid treating the contents as a
 		// format string.

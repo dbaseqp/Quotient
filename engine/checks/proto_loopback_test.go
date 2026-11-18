@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -122,6 +123,22 @@ func runCheck(t *testing.T, r Runner) Result {
 		t.Fatal("check did not report")
 	}
 	return Result{}
+}
+
+// waitSession returns connection idx's client lines once the server has seen last (the check
+// reports before its deferred QUIT/DATA terminator reach the server).
+func waitSession(t *testing.T, s *lineServer, idx int, last string) []string {
+	t.Helper()
+	var lines []string
+	require.Eventually(t, func() bool {
+		sessions := s.sessions()
+		if len(sessions) <= idx {
+			return false
+		}
+		lines = sessions[idx]
+		return slices.Contains(lines, last)
+	}, 5*time.Second, 20*time.Millisecond)
+	return lines
 }
 
 // ---------------------------------------------------------------- smtp
