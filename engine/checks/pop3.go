@@ -31,6 +31,11 @@ func (c Pop3) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 		// nolint:errcheck
 		defer conn.Quit()
 
+		// Ask for capabilities first, as mail clients do (curl, Thunderbird). The answer is not used:
+		// a pre-RFC 2449 server says -ERR and a broken one fails at the next command, as before.
+		// nolint:errcheck
+		conn.Cmd("CAPA", true)
+
 		// Authenticate.
 		if len(c.CredLists) > 0 {
 			username, password, err := c.getCreds(teamID)
@@ -44,7 +49,9 @@ func (c Pop3) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			if c.Domain != "" {
 				username = username + c.Domain
 			}
-			if err := conn.Auth(username, password); err != nil {
+			// USER then PASS. go-pop3's Auth also sends a NOOP after PASS, which mail clients do not;
+			// a server that only rejects the login at the next command now fails at STAT instead.
+			if err := pop3Login(conn, username, password); err != nil {
 				checkResult.Error = "login failed"
 				checkResult.Debug = "creds " + username + ":" + password + ", error: " + err.Error()
 				response <- checkResult
@@ -90,4 +97,12 @@ func (c *Pop3) Verify(box string, ip string, points int, timeout int, slapenalty
 	}
 
 	return nil
+}
+
+// pop3Login sends USER and PASS the way mail clients do.
+func pop3Login(conn *pop3.Conn, username, password string) error {
+	if err := conn.User(username); err != nil {
+		return err
+	}
+	return conn.Pass(password)
 }
