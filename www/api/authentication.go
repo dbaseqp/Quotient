@@ -144,8 +144,8 @@ func (a *API) Logout(w http.ResponseWriter, r *http.Request) {
 
 // Authenticate resolves the caller from their session cookie. Reports false
 // when the request carries no usable session, or when the identity cannot be
-// resolved, in which case it also clears the cookie. Refreshes the cookie on
-// success.
+// resolved, in which case it also clears the cookie unless the failure was a
+// backing store outage. Refreshes the cookie on success.
 func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
 	token, err := r.Cookie(COOKIENAME)
 	if err != nil {
@@ -174,6 +174,12 @@ func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bo
 	}
 
 	id, err := a.resolveIdentity(username, authSource)
+	if errors.Is(err, errIdentityUnavailable) {
+		// The session may well be valid; keep the cookie so it works again
+		// once the store recovers.
+		slog.Error(err.Error())
+		return Identity{}, false
+	}
 	if err != nil {
 		slog.Error(err.Error())
 		http.SetCookie(w, &http.Cookie{

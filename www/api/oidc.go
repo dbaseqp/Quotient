@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/oauth2"
 )
 
@@ -512,11 +513,14 @@ func (a *API) storeOIDCUserInfo(username string, groups []string, roles []string
 	}
 }
 
-func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
+// GetOIDCUserInfo reads a user's OIDC session. Reports false with a nil error
+// when the user has no live session; a non-nil error means Redis could not be
+// read, which says nothing about the session.
+func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool, error) {
 	// Try to get from Redis
 	if a.eng == nil || a.eng.RedisClient == nil {
 		slog.Warn("Redis client not available, cannot retrieve OIDC session", "username", username)
-		return nil, false
+		return nil, false, nil
 	}
 
 	ctx := context.Background()
@@ -524,16 +528,12 @@ func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
 
 	// Attempt to retrieve from Redis
 	data, err := a.eng.RedisClient.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		slog.Debug("OIDC user not found in Redis", "username", username)
+		return nil, false, nil
+	}
 	if err != nil {
-		if err.Error() == "redis: nil" {
-			slog.Debug("OIDC user not found in Redis", "username", username)
-		} else {
-			slog.Error("Failed to retrieve OIDC session from Redis", "username", username, "error", err)
-		}
-
-		// Try to refresh the session if we had a cached refresh token
-		// This would require storing refresh tokens separately, which we'll skip for now
-		return nil, false
+		return nil, false, fmt.Errorf("failed to retrieve OIDC session for %q from Redis: %w", username, err)
 	}
 
 	// Deserialize from JSON
@@ -542,7 +542,7 @@ func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
 		slog.Error("Failed to unmarshal OIDC user info", "username", username, "error", err)
 		// Delete corrupted data
 		a.eng.RedisClient.Del(ctx, key)
-		return nil, false
+		return nil, false, nil
 	}
 
 	// Check if session has expired (Redis TTL should handle this, but double-check)
@@ -557,10 +557,10 @@ func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
 			}
 		}
 
-		return nil, false
+		return nil, false, nil
 	}
 
-	return &info, true
+	return &info, true, nil
 }
 
 // tryRefreshOIDCSession attempts to refresh an OIDC session using the refresh token
