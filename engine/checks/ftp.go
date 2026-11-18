@@ -38,8 +38,10 @@ func (c Ftp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 
 		var username, password string
 		if len(c.CredLists) == 0 {
+			// Anonymous FTP asks for an e-mail address as the password; FileZilla sends this one.
+			// Servers that allow anonymous logins accept any password.
 			username = "anonymous"
-			password = "anonymous"
+			password = "anonymous@example.com"
 		} else {
 			username, password, err = c.getCreds(teamID)
 			if err != nil {
