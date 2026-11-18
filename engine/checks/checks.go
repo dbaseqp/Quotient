@@ -202,7 +202,23 @@ func (service *Service) Run(teamID uint, teamIdentifier string, roundID uint, re
 	slog.Debug("Running check", "teamID", teamID, "serviceName", service.Name, "target", service.Target)
 	response := make(chan Result, 1)
 
-	go definition(teamID, teamIdentifier, checkResult, response)
+	// A check library that panics on a malformed reply from a team's server
+	// must fail that check, not kill the runner and every task it holds.
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("check panicked", "service", service.Name, "team", teamID, "panic", r)
+				failed := checkResult
+				failed.Error = "check crashed on the service's response"
+				failed.Debug = fmt.Sprint(r)
+				select {
+				case response <- failed:
+				default:
+				}
+			}
+		}()
+		definition(teamID, teamIdentifier, checkResult, response)
+	}()
 
 	select {
 	// ok response
