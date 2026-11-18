@@ -13,13 +13,15 @@ type Tcp struct {
 
 func (c Tcp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		_, err := net.DialTimeout("tcp", c.Target+":"+strconv.Itoa(c.Port), time.Duration(c.Timeout)*time.Second)
+		conn, err := net.DialTimeout("tcp", c.Target+":"+strconv.Itoa(c.Port), time.Duration(c.Timeout)*time.Second)
 		if err != nil {
 			checkResult.Error = "connection error"
 			checkResult.Debug = err.Error()
 			response <- checkResult
 			return
 		}
+		// Close at once (FIN) instead of leaving an idle, silent connection open until GC or exit.
+		_ = conn.Close()
 		checkResult.Status = true
 		checkResult.Debug = "responded to request"
 		response <- checkResult
