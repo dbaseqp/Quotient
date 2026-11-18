@@ -443,6 +443,7 @@ HTTP/HTTPS request with optional status code and content matching.
 display = "web"
 port = 8080
 scheme = "https"  # "http" or "https"
+# proxy = "socks5h://172.18.0.5_:1080"  # optional SOCKS5 proxy; "_" becomes the team identifier
 
     [[box.web.url]]
     path = "/index.html"
@@ -453,6 +454,8 @@ scheme = "https"  # "http" or "https"
     path = "/admin"
     status = 403
 ```
+
+The optional `proxy` setting sends the request through a SOCKS5 proxy (`socks5://` or `socks5h://`, host and port required). The hostname in `target` is passed to the proxy unresolved, so the proxy sees the real name and the request carries it as `Host` and TLS SNI. As with `target`, `_` is replaced by the team identifier, which allows one proxy address per team. Without `proxy`, the check connects directly.
 
 **Default port:** 80 (http) or 443 (https)
 **Default scheme:** http

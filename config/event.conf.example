@@ -90,6 +90,7 @@
     Display = "https"
     Scheme = "https"
     Port = 443
+    # Proxy = "socks5h://10.200.0.1:80_"  # optional SOCKS5 proxy; "_" becomes the team identifier
     [[Box.Web.Url]]
       Path = "/"
       Status = 200

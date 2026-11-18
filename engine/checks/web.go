@@ -21,6 +21,7 @@ type Web struct {
 	Service
 	Url    []urlData
 	Scheme string
+	Proxy  string `toml:",omitempty"`
 }
 
 type urlData struct {
@@ -45,6 +46,16 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, // #nosec G402 -- competition services may use self-signed certs
 			},
+		}
+		if c.Proxy != "" {
+			proxyURL, err := url.Parse(strings.ReplaceAll(c.Proxy, "_", teamIdentifier))
+			if err != nil || (proxyURL.Scheme != "socks5" && proxyURL.Scheme != "socks5h") || proxyURL.Host == "" {
+				checkResult.Error = "invalid proxy URL"
+				checkResult.Debug = "proxy failed validation: " + strings.ReplaceAll(c.Proxy, "_", teamIdentifier)
+				response <- checkResult
+				return
+			}
+			tr.Proxy = http.ProxyURL(proxyURL)
 		}
 		// Set client timeout to slightly less than check timeout to get better error messages
 		clientTimeout := time.Duration(c.Timeout) * time.Second
@@ -171,6 +182,22 @@ func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty 
 		}
 		if u.Path == "" {
 			u.Path = "/"
+		}
+	}
+	if c.Proxy != "" {
+		// "_" is the team identifier placeholder; use a digit so the port parses
+		pu, err := url.Parse(strings.ReplaceAll(c.Proxy, "_", "0"))
+		if err != nil {
+			return fmt.Errorf("web check %s: invalid proxy %q: %w", c.Name, c.Proxy, err)
+		}
+		if pu.Scheme != "socks5" && pu.Scheme != "socks5h" {
+			return fmt.Errorf("web check %s: proxy %q must use scheme socks5 or socks5h", c.Name, c.Proxy)
+		}
+		if pu.Hostname() == "" {
+			return fmt.Errorf("web check %s: proxy %q has no host", c.Name, c.Proxy)
+		}
+		if pu.Port() == "" {
+			return fmt.Errorf("web check %s: proxy %q has no port", c.Name, c.Proxy)
 		}
 	}
 
