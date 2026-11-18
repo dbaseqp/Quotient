@@ -32,15 +32,16 @@ import (
 // order is easier to spot than any one of them alone.
 type browserProfile struct {
 	name      string
-	platform  string // sec-ch-ua-platform value, quoted the way Chrome sends it
-	uaOS      string // the OS part of the User-Agent
+	platform  string   // sec-ch-ua-platform value, quoted the way Chrome sends it
+	uaOS      string   // the OS part of the User-Agent
+	os        clientOS // the OS whose SYN window settings the sockets carry
 	helloSpec func() (*utls.ClientHelloSpec, error)
 }
 
 var browserProfiles = []browserProfile{
-	{name: "chrome-windows", platform: `"Windows"`, uaOS: "Windows NT 10.0; Win64; x64", helloSpec: chromeHelloSpec},
-	{name: "chrome-macos", platform: `"macOS"`, uaOS: "Macintosh; Intel Mac OS X 10_15_7", helloSpec: chromeHelloSpec},
-	{name: "chrome-linux", platform: `"Linux"`, uaOS: "X11; Linux x86_64", helloSpec: chromeHelloSpec},
+	{name: "chrome-windows", platform: `"Windows"`, uaOS: "Windows NT 10.0; Win64; x64", os: clientWindows, helloSpec: chromeHelloSpec},
+	{name: "chrome-macos", platform: `"macOS"`, uaOS: "Macintosh; Intel Mac OS X 10_15_7", os: clientMacOS, helloSpec: chromeHelloSpec},
+	{name: "chrome-linux", platform: `"Linux"`, uaOS: "X11; Linux x86_64", os: clientLinux, helloSpec: chromeHelloSpec},
 }
 
 // chromeMLDSASignatureSchemes are the ML-DSA-44/65/87 signature algorithms
@@ -171,7 +172,7 @@ type browserTransport struct {
 }
 
 func newBrowserTransport(p browserProfile) *browserTransport {
-	return &browserTransport{profile: p, idleH1: map[string]*h1Conn{}, h2: map[string]*http2.ClientConn{}}
+	return &browserTransport{profile: p, dialer: net.Dialer{Control: p.os.control}, idleH1: map[string]*h1Conn{}, h2: map[string]*http2.ClientConn{}}
 }
 
 type h1Conn struct {
