@@ -12,15 +12,15 @@ import (
 // The smtp check should greet and write mail like a mail client (loopback servers from proto_loopback_test.go).
 
 func TestSmtpRun_ClientIdentity(t *testing.T) {
-	t.Run("workstation EHLO name, stable per team", func(t *testing.T) {
+	t.Run("EHLO with one of the team's workstation names", func(t *testing.T) {
 		srv := startSMTP(t, smtpBehaviour{})
 		res := runCheck(t, &Smtp{Service: testService(srv.port, loopbackCred), Domain: "@acme.local"})
 		require.True(t, res.Status, "debug: %s, error: %s", res.Debug, res.Error)
 
 		lines := waitSession(t, srv, 0, "QUIT")
-		assert.Regexp(t, `^EHLO DESKTOP-[A-Z0-9]{7}$`, lines[0])
-		assert.Equal(t, "EHLO "+defaultHeloName(1, "box-test"), lines[0])
-		assert.NotEqual(t, defaultHeloName(1, "box-test"), defaultHeloName(2, "box-test"))
+		name, ok := strings.CutPrefix(lines[0], "EHLO ")
+		require.True(t, ok, lines[0])
+		assert.Contains(t, workstationPool("", "01", nil), name)
 	})
 
 	t.Run("configured HELO name", func(t *testing.T) {

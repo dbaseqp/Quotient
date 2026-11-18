@@ -15,8 +15,8 @@ type Smtp struct {
 	Encrypted   bool
 	Domain      string
 	RequireAuth bool
-	// HeloName is the name sent in EHLO/HELO. Empty means a workstation-style name (DESKTOP-XXXXXXX)
-	// that is fixed per team and check.
+	// HeloName is the name sent in EHLO/HELO. Empty means one of the team's workstation names
+	// (see MiscSettings.WorkstationNames), picked at random every round.
 	HeloName string `toml:",omitempty"`
 }
 
@@ -40,7 +40,7 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 
 		heloName := c.HeloName
 		if heloName == "" {
-			heloName = defaultHeloName(teamID, c.Name)
+			heloName = c.workstation(teamIdentifier)
 		}
 
 		// ***********************************************

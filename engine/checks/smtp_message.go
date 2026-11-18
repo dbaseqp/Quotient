@@ -1,32 +1,12 @@
 package checks
 
 import (
-	"fmt"
-	"hash/fnv"
 	"math/rand"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
-
-// heloNameAlphabet is the character set of the random suffix Windows gives new computers (DESKTOP-XXXXXXX).
-const heloNameAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
-// defaultHeloName returns a workstation-style EHLO name that stays the same for a team's check
-// across rounds, like a real mail client on one PC. net/smtp would otherwise send "localhost".
-func defaultHeloName(teamID uint, checkName string) string {
-	h := fnv.New64a()
-	_, _ = fmt.Fprintf(h, "%d/%s", teamID, checkName)
-	v := h.Sum64()
-	var b strings.Builder
-	b.WriteString("DESKTOP-")
-	for range 7 {
-		b.WriteByte(heloNameAlphabet[v%uint64(len(heloNameAlphabet))])
-		v /= uint64(len(heloNameAlphabet))
-	}
-	return b.String()
-}
 
 var (
 	mailSubjects = []string{

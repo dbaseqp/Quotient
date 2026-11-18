@@ -34,22 +34,24 @@ type Runner interface {
 
 // services will inherit Service so that config.Config can be read from file, but will not be used after initial read
 type Service struct {
-	Name            string           `toml:"-"`          // Name is the box name plus the service (ex. lunar-dns)
-	Display         string           `toml:",omitempty"` // Display is the name of the service (ex. dns)
-	CredLists       []string         `toml:",omitempty"`
-	Port            int              `toml:",omitzero"` // omitzero because custom checks might not specify port, and shouldn't be assigned 0
-	Points          int              `toml:",omitempty"`
-	Timeout         int              `toml:",omitempty"`
-	SlaPenalty      int              `toml:",omitempty"`
-	SlaThreshold    int              `toml:",omitempty"`
-	LaunchTime      time.Time        `toml:",omitempty"`
-	StopTime        time.Time        `toml:",omitempty"`
-	Disabled        bool             `toml:",omitempty"`
-	Target          string           `toml:",omitempty"` // Target is the IP address or hostname for the box
-	ServiceType     string           `toml:",omitempty"` // ServiceType is the name of the Runner that checks the service
-	Attempts        int              `toml:",omitempty"` // Attempts is the number of times the service has been checked
-	AttemptDelay    int              `toml:",omitempty"` // AttemptDelay is the number of seconds to wait before retrying a failed attempt
-	TaskCredentials []TaskCredential `toml:"-"`          // Credentials from task payload (set per-task, not from config)
+	Name             string           `toml:"-"`          // Name is the box name plus the service (ex. lunar-dns)
+	Display          string           `toml:",omitempty"` // Display is the name of the service (ex. dns)
+	CredLists        []string         `toml:",omitempty"`
+	Port             int              `toml:",omitzero"` // omitzero because custom checks might not specify port, and shouldn't be assigned 0
+	Points           int              `toml:",omitempty"`
+	Timeout          int              `toml:",omitempty"`
+	SlaPenalty       int              `toml:",omitempty"`
+	SlaThreshold     int              `toml:",omitempty"`
+	LaunchTime       time.Time        `toml:",omitempty"`
+	StopTime         time.Time        `toml:",omitempty"`
+	Disabled         bool             `toml:",omitempty"`
+	Target           string           `toml:",omitempty"` // Target is the IP address or hostname for the box
+	ServiceType      string           `toml:",omitempty"` // ServiceType is the name of the Runner that checks the service
+	Attempts         int              `toml:",omitempty"` // Attempts is the number of times the service has been checked
+	AttemptDelay     int              `toml:",omitempty"` // AttemptDelay is the number of seconds to wait before retrying a failed attempt
+	TaskCredentials  []TaskCredential `toml:"-"`          // Credentials from task payload (set per-task, not from config)
+	WorkstationSalt  string           `toml:"-"`          // Event name, from config: seeds each team's workstation-name pool
+	WorkstationNames []string         `toml:"-"`          // MiscSettings.WorkstationNames templates, from config
 }
 
 type Result struct {
