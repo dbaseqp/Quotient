@@ -14,6 +14,7 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -23,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dbaseqp/Quotient/engine/checks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -155,6 +157,7 @@ func sh(t *testing.T, script string) (string, int) {
 	helper, err := filepath.Abs(filepath.Join("..", "..", "custom-checks", "browser-curl.sh"))
 	require.NoError(t, err)
 	cmd := exec.Command("sh", "-c", ". "+helper+"\n"+script)
+	cmd.Env = append(os.Environ(), checks.ChromeEnv()...) // as the runner runs custom checks
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err = cmd.Run()
@@ -167,7 +170,7 @@ func sh(t *testing.T, script string) (string, int) {
 	return out.String(), code
 }
 
-var chromeUA = regexp.MustCompile(`^Mozilla/5\.0 \((Windows NT 10\.0; Win64; x64|Macintosh; Intel Mac OS X 10_15_7|X11; Linux x86_64)\) AppleWebKit/537\.36 \(KHTML, like Gecko\) Chrome/158\.0\.0\.0 Safari/537\.36$`)
+var chromeUA = regexp.MustCompile(`^Mozilla/5\.0 \((Windows NT 10\.0; Win64; x64|Macintosh; Intel Mac OS X 10_15_7|X11; Linux x86_64)\) AppleWebKit/537\.36 \(KHTML, like Gecko\) Chrome/` + strconv.Itoa(checks.ChromeMajor) + `\.0\.0\.0 Safari/537\.36$`)
 
 // Chrome 151's navigation headers (captured with chromedp/headless-shell),
 // plus Accept-Language, which desktop Chrome sends last.
@@ -193,7 +196,7 @@ func TestBrowserCurlHTTPSMatchesChrome(t *testing.T) {
 	assert.Equal(t, "hello GET ", out)
 	r := s.take(t)[0]
 	assert.Equal(t, []string{"Host", "Connection", "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "Upgrade-Insecure-Requests", "User-Agent", "Accept", "Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-User", "Sec-Fetch-Dest", "Accept-Encoding", "Accept-Language"}, r.Names)
-	assert.Equal(t, `"Chromium";v="158", "Not.A/Brand";v="24", "Chrome";v="158"`, r.Headers["sec-ch-ua"])
+	assert.Equal(t, checks.ChromeSecCHUA(checks.ChromeMajor), r.Headers["sec-ch-ua"])
 	platform := map[string]string{"Windows NT": `"Windows"`, "Macintosh": `"macOS"`, "X11": `"Linux"`}
 	for os, want := range platform {
 		if strings.Contains(r.Headers["user-agent"], os) {
@@ -257,4 +260,33 @@ func TestBrowserCurlCheckHeadersWin(t *testing.T) {
 	assert.Equal(t, 1, count["user-agent"])
 	assert.Equal(t, "Host", r.Names[0])
 	assert.Equal(t, "Cookie", r.Names[len(r.Names)-1])
+}
+
+// A shell check run by the runner claims checks.ChromeMajor, the one place the
+// version is kept; outside the runner browser-curl.sh refuses to guess one.
+func TestBrowserCurlClaimsChromeMajorInCustomCheck(t *testing.T) {
+	if _, err := exec.LookPath("curl"); err != nil {
+		t.Skip("curl not installed")
+	}
+	helper, err := filepath.Abs(filepath.Join("..", "..", "custom-checks", "browser-curl.sh"))
+	require.NoError(t, err)
+	s := startRawServer(t, false)
+	c := &checks.Custom{
+		Service: checks.Service{Name: "test-browser-curl", Target: "127.0.0.1", Timeout: 10},
+		Command: fmt.Sprintf(". %s; browser_curl -s http://127.0.0.1:%d/", helper, s.port()),
+		Regex:   "hello GET",
+	}
+	results := make(chan checks.Result, 1)
+	c.Run(1, "01", 1, results)
+	res := <-results
+	require.True(t, res.Status, res.Error+" "+res.Debug)
+	reqs := s.take(t)
+	require.Len(t, reqs, 1)
+	assert.Contains(t, reqs[0].Headers["user-agent"], " Chrome/"+strconv.Itoa(checks.ChromeMajor)+".0.0.0 ")
+
+	cmd := exec.Command("sh", "-c", ". "+helper)
+	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	out, err := cmd.CombinedOutput()
+	require.Error(t, err, "sourcing without the runner's Chrome version must fail")
+	assert.Contains(t, string(out), "QUOTIENT_CHROME_MAJOR")
 }

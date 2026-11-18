@@ -17,11 +17,10 @@
 # (Authorization for -u, Content-Type and Content-Length for -d) keep curl's
 # positions.
 
-# The Chrome release claimed. Keep it at the current stable release.
-BROWSER_CURL_CHROME=158
-# sec-ch-ua for Chrome 158, as Chromium derives it from the major version
-# (GREASE brand, its version and the brand order).
-BROWSER_CURL_SEC_CH_UA='"Chromium";v="158", "Not.A/Brand";v="24", "Chrome";v="158"'
+# The Chrome release claimed and its sec-ch-ua come from the runner
+# (checks.ChromeMajor, the one place the version is kept).
+BROWSER_CURL_CHROME=${QUOTIENT_CHROME_MAJOR:?browser-curl.sh: QUOTIENT_CHROME_MAJOR is set by the Quotient runner}
+BROWSER_CURL_SEC_CH_UA=${QUOTIENT_CHROME_SEC_CH_UA:?browser-curl.sh: QUOTIENT_CHROME_SEC_CH_UA is set by the Quotient runner}
 BROWSER_CURL_ACCEPT='text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'
 
 # One browser per check run: the platform is picked once, when sourced.

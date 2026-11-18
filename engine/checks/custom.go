@@ -101,6 +101,7 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", formedCommand) // #nosec G204 -- custom checks intentionally run user-defined commands
+		cmd.Env = append(os.Environ(), ChromeEnv()...)
 
 		// Use os.Root to safely handle temp file operations
 		tmpRoot, err := os.OpenRoot("/tmp")
@@ -225,4 +226,13 @@ func (c *Custom) Verify(box string, ip string, points int, timeout int, slapenal
 	}
 
 	return nil
+}
+
+// ChromeEnv is the environment that tells custom checks (browser-curl.sh)
+// which Chrome to claim, so ChromeMajor stays the only place it is set.
+func ChromeEnv() []string {
+	return []string{
+		"QUOTIENT_CHROME_MAJOR=" + strconv.Itoa(ChromeMajor),
+		"QUOTIENT_CHROME_SEC_CH_UA=" + ChromeSecCHUA(ChromeMajor),
+	}
 }
