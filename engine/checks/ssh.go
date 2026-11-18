@@ -16,37 +16,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// Common OpenSSH client versions from popular OS distributions
-var commonSSHClientVersions = []string{
-	"SSH-2.0-OpenSSH_7.4",
-	"SSH-2.0-OpenSSH_7.6p1 Ubuntu-4ubuntu0.7",
-	"SSH-2.0-OpenSSH_7.9p1 Debian-10+deb10u3",
-	"SSH-2.0-OpenSSH_8.0",
-	"SSH-2.0-OpenSSH_8.1",
-	"SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.11",
-	"SSH-2.0-OpenSSH_8.4p1 Debian-5+deb11u3",
-	"SSH-2.0-OpenSSH_8.6",
-	"SSH-2.0-OpenSSH_8.7",
-	"SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10",
-	"SSH-2.0-OpenSSH_9.0",
-	"SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3",
-	"SSH-2.0-OpenSSH_9.3",
-	"SSH-2.0-OpenSSH_9.3 FreeBSD-20230316",
-	"SSH-2.0-OpenSSH_9.3 FreeBSD-20230719",
-	"SSH-2.0-OpenSSH_9.3p2",
-	"SSH-2.0-OpenSSH_9.4",
-	"SSH-2.0-OpenSSH_9.6",
-	"SSH-2.0-OpenSSH_9.6p1",
-	"SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13",
-	"SSH-2.0-OpenSSH_9.7",
-	"SSH-2.0-OpenSSH_9.7 FreeBSD-20240701",
-	"SSH-2.0-OpenSSH_for_Windows_7.7",
-	"SSH-2.0-OpenSSH_for_Windows_8.1",
-	"SSH-2.0-OpenSSH_for_Windows_8.6",
-	"SSH-2.0-PuTTY_Release_0.79",
-	"SSH-2.0-PuTTY_Release_0.81",
-}
-
 type Ssh struct {
 	Service
 	Domain      string `toml:",omitempty"`
@@ -83,14 +52,10 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		}
 		username = formatSSHUsername(username, c.Domain, teamIdentifier)
 
-		config := &ssh.ClientConfig{
-			User:            username,
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(), // #nosec G106 -- competition hosts have unknown keys
-			Timeout:         time.Duration(c.Timeout) * time.Second,
-			ClientVersion:   commonSSHClientVersions[rand.Intn(len(commonSSHClientVersions))], // #nosec G404 -- non-crypto random client version
-		}
-		config.SetDefaults()
-		config.Ciphers = append(config.Ciphers, "3des-cbc")
+		timeout := time.Duration(c.Timeout) * time.Second
+		addr := c.Target + ":" + strconv.Itoa(c.Port)
+		profile := sshProfileFor(c.Target)
+		var auth []ssh.AuthMethod
 		if c.PrivKey != "" {
 			key, err := os.ReadFile("./config/scoredfiles/" + c.PrivKey)
 			if err != nil {
@@ -106,27 +71,18 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				response <- checkResult
 				return
 			}
-			config.Auth = []ssh.AuthMethod{
+			auth = []ssh.AuthMethod{
 				ssh.PublicKeys(signer),
 			}
 		} else {
-			config.Auth = []ssh.AuthMethod{
+			auth = []ssh.AuthMethod{
 				ssh.Password(password),
 			}
 		}
 
 		for range c.BadAttempts {
-			badConf := &ssh.ClientConfig{
-				User: username,
-				Auth: []ssh.AuthMethod{
-					ssh.Password(uuid.New().String()),
-				},
-				HostKeyCallback: ssh.InsecureIgnoreHostKey(), // #nosec G106 -- competition hosts have unknown keys
-				Timeout:         time.Duration(c.Timeout) * time.Second,
-				ClientVersion:   commonSSHClientVersions[rand.Intn(len(commonSSHClientVersions))], // #nosec G404 -- non-crypto random client version
-			}
-
-			badConn, err := ssh.Dial("tcp", c.Target+":"+strconv.Itoa(c.Port), badConf)
+			badAuth := []ssh.AuthMethod{ssh.Password(uuid.New().String())}
+			badConn, err := profile.dial(addr, username, badAuth, timeout, false)
 			if err == nil {
 				if err := badConn.Close(); err != nil {
 					slog.Error("failed to close bad ssh connection", "error", err)
@@ -135,7 +91,7 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		}
 
 		// Connect to ssh server
-		conn, err := ssh.Dial("tcp", c.Target+":"+strconv.Itoa(c.Port), config)
+		conn, err := profile.dial(addr, username, auth, timeout, true)
 		if err != nil {
 			if c.PrivKey != "" {
 				checkResult.Error = "error logging in to ssh server with private key " + c.PrivKey
@@ -163,16 +119,11 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		}
 		// nolint:errcheck
 		defer session.Close()
-
-		// Set up terminal modes
-		modes := ssh.TerminalModes{
-			ssh.ECHO:          0,     // disable echoing
-			ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
-			ssh.TTY_OP_OSPEED: 14400, // output speed = 14.4kbaud
-		}
+		// Like OpenSSH, promise the server no further sessions on this connection.
+		_, _, _ = conn.SendRequest("no-more-sessions@openssh.com", false, nil)
 
 		// Request pseudo terminal
-		if err := session.RequestPty("xterm", 40, 80, modes); err != nil {
+		if err := requestOpenSSHPty(session); err != nil {
 			checkResult.Error = "couldn't allocate pts"
 			checkResult.Debug = err.Error()
 			response <- checkResult
