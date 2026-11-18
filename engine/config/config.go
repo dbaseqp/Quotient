@@ -135,6 +135,12 @@ type MiscConfig struct {
 	// SlaPenalty is a pointer so an explicit 0 (count SLAs without deducting
 	// points) can be told apart from an omitted key.
 	SlaPenalty *int
+	// Spread caps, in seconds, how long a check may wait before its first
+	// attempt, and past AttemptDelay before a retry, so that rounds don't hit
+	// every team at the same instant. Each wait is drawn at random and never
+	// eats into the time the check's attempts need to finish before the round
+	// ends. Omitted: Delay - Jitter (as much as the round allows); 0: off.
+	Spread *int
 }
 
 type UIConfig struct {
@@ -407,6 +413,12 @@ func checkConfig(conf *ConfigSettings) error {
 	if conf.MiscSettings.AttemptDelay < 0 {
 		errResult = errors.Join(errResult, errors.New("attempt delay must not be negative"))
 	}
+	if conf.MiscSettings.Spread == nil {
+		spread := conf.MiscSettings.Delay - conf.MiscSettings.Jitter
+		conf.MiscSettings.Spread = &spread
+	} else if *conf.MiscSettings.Spread < 0 {
+		errResult = errors.Join(errResult, errors.New("spread must not be negative"))
+	}
 
 	if conf.MiscSettings.Points == 0 {
 		conf.MiscSettings.Points = 1
@@ -584,7 +596,7 @@ func checkAttemptBudget(check checks.Runner, shortestRound int) error {
 	if attempts < 1 || delay < 0 {
 		return fmt.Errorf("%s: Attempts must be at least 1 and AttemptDelay not negative", check.GetName())
 	}
-	if budget := attempts*check.GetTimeout() + (attempts-1)*delay; budget >= shortestRound {
+	if budget := checks.WorstCaseSeconds(check.GetTimeout(), attempts, delay); budget >= shortestRound {
 		return fmt.Errorf("%s: %d attempts with timeout %ds and delay %ds take up to %ds, which must be smaller than delay minus jitter (%ds)",
 			check.GetName(), attempts, check.GetTimeout(), delay, budget, shortestRound)
 	}

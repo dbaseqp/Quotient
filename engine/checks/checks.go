@@ -106,6 +106,16 @@ func (service *Service) SetAttemptDefaults(attempts int, attemptDelay int) {
 	}
 }
 
+// WorstCaseSeconds is the longest a task of attempts tries can take: every
+// attempt running until Run cuts it off at timeout, plus attemptDelay between
+// attempts.
+func WorstCaseSeconds(timeout, attempts, attemptDelay int) int {
+	if attempts < 1 {
+		return 0
+	}
+	return attempts*timeout + (attempts-1)*attemptDelay
+}
+
 func (service *Service) GetCredlists() []string {
 	return service.CredLists
 }

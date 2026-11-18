@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"time"
 
@@ -160,6 +161,13 @@ func createRunner(task *engine.Task) (checks.Runner, error) {
 
 func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, task *engine.Task) {
 	taskKey := fmt.Sprintf("task:%t:%d:%d:%s:%s", task.Preflight, task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
+	spread := time.Duration(task.Spread) * time.Second
+
+	// Hold the first attempt back by a random share of the round's slack so
+	// that a round doesn't reach every team at the same instant.
+	if !sleepCtx(ctx, engine.SpreadDelay(time.Now(), task.Deadline, runner.GetTimeout(), task.Attempts, task.AttemptDelay, spread, rand.Int64N)) {
+		return
+	}
 
 	result := checks.Result{
 		TeamID:      task.TeamID,
@@ -229,7 +237,7 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 		if result.Status || time.Now().After(task.Deadline) {
 			break
 		}
-		if i < task.Attempts-1 && !waitForRetry(ctx, time.Duration(task.AttemptDelay)*time.Second, task.Deadline) {
+		if i < task.Attempts-1 && !waitForRetry(ctx, retryDelay(time.Now(), task, runner.GetTimeout(), i+1), task.Deadline) {
 			break
 		}
 	}
@@ -254,13 +262,30 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 	rdb.Set(ctx, taskKey, resultJSON, 3*time.Minute)
 }
 
+// retryDelay is how long to wait after failed attempt number done before the
+// next one: AttemptDelay, plus a random extra when the task is spread that
+// still lets the remaining attempts finish before the deadline worst case.
+func retryDelay(now time.Time, task *engine.Task, timeout, done int) time.Duration {
+	delay := time.Duration(task.AttemptDelay) * time.Second
+	extra := engine.SpreadDelay(now.Add(delay), task.Deadline, timeout, task.Attempts-done, task.AttemptDelay, time.Duration(task.Spread)*time.Second, rand.Int64N)
+	return delay + extra
+}
+
 // waitForRetry waits delay before the next attempt and reports whether that
 // attempt can still start before the round deadline.
 func waitForRetry(ctx context.Context, delay time.Duration, deadline time.Time) bool {
 	if !time.Now().Add(delay).Before(deadline) {
 		return false
 	}
-	timer := time.NewTimer(delay)
+	return sleepCtx(ctx, delay)
+}
+
+// sleepCtx waits d and reports false if ctx ended first.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
