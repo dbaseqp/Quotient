@@ -14,7 +14,7 @@ import (
 
 func TestPause_RacingTogglesWithAWaitingLoop(t *testing.T) {
 	se := &ScoringEngine{Config: &config.ConfigSettings{}}
-	se.resetPauseState()
+	se.resetPauseState(false)
 
 	stop := make(chan struct{})
 	loopDone := make(chan struct{})

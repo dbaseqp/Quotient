@@ -96,7 +96,9 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 		configPath:       configPath,
 		DB:               d,
 	}
-	se.resetPauseState()
+	if err := se.loadPauseState(); err != nil {
+		panic(fmt.Sprintf("Failed to read competition state: %v", err))
+	}
 
 	if err := conf.WatchConfig(configPath, func() {
 		if err := se.DB.AddTeams(se.Config); err != nil {
@@ -381,11 +383,27 @@ func (se *ScoringEngine) GetActiveTasks() (map[string]any, error) {
 	return result, nil
 }
 
-func (se *ScoringEngine) resetPauseState() {
+// loadPauseState restores the pause state a (re)started engine runs with: the
+// last pause or resume an admin or the scheduled start recorded, or StartPaused
+// if none was recorded since the last score reset.
+func (se *ScoringEngine) loadPauseState() error {
+	state, err := se.DB.GetCompetitionState()
+	if err != nil {
+		return err
+	}
+	paused := se.Config.MiscSettings.StartPaused
+	if state.Paused != nil {
+		paused = *state.Paused
+	}
+	se.resetPauseState(paused)
+	return nil
+}
+
+func (se *ScoringEngine) resetPauseState(paused bool) {
 	se.pauseMu.Lock()
 	defer se.pauseMu.Unlock()
 	se.resume = make(chan struct{})
-	if !se.Config.MiscSettings.StartPaused {
+	if !paused {
 		close(se.resume)
 	}
 	se.scheduleChanged = make(chan struct{})
@@ -1031,6 +1049,8 @@ func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.Po
 		DB:               pg.DB,
 		CurrentRound:     1,
 	}
-	se.resetPauseState()
+	if err := se.loadPauseState(); err != nil {
+		t.Fatalf("failed to read competition state: %v", err)
+	}
 	return se
 }

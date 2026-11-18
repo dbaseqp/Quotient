@@ -20,6 +20,9 @@ type CompetitionStateSchema struct {
 	// OvertimeEnd is the competition end (configured or scheduled) an admin
 	// resumed scoring after.
 	OvertimeEnd *time.Time
+	// Paused is the last pause or resume an admin or the scheduled start made,
+	// so a restarted engine keeps it; nil until then, when StartPaused applies.
+	Paused *bool
 }
 
 const competitionStateID = 1
@@ -88,9 +91,19 @@ func (d *DB) StartCompetitionOnce(at time.Time) (bool, error) {
 			return nil
 		}
 		started = true
+		resumed := false
+		state.Paused = &resumed
 		return state.start(tx, true, at)
 	})
 	return started, err
+}
+
+// SetPaused records an admin pause or resume for the engine to restore on boot.
+func (d *DB) SetPaused(paused bool) error {
+	return d.updateCompetitionState(func(_ *gorm.DB, state *CompetitionStateSchema) error {
+		state.Paused = &paused
+		return nil
+	})
 }
 
 func (state *CompetitionStateSchema) start(tx *gorm.DB, started bool, at time.Time) error {

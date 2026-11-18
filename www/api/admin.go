@@ -41,6 +41,11 @@ func (a *API) PauseEngine(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid engine state transition"})
 		return
 	}
+	// Recorded so an engine restart keeps the admin's choice.
+	if err := a.eng.DB.SetPaused(form.Pause); err != nil {
+		WriteInternalError(w, r, "Engine pause changed but could not be saved; it will not survive a restart", err)
+		return
+	}
 
 	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
 }
