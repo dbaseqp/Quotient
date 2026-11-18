@@ -246,6 +246,7 @@ func TestWebVerify_Proxy(t *testing.T) {
 		{name: "empty accepted", proxy: ""},
 		{name: "socks5h accepted", proxy: "socks5h://172.18.0.54:80_"},
 		{name: "socks5 accepted", proxy: "socks5://proxy.example.test:1080"},
+		{name: "port that is only the placeholder accepted", proxy: "socks5h://proxy.example.test:_"},
 		{name: "http scheme rejected", proxy: "http://127.0.0.1:8080", wantErr: "socks5"},
 		{name: "no scheme rejected", proxy: "127.0.0.1:1080", wantErr: "invalid proxy"},
 		{name: "missing port rejected", proxy: "socks5h://127.0.0.1", wantErr: "no port"},

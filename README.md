@@ -455,7 +455,7 @@ scheme = "https"  # "http" or "https"
     status = 403
 ```
 
-The optional `proxy` setting sends the request through a SOCKS5 proxy (`socks5://` or `socks5h://`, with a host and a port, no credentials). With either scheme the hostname in `target` is passed to the proxy unresolved, so the proxy resolves the real name and the request carries it as `Host` and TLS SNI. Every `_` in the setting is replaced by the team identifier, as in `target`, which allows one proxy port per team.
+The optional `proxy` setting sends the request through a SOCKS5 proxy (`socks5://` or `socks5h://`, with a host and a port, no credentials). With either scheme the hostname in `target` is passed to the proxy unresolved, so the proxy resolves the real name and the request carries it as `Host` and TLS SNI. Every `_` in the setting is replaced by the team identifier, as in `target`, so each team can get its own proxy host or port.
 
 **Default port:** 80 (http) or 443 (https)
 **Default scheme:** http

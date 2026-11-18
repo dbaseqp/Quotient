@@ -32,8 +32,8 @@ type urlData struct {
 	CompareFile string `toml:",omitempty"` // TODO implement
 }
 
-// parseProxy replaces every "_" in the proxy setting with the team identifier and returns the result as
-// a socks5 or socks5h URL with a host and a port, and no credentials. Errors do not repeat the setting.
+// parseProxy substitutes the team identifier for "_", then validates the URL. Errors must not echo the
+// setting: Debug can reach blue team (www/api/services.go) and the setting is admin config.
 func parseProxy(raw, identifier string) (*url.URL, error) {
 	proxyURL, err := url.Parse(strings.ReplaceAll(raw, "_", identifier))
 	if err != nil {
@@ -207,8 +207,8 @@ func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty 
 		}
 	}
 	if c.Proxy != "" {
-		// "_" is the team identifier placeholder; a digit stands in for it so the port parses
-		if _, err := parseProxy(c.Proxy, "0"); err != nil {
+		// "1" stands in for the team identifier so a port that is only "_" is valid
+		if _, err := parseProxy(c.Proxy, "1"); err != nil {
 			return fmt.Errorf("web check %s: invalid proxy: %w", c.Name, err)
 		}
 	}
