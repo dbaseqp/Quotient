@@ -186,6 +186,7 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 			creds[i] = checks.TaskCredential{
 				Username: c.Username,
 				Password: c.Password,
+				Credlist: c.Credlist,
 			}
 		}
 		runner.SetTaskCredentials(creds)

@@ -655,7 +655,7 @@ credlists = ["users.credlist"]
 regex = "SUCCESS"          # Output regex for success (optional)
 ```
 
-**Placeholders:** ROUND, TARGET, TEAMIDENTIFIER, USERNAME, PASSWORD
+**Placeholders:** ROUND, TARGET, TEAMIDENTIFIER, USERNAME, PASSWORD, and `PASSWORD[credlist]` for the password from one named credlist (for example an API key a team can change on the credentials page). See [docs/custom-checks.md](docs/custom-checks.md).
 
 ## Contributing
 

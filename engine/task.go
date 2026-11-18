@@ -9,6 +9,7 @@ import (
 type Credential struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Credlist string `json:"credlist,omitempty"` // credlist the row came from
 }
 
 type Task struct {

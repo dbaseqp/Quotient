@@ -2,8 +2,10 @@ package checks
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
+	"slices"
 	"strings"
 	"time"
 )
@@ -12,6 +14,7 @@ import (
 type TaskCredential struct {
 	Username string
 	Password string
+	Credlist string // name of the credlist the row came from
 }
 
 // checks for each service
@@ -111,14 +114,35 @@ func (service *Service) SetTaskCredentials(creds []TaskCredential) {
 	service.TaskCredentials = creds
 }
 
-func (service *Service) getCreds(teamID uint) (string, string, error) {
-	if len(service.TaskCredentials) == 0 {
+// getCreds picks a random credential, leaving out rows from the credlists in exclude.
+func (service *Service) getCreds(teamID uint, exclude ...string) (string, string, error) {
+	pool := make([]TaskCredential, 0, len(service.TaskCredentials))
+	for _, cred := range service.TaskCredentials {
+		if !slices.Contains(exclude, cred.Credlist) {
+			pool = append(pool, cred)
+		}
+	}
+	if len(pool) == 0 {
 		return "", "", errors.New("no credentials available")
 	}
 
-	rng := rand.New(rand.NewSource(time.Now().UnixNano())) // #nosec G404 -- non-crypto RNG
-	randomIndex := rng.Intn(len(service.TaskCredentials))
-	return service.TaskCredentials[randomIndex].Username, service.TaskCredentials[randomIndex].Password, nil
+	picked := pool[rand.IntN(len(pool))] // #nosec G404 -- non-crypto selection of a credential
+	return picked.Username, picked.Password, nil
+}
+
+// getCredlistPassword returns the password of a random row of the named credlist.
+func (service *Service) getCredlistPassword(name string) (string, error) {
+	var rows []TaskCredential
+	for _, cred := range service.TaskCredentials {
+		if cred.Credlist == name {
+			rows = append(rows, cred)
+		}
+	}
+	if len(rows) == 0 {
+		return "", fmt.Errorf("no credentials available in credlist %q", name)
+	}
+
+	return rows[rand.IntN(len(rows))].Password, nil // #nosec G404 -- non-crypto selection of a credential
 }
 
 func (service *Service) Configure(ip string, points int, timeout int, slapenalty int, slathreshold int) error {
