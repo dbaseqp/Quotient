@@ -22,7 +22,8 @@ type Task struct {
 	Preflight      bool            `json:"preflight,omitempty"`
 	Attempts       int             `json:"attempts"`
 	AttemptDelay   int             `json:"attempt_delay"`    // seconds to wait before retrying a failed attempt
-	Spread         int             `json:"spread,omitempty"` // seconds: the most the runner may hold back the first attempt, and a retry past AttemptDelay (see SpreadDelay)
+	Spread         int             `json:"spread,omitempty"` // seconds: the most a retry may wait past AttemptDelay (see SpreadDelay)
+	StartAt        time.Time       `json:"start_at,omitzero"` // when the runner starts the first attempt (see SpreadStart); zero: at once
 	CheckData      json.RawMessage `json:"check_data"`
 	Credentials    []Credential    `json:"credentials,omitempty"`
 }

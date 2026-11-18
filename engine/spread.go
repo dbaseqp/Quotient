@@ -27,3 +27,31 @@ func SpreadDelay(now, deadline time.Time, timeout, attempts, attemptDelay int, w
 	}
 	return time.Duration(draw(int64(limit) + 1))
 }
+
+// SpreadStart draws when one team's check starts its first attempt in a round
+// that began at roundStart: roundStart plus an offset drawn uniformly over
+// [0, min(window, shortestRound - worst case - SpreadMargin)]. shortestRound
+// is Delay - Jitter, so the window does not depend on this round's jitter
+// draw, and a check started at the latest offset still finishes in the
+// shortest round. With Attempts 1 the bound is Delay - Jitter - Timeout - 2 s.
+// The engine draws it for every team and service every round, so neither the
+// order teams are reached in nor the time a service is probed repeats.
+func SpreadStart(roundStart time.Time, shortestRound time.Duration, timeout, attempts, attemptDelay int, window time.Duration, draw func(int64) int64) time.Time {
+	return roundStart.Add(SpreadDelay(roundStart, roundStart.Add(shortestRound), timeout, attempts, attemptDelay, window, draw))
+}
+
+// StartDelay is how long the runner waits at now before the task's first
+// attempt: until StartAt, but never past the point where the check's worst
+// case and SpreadMargin would overrun the deadline (a task picked up late, or
+// a deadline moved). A zero StartAt starts at once.
+func StartDelay(now time.Time, task *Task, timeout int) time.Duration {
+	if task.StartAt.IsZero() {
+		return 0
+	}
+	start := task.StartAt
+	worst := time.Duration(checks.WorstCaseSeconds(timeout, task.Attempts, task.AttemptDelay)) * time.Second
+	if latest := task.Deadline.Add(-worst - SpreadMargin); latest.Before(start) {
+		start = latest
+	}
+	return max(start.Sub(now), 0)
+}

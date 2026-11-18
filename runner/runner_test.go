@@ -133,6 +133,9 @@ func TestHandleTaskSpreadKeepsResults(t *testing.T) {
 			TeamID: 1, ServiceType: "Scripted", ServiceName: name, RoundID: 1,
 			Attempts: 2, AttemptDelay: 1, Spread: spread, Deadline: deadline,
 		}
+		if spread > 0 {
+			task.StartAt = time.Now().Add(time.Second) // as the engine draws it: inside the slack
+		}
 		handleTask(ctx, rdb.Client, check, task)
 		require.False(t, time.Now().After(deadline), "%s: finished after the deadline", name)
 
@@ -145,6 +148,7 @@ func TestHandleTaskSpreadKeepsResults(t *testing.T) {
 		// 2 attempts of 1 s with 1 s between them: 3 s worst case.
 		latest := deadline.Add(-3*time.Second - engine.SpreadMargin)
 		assert.False(t, check.starts[0].After(latest.Add(50*time.Millisecond)), "%s: first attempt started too late", name)
+		assert.False(t, check.starts[0].Before(task.StartAt), "%s: first attempt started before StartAt", name)
 		return outcome{result.Status, result.Error, len(check.starts)}
 	}
 

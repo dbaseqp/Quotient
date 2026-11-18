@@ -161,11 +161,11 @@ func createRunner(task *engine.Task) (checks.Runner, error) {
 
 func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, task *engine.Task) {
 	taskKey := fmt.Sprintf("task:%t:%d:%d:%s:%s", task.Preflight, task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
-	spread := time.Duration(task.Spread) * time.Second
 
-	// Hold the first attempt back by a random share of the round's slack so
-	// that a round doesn't reach every team at the same instant.
-	if !sleepCtx(ctx, engine.SpreadDelay(time.Now(), task.Deadline, runner.GetTimeout(), task.Attempts, task.AttemptDelay, spread, rand.Int64N)) {
+	// Start the first attempt at the time the engine drew for this team and
+	// service this round, so a round doesn't reach every team at the same
+	// instant or in the same order.
+	if !sleepCtx(ctx, engine.StartDelay(time.Now(), task, runner.GetTimeout())) {
 		return
 	}
 

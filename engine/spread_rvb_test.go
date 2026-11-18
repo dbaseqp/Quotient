@@ -104,9 +104,12 @@ func TestRvb_SpreadKeepsTaskSetAndResults(t *testing.T) {
 	require.Len(t, tasksOn, 9)
 	for _, task := range tasksOff {
 		assert.Zero(t, task.Spread)
+		assert.True(t, task.StartAt.IsZero(), "spreading off: start at once")
 	}
 	for _, task := range tasksOn {
 		assert.Equal(t, 60, task.Spread)
 		assert.True(t, se.NextRoundStartTime.Equal(task.Deadline), "deadline unchanged: still the round's end")
+		assert.False(t, task.StartAt.IsZero(), "spreading on: the engine draws each task's start")
+		assert.False(t, task.StartAt.After(task.Deadline.Add(-SpreadMargin)), "start %s leaves no margin before the deadline %s", task.StartAt, task.Deadline)
 	}
 }
