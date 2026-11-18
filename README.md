@@ -579,6 +579,7 @@ credlists = ["mail_users.credlist"]
 domain = "@example.com"    # Appended to usernames
 encrypted = false          # Use TLS
 requireauth = false        # Force authentication even if not advertised
+heloname = ""              # EHLO/HELO name; empty = DESKTOP-XXXXXXX, fixed per team and check
 ```
 
 **Default port:** 25
