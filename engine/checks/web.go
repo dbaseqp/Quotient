@@ -98,7 +98,9 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				slog.Error("failed to close http response body", "error", err)
 			}
 		}()
-		body, err := io.ReadAll(resp.Body)
+		// The team controls the server, so read a bounded prefix: an endless
+		// body would otherwise be buffered until the timeout and can OOM the runner.
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxWebBodyBytes))
 		if err != nil {
 			checkResult.Error = "error reading page content"
 			checkResult.Debug = "error was '" + err.Error() + "' for url " + u.Path
@@ -134,6 +136,10 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 
 	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
+
+// maxWebBodyBytes caps how much of a page the web check reads; a Regex must
+// match within this prefix.
+const maxWebBodyBytes = 10 << 20
 
 func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if c.ServiceType == "" {
