@@ -13,6 +13,7 @@ Custom checks are defined under a `[[box.custom]]` section in `event.conf`. The 
 | `TEAMIDENTIFIER` | The team's unique identifier (e.g., "01") |
 | `USERNAME` | A username from the configured credlists |
 | `PASSWORD` | The corresponding password |
+| `PASSWORD[name]` | The password from the credlist `name`, for a secret that is not a login, such as an API key. `name` must be one of the check's `credlists` and cannot contain spaces or `]`. Credlists a command names this way are left out of the pool `USERNAME` and `PASSWORD` draw from. The credlist should hold one row per team; if it holds several, one is picked at random, and if the team has none the check fails. A command that uses `USERNAME` or `PASSWORD` needs at least one credlist that it does not read by name |
 
 Example configuration:
 
@@ -24,12 +25,23 @@ credlists = ["web01.credlist", "users.credlist"]
 regex = "SUCCESS"
 ```
 
+A check that needs a login and a separate secret keeps the secret in its own credlist, so a team can change it on the credentials page. The login still comes from `USERNAME` and `PASSWORD`:
+
+```toml
+[[box.custom]]
+display = "myservice"
+command = "/app/checks/example.sh TARGET USERNAME PASSWORD --api-key=PASSWORD[myservice-key.credlist]"
+credlists = ["users.credlist", "myservice-key.credlist"]
+```
+
+Write the option as `--api-key=PASSWORD[...]` so a value that starts with `-` is not read as another option.
+
 ### Configuration Options
 
 | Option | Description |
 |--------|-------------|
 | `command` | The command to execute (required) |
-| `credlists` | Array of credlist names for USERNAME/PASSWORD substitution |
+| `credlists` | Array of credlist names for USERNAME, PASSWORD and PASSWORD[name] substitution |
 | `regex` | Regular expression to match against output for success (optional) |
 | `display` | Check name suffix (default: "custom") |
 | `points` | Points for this check (inherits from global if not set) |
@@ -124,7 +136,7 @@ docker-compose up -d runner
 - **Keep checks fast.** The default timeout is half the round delay (e.g., 30s for a 60s delay). Checks that exceed the timeout are marked as failed.
 - **Avoid infinite loops.** The runner forcibly kills the command when the timeout is reached.
 - **Use meaningful output.** Print context on both success and failure (see [Failure Messages](#failure-messages)).
-- **Handle escaped credentials.** USERNAME and PASSWORD are shell-escaped by the runner. If your script passes them to other tools, ensure those tools handle quoted strings correctly.
+- **Handle escaped credentials.** USERNAME, PASSWORD and PASSWORD[name] are shell-escaped by the runner. If your script passes them to other tools, ensure those tools handle quoted strings correctly.
 - **Test locally first.** Run your script manually before deploying to catch errors early.
 
 ## Examples

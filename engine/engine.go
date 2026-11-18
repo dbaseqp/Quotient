@@ -816,6 +816,7 @@ func (se *ScoringEngine) runChecks(roundID uint, preflight bool) ([]checks.Resul
 						task.Credentials = append(task.Credentials, Credential{
 							Username: c.Username,
 							Password: c.Password,
+							Credlist: credlistName,
 						})
 					}
 				}
