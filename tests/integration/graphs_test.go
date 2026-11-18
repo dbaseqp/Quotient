@@ -333,3 +333,95 @@ func TestGetEngineReturnsCompetitionTimezone(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "America/Los_Angeles", resp.CompetitionTimezone)
 }
+
+// The leaderboard ranks teams by their last score graph point. A round stored
+// before the async cumulative_scores refresh must not show only its SLA
+// penalties, and after the refresh the last point matches the score export.
+func TestScoreGraphLeaderboardBeforeViewRefresh(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	redis, pg := testutil.StartContainers(t)
+	require.NoError(t, pg.DB.ResetScores())
+	pg.ResetCompetitionState(t)
+	eng := engine.NewTestEngine(t, redis, pg, 2)
+	a := api.NewAPI(eng.Config, eng)
+	require.NoError(t, pg.DB.SetCompetitionStarted(true))
+	t.Cleanup(func() { assert.NoError(t, pg.DB.ResetScores()) })
+
+	suffix := time.Now().UnixNano()
+	leader, err := pg.DB.CreateTeam(db.TeamSchema{Name: fmt.Sprintf("leader-%d", suffix), Identifier: "01", Active: true})
+	require.NoError(t, err)
+	second, err := pg.DB.CreateTeam(db.TeamSchema{Name: fmt.Sprintf("second-%d", suffix), Identifier: "02", Active: true})
+	require.NoError(t, err)
+
+	store := func(round uint, leaderSvc2 bool) {
+		_, err := pg.DB.CreateRound(db.RoundSchema{ID: round, StartTime: time.Now(), Checks: []db.ServiceCheckSchema{
+			{TeamID: leader.ID, ServiceName: "svc1", Points: 10, Result: true},
+			{TeamID: leader.ID, ServiceName: "svc2", Points: 10, Result: leaderSvc2},
+			{TeamID: second.ID, ServiceName: "svc1", Points: 10, Result: true},
+		}})
+		require.NoError(t, err)
+	}
+	for r := uint(1); r <= 7; r++ {
+		store(r, r < 6)
+	}
+	_, err = pg.DB.CreateSLA(db.SLASchema{TeamID: leader.ID, RoundID: 7, ServiceName: "svc2", Penalty: 30})
+	require.NoError(t, err)
+	require.NoError(t, pg.DB.RefreshScoresMaterializedView())
+	// leader = 70 + 50 - 30 = 90, second = 70
+
+	store(8, true) // stored, view not refreshed yet
+	// leader = 110, second = 80
+
+	admin := &api.Identity{Username: "admin", Roles: []string{"admin"}}
+	leaderboard := func() ([]string, map[string]int) {
+		t.Helper()
+		w, _ := graphRequest(t, a.GetScoreStatus, admin)
+		var body struct {
+			Series []struct {
+				Name string
+				Data []struct{ Round, Total int }
+			}
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		order := []string{}
+		last := map[string]int{}
+		for _, s := range body.Series {
+			if s.Name != leader.Name && s.Name != second.Name {
+				continue
+			}
+			order = append(order, s.Name)
+			if len(s.Data) > 0 {
+				last[s.Name] = s.Data[len(s.Data)-1].Total
+			}
+		}
+		return order, last
+	}
+
+	order, last := leaderboard()
+	assert.Equal(t, []string{leader.Name, second.Name}, order, "leader is ranked first")
+	assert.Equal(t, map[string]int{leader.Name: 90, second.Name: 70}, last, "totals as of the last refresh")
+
+	require.NoError(t, pg.DB.RefreshScoresMaterializedView())
+	order, last = leaderboard()
+	assert.Equal(t, []string{leader.Name, second.Name}, order)
+	assert.Equal(t, map[string]int{leader.Name: 110, second.Name: 80}, last)
+
+	w := httptest.NewRecorder()
+	a.ExportScores(w, httptest.NewRequest(http.MethodGet, "/", nil))
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var export []struct {
+		TeamName    string `json:"team_name"`
+		TotalPoints int    `json:"total_points"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &export))
+	exported := map[string]int{}
+	for _, e := range export {
+		if e.TeamName == leader.Name || e.TeamName == second.Name {
+			exported[e.TeamName] = e.TotalPoints
+		}
+	}
+	assert.Equal(t, last, exported, "score export matches the graph's last point")
+}
