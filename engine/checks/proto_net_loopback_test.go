@@ -28,7 +28,7 @@ type runnable interface {
 	Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result)
 }
 
-func runCheck(t *testing.T, c runnable) Result {
+func runNetCheck(t *testing.T, c runnable) Result {
 	t.Helper()
 	ch := make(chan Result, 1)
 	c.Run(1, "01", 1, ch)
@@ -129,25 +129,25 @@ func TestDnsRun_Loopback(t *testing.T) {
 	host, port := startDNS(t, f)
 
 	t.Run("correct answer", func(t *testing.T) {
-		r := runCheck(t, newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.10"))
+		r := runNetCheck(t, newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.10"))
 		assert.True(t, r.Status, r.Error+" "+r.Debug)
 	})
 	t.Run("team placeholder in answer", func(t *testing.T) {
-		r := runCheck(t, newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.99", "192.0.2.10"))
+		r := runNetCheck(t, newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.99", "192.0.2.10"))
 		assert.True(t, r.Status, r.Error+" "+r.Debug)
 	})
 	t.Run("wrong answer", func(t *testing.T) {
-		r := runCheck(t, newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.11"))
+		r := runNetCheck(t, newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.11"))
 		assert.False(t, r.Status)
 		assert.Equal(t, "incorrect answer(s) received from DNS", r.Error)
 	})
 	t.Run("nxdomain", func(t *testing.T) {
-		r := runCheck(t, newDnsCheck(host, port, "A", "missing.acme.local", "192.0.2.10"))
+		r := runNetCheck(t, newDnsCheck(host, port, "A", "missing.acme.local", "192.0.2.10"))
 		assert.False(t, r.Status)
 		assert.Equal(t, "no records received", r.Error)
 	})
 	t.Run("mx answers never match", func(t *testing.T) {
-		r := runCheck(t, newDnsCheck(host, port, "MX", "www.team_.acme.local", "192.0.2.10"))
+		r := runNetCheck(t, newDnsCheck(host, port, "MX", "www.team_.acme.local", "192.0.2.10"))
 		assert.False(t, r.Status)
 		assert.Equal(t, "no records received", r.Error)
 	})
@@ -155,7 +155,7 @@ func TestDnsRun_Loopback(t *testing.T) {
 		// The query and its retry each wait Timeout-1 s, so the service timeout fires first.
 		quiet := &fakeDNS{silent: true}
 		qh, qp := startDNS(t, quiet)
-		r := runCheck(t, newDnsCheck(qh, qp, "A", "www.team_.acme.local", "192.0.2.10"))
+		r := runNetCheck(t, newDnsCheck(qh, qp, "A", "www.team_.acme.local", "192.0.2.10"))
 		assert.False(t, r.Status)
 		assert.Equal(t, "check timeout exceeded", r.Error)
 		assert.NotEmpty(t, quiet.snapshot())
@@ -209,12 +209,12 @@ func startTCPSink(t *testing.T, wait time.Duration) (string, int, <-chan tcpFlow
 func TestTcpRun_Loopback(t *testing.T) {
 	host, port, _ := startTCPSink(t, 2*time.Second)
 	t.Run("open", func(t *testing.T) {
-		r := runCheck(t, &Tcp{Service: Service{Name: "test-tcp", Target: host, Port: port, Timeout: 3}})
+		r := runNetCheck(t, &Tcp{Service: Service{Name: "test-tcp", Target: host, Port: port, Timeout: 3}})
 		assert.True(t, r.Status, r.Debug)
 		assert.Equal(t, "responded to request", r.Debug)
 	})
 	t.Run("closed", func(t *testing.T) {
-		r := runCheck(t, &Tcp{Service: Service{Name: "test-tcp", Target: "127.0.0.1", Port: closedPort(t), Timeout: 3}})
+		r := runNetCheck(t, &Tcp{Service: Service{Name: "test-tcp", Target: "127.0.0.1", Port: closedPort(t), Timeout: 3}})
 		assert.False(t, r.Status)
 		assert.Equal(t, "connection error", r.Error)
 	})
@@ -223,11 +223,11 @@ func TestTcpRun_Loopback(t *testing.T) {
 func TestRdpRun_Loopback(t *testing.T) {
 	host, port, _ := startTCPSink(t, 2*time.Second)
 	t.Run("open", func(t *testing.T) {
-		r := runCheck(t, &Rdp{Service: Service{Name: "test-rdp", Target: host, Port: port, Timeout: 3}})
+		r := runNetCheck(t, &Rdp{Service: Service{Name: "test-rdp", Target: host, Port: port, Timeout: 3}})
 		assert.True(t, r.Status, r.Debug)
 	})
 	t.Run("closed", func(t *testing.T) {
-		r := runCheck(t, &Rdp{Service: Service{Name: "test-rdp", Target: "127.0.0.1", Port: closedPort(t), Timeout: 3}})
+		r := runNetCheck(t, &Rdp{Service: Service{Name: "test-rdp", Target: "127.0.0.1", Port: closedPort(t), Timeout: 3}})
 		assert.False(t, r.Status)
 		assert.Equal(t, "connection error", r.Error)
 	})
@@ -371,21 +371,21 @@ func TestLdapRun_Loopback(t *testing.T) {
 	host, port := startLDAP(t, f)
 
 	t.Run("bind accepted", func(t *testing.T) {
-		r := runCheck(t, newLdapCheck(host, port, "acme.local", "bugs.bunny", "Carrots1!"))
+		r := runNetCheck(t, newLdapCheck(host, port, "acme.local", "bugs.bunny", "Carrots1!"))
 		assert.True(t, r.Status, r.Error+" "+r.Debug)
 	})
 	t.Run("bind rejected", func(t *testing.T) {
-		r := runCheck(t, newLdapCheck(host, port, "acme.local", "bugs.bunny", "wrong"))
+		r := runNetCheck(t, newLdapCheck(host, port, "acme.local", "bugs.bunny", "wrong"))
 		assert.False(t, r.Status)
 		assert.Equal(t, "login failed for bugs.bunny", r.Error)
 	})
 	t.Run("bad domain", func(t *testing.T) {
-		r := runCheck(t, newLdapCheck(host, port, "acme", "bugs.bunny", "Carrots1!"))
+		r := runNetCheck(t, newLdapCheck(host, port, "acme", "bugs.bunny", "Carrots1!"))
 		assert.False(t, r.Status)
 		assert.Equal(t, "Configured domain is not valid (needs to be domain and tld)", r.Error)
 	})
 	t.Run("connection refused", func(t *testing.T) {
-		r := runCheck(t, newLdapCheck("127.0.0.1", closedPort(t), "acme.local", "bugs.bunny", "Carrots1!"))
+		r := runNetCheck(t, newLdapCheck("127.0.0.1", closedPort(t), "acme.local", "bugs.bunny", "Carrots1!"))
 		assert.False(t, r.Status)
 		assert.Equal(t, "failed to connect", r.Error)
 	})
@@ -464,7 +464,7 @@ func hmacMD5(key []byte, data ...[]byte) []byte {
 	return h.Sum(nil)
 }
 
-func ntlmChallenge(clientFlags uint32) []byte {
+func smbNTLMChallenge(clientFlags uint32) []byte {
 	target := u16le(smbFakeNetbiosDomainName)
 	var info []byte
 	av := func(id uint16, v []byte) {
@@ -602,7 +602,7 @@ func (f *fakeSMB) serve(c net.Conn) {
 			switch binary.LittleEndian.Uint32(ntlm[8:]) {
 			case 1:
 				status = smbStatusMoreProcessing
-				token = spnegoResp(1, ntlmChallenge(binary.LittleEndian.Uint32(ntlm[12:])))
+				token = spnegoResp(1, smbNTLMChallenge(binary.LittleEndian.Uint32(ntlm[12:])))
 			case 3:
 				if !f.verifyNTLMv2(ntlm, &s) {
 					status = smbStatusLogonFailure
@@ -751,48 +751,48 @@ func TestSmbRun_Loopback(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("login only", func(t *testing.T) {
-		r := runCheck(t, newSmbCheck(host, port, "Passw0rd!"))
+		r := runNetCheck(t, newSmbCheck(host, port, "Passw0rd!"))
 		assert.True(t, r.Status, r.Error+" "+r.Debug)
 		assert.Equal(t, "smb login succeeded, creds tester:Passw0rd!", r.Debug)
 	})
 	t.Run("file regex", func(t *testing.T) {
-		r := runCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "flag.txt", Regex: "hello t.lls"}))
+		r := runNetCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "flag.txt", Regex: "hello t.lls"}))
 		assert.True(t, r.Status, r.Error+" "+r.Debug)
 		assert.Equal(t, "smb file flag.txt matched regex, creds tester:Passw0rd!", r.Debug)
 	})
 	t.Run("file hash", func(t *testing.T) {
-		r := runCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "flag.txt", Hash: flagHash}))
+		r := runNetCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "flag.txt", Hash: flagHash}))
 		assert.True(t, r.Status, r.Error+" "+r.Debug)
 	})
 	t.Run("file hash mismatch", func(t *testing.T) {
-		r := runCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "flag.txt", Hash: "00"}))
+		r := runNetCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "flag.txt", Hash: "00"}))
 		assert.False(t, r.Status)
 		assert.Equal(t, "file hash did not match", r.Error)
 	})
 	t.Run("regex not found", func(t *testing.T) {
-		r := runCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "flag.txt", Regex: "goodbye"}))
+		r := runNetCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "flag.txt", Regex: "goodbye"}))
 		assert.False(t, r.Status)
 		assert.Equal(t, "couldn't find regex in file", r.Error)
 	})
 	t.Run("missing file", func(t *testing.T) {
-		r := runCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "nope.txt"}))
+		r := runNetCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "nope.txt"}))
 		assert.False(t, r.Status)
 		assert.Equal(t, "failed to open file", r.Error)
 	})
 	t.Run("wrong password", func(t *testing.T) {
-		r := runCheck(t, newSmbCheck(host, port, "wrong"))
+		r := runNetCheck(t, newSmbCheck(host, port, "wrong"))
 		assert.False(t, r.Status)
 		assert.Equal(t, "smb login failed", r.Error)
 	})
 	t.Run("missing share", func(t *testing.T) {
 		c := newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "flag.txt"})
 		c.Share = "other"
-		r := runCheck(t, c)
+		r := runNetCheck(t, c)
 		assert.False(t, r.Status)
 		assert.Equal(t, "failed to mount share", r.Error)
 	})
 	t.Run("connection refused", func(t *testing.T) {
-		r := runCheck(t, newSmbCheck("127.0.0.1", closedPort(t), "Passw0rd!"))
+		r := runNetCheck(t, newSmbCheck("127.0.0.1", closedPort(t), "Passw0rd!"))
 		assert.False(t, r.Status)
 		assert.Equal(t, "smb connection failed", r.Error)
 	})

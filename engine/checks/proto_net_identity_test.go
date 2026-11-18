@@ -33,7 +33,7 @@ func TestDnsRun_StubQueryPair(t *testing.T) {
 	f := &fakeDNS{answers: map[string]string{"www.team01.acme.local.": "192.0.2.10"}}
 	host, port := startDNS(t, f)
 
-	r := runCheck(t, newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.10"))
+	r := runNetCheck(t, newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.10"))
 	require.True(t, r.Status, r.Error+" "+r.Debug)
 	waitFor(t, func() bool { return len(f.snapshot()) >= 2 })
 	q := f.snapshot()
@@ -45,7 +45,7 @@ func TestDnsRun_StubQueryPair(t *testing.T) {
 
 	mx := &fakeDNS{answers: map[string]string{}}
 	mh, mp := startDNS(t, mx)
-	_ = runCheck(t, newDnsCheck(mh, mp, "MX", "acme.local", "192.0.2.10"))
+	_ = runNetCheck(t, newDnsCheck(mh, mp, "MX", "acme.local", "192.0.2.10"))
 	waitFor(t, func() bool { return len(mx.snapshot()) >= 1 })
 	time.Sleep(100 * time.Millisecond)
 	require.Len(t, mx.snapshot(), 1)
@@ -66,14 +66,14 @@ func assertClosedPromptly(t *testing.T, flows <-chan tcpFlow) {
 
 func TestTcpRun_ClosesConnection(t *testing.T) {
 	host, port, flows := startTCPSink(t, 2*time.Second)
-	r := runCheck(t, &Tcp{Service: Service{Name: "test-tcp", Target: host, Port: port, Timeout: 3}})
+	r := runNetCheck(t, &Tcp{Service: Service{Name: "test-tcp", Target: host, Port: port, Timeout: 3}})
 	require.True(t, r.Status, r.Debug)
 	assertClosedPromptly(t, flows)
 }
 
 func TestRdpRun_ClosesConnection(t *testing.T) {
 	host, port, flows := startTCPSink(t, 2*time.Second)
-	r := runCheck(t, &Rdp{Service: Service{Name: "test-rdp", Target: host, Port: port, Timeout: 3}})
+	r := runNetCheck(t, &Rdp{Service: Service{Name: "test-rdp", Target: host, Port: port, Timeout: 3}})
 	require.True(t, r.Status, r.Debug)
 	assertClosedPromptly(t, flows)
 }
@@ -89,7 +89,7 @@ func TestLdapRun_Unbinds(t *testing.T) {
 	}{{"bind accepted", "Carrots1!", true}, {"bind rejected", "wrong", false}} {
 		t.Run(tc.name, func(t *testing.T) {
 			before := count()
-			r := runCheck(t, newLdapCheck(host, port, "acme.local", "bugs.bunny", tc.password))
+			r := runNetCheck(t, newLdapCheck(host, port, "acme.local", "bugs.bunny", tc.password))
 			assert.Equal(t, tc.status, r.Status, r.Error)
 			waitFor(t, func() bool { return count() > before })
 			assert.Equal(t, "bind,unbind|fin", f.last(t))
@@ -102,7 +102,7 @@ func TestSmbRun_ClientIdentity(t *testing.T) {
 	host, port := startSMB(t, f)
 	count := func() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.sessions) }
 
-	r := runCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "flag.txt", Regex: "hello"}))
+	r := runNetCheck(t, newSmbCheck(host, port, "Passw0rd!", smbFile{Name: "flag.txt", Regex: "hello"}))
 	require.True(t, r.Status, r.Error+" "+r.Debug)
 	waitFor(t, func() bool { return count() >= 1 })
 	s := f.last(t)
@@ -131,7 +131,7 @@ func TestPingRun_PayloadSize(t *testing.T) {
 	defer ln.Close()
 
 	c := &Ping{Service: Service{Name: "test-ping", Target: "127.0.0.1", Timeout: 10}, Count: 2}
-	r := runCheck(t, c)
+	r := runNetCheck(t, c)
 	require.True(t, r.Status, r.Error+" "+r.Debug)
 
 	buf := make([]byte, 1500)
