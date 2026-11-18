@@ -96,8 +96,12 @@ func (c Sql) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
-		// Check the rows
-		re := regexp.MustCompile(q.Output)
+		// Check the rows. Verify compiles Output only when UseRegex is set, so an
+		// exact-match Output such as "count(*)" must never reach MustCompile.
+		var re *regexp.Regexp
+		if q.UseRegex {
+			re = regexp.MustCompile(q.Output)
+		}
 		cols, err := rows.Columns()
 		if err != nil {
 			// handle error
