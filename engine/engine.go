@@ -658,7 +658,11 @@ func (se *ScoringEngine) rvb() error {
 	if err != nil {
 		return err
 	}
-	se.processCollectedResults(results)
+	// A failed write leaves CurrentRound unchanged, so the round loop's retry
+	// runs this round ID again instead of skipping it.
+	if err := se.processCollectedResults(results); err != nil {
+		return err
+	}
 	se.finishScoredRound()
 	return nil
 }
@@ -907,14 +911,16 @@ func sanitizeDBString(s string) string {
 	return s
 }
 
-func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
+// processCollectedResults stores the round, its checks and any SLA violations
+// in one transaction, and updates the in-memory uptime and SLA streaks only
+// after it commits, so a failed write leaves both untouched.
+func (se *ScoringEngine) processCollectedResults(results []checks.Result) error {
 	if len(results) == 0 {
 		slog.Warn("No results collected for round", "round", se.CurrentRound)
-		return
+		return nil
 	}
 
-	dbResults := []db.ServiceCheckSchema{}
-
+	dbResults := make([]db.ServiceCheckSchema, 0, len(results))
 	for _, result := range results {
 		dbResults = append(dbResults, db.ServiceCheckSchema{
 			TeamID:      result.TeamID,
@@ -927,61 +933,67 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 		})
 	}
 
-	if len(dbResults) == 0 {
-		slog.Warn("No results to process for the current round", "round", se.CurrentRound)
-		return
+	type key struct {
+		team    uint
+		service string
 	}
+	uptimes := make(map[key]db.Uptime)
+	streaks := make(map[key]int)
+	var slas []db.SLASchema
+	se.uptimeMu.RLock()
+	for _, result := range results {
+		k := key{result.TeamID, result.ServiceName}
+		uptime, ok := uptimes[k]
+		if !ok {
+			uptime = se.UptimePerService[k.team][k.service]
+		}
+		streak, ok := streaks[k]
+		if !ok {
+			streak = se.SlaPerService[k.team][k.service]
+		}
 
-	// Save results to database
+		uptime.TotalChecks++
+		if result.Status {
+			uptime.PassedChecks++
+			streak = 0
+		} else {
+			streak++
+			if streak >= se.Config.MiscSettings.SlaThreshold {
+				slas = append(slas, db.SLASchema{
+					TeamID:      result.TeamID,
+					ServiceName: result.ServiceName,
+					RoundID:     uint(se.CurrentRound),
+					Penalty:     *se.Config.MiscSettings.SlaPenalty,
+				})
+				streak = 0
+			}
+		}
+		uptimes[k] = uptime
+		streaks[k] = streak
+	}
+	se.uptimeMu.RUnlock()
+
 	round := db.RoundSchema{
 		ID:        uint(se.CurrentRound),
 		StartTime: se.CurrentRoundStartTime,
 		Checks:    dbResults,
 	}
-	if _, err := se.DB.CreateRound(round); err != nil {
-		slog.Error("failed to create round:", "round", se.CurrentRound, "error", err)
-		return
+	if err := se.DB.CreateRoundWithSLAs(round, slas); err != nil {
+		return fmt.Errorf("failed to store round %d: %w", se.CurrentRound, err)
 	}
 
 	se.uptimeMu.Lock()
-	for _, result := range results {
-		// Update uptime and SLA maps
-		if _, ok := se.UptimePerService[result.TeamID]; !ok {
-			se.UptimePerService[result.TeamID] = make(map[string]db.Uptime)
+	for k, uptime := range uptimes {
+		if se.UptimePerService[k.team] == nil {
+			se.UptimePerService[k.team] = make(map[string]db.Uptime)
 		}
-		if _, ok := se.UptimePerService[result.TeamID][result.ServiceName]; !ok {
-			se.UptimePerService[result.TeamID][result.ServiceName] = db.Uptime{}
+		se.UptimePerService[k.team][k.service] = uptime
+	}
+	for k, streak := range streaks {
+		if se.SlaPerService[k.team] == nil {
+			se.SlaPerService[k.team] = make(map[string]int)
 		}
-		newUptime := se.UptimePerService[result.TeamID][result.ServiceName]
-		if result.Status {
-			newUptime.PassedChecks++
-		}
-		newUptime.TotalChecks++
-		se.UptimePerService[result.TeamID][result.ServiceName] = newUptime
-
-		if _, ok := se.SlaPerService[result.TeamID]; !ok {
-			se.SlaPerService[result.TeamID] = make(map[string]int)
-		}
-		if _, ok := se.SlaPerService[result.TeamID][result.ServiceName]; !ok {
-			se.SlaPerService[result.TeamID][result.ServiceName] = 0
-		}
-		if result.Status {
-			se.SlaPerService[result.TeamID][result.ServiceName] = 0
-		} else {
-			se.SlaPerService[result.TeamID][result.ServiceName]++
-			if se.SlaPerService[result.TeamID][result.ServiceName] >= se.Config.MiscSettings.SlaThreshold {
-				sla := db.SLASchema{
-					TeamID:      result.TeamID,
-					ServiceName: result.ServiceName,
-					RoundID:     uint(se.CurrentRound),
-					Penalty:     *se.Config.MiscSettings.SlaPenalty,
-				}
-				if _, err := se.DB.CreateSLA(sla); err != nil {
-					slog.Error("failed to create SLA", "team", result.TeamID, "service", result.ServiceName, "error", err)
-				}
-				se.SlaPerService[result.TeamID][result.ServiceName] = 0
-			}
-		}
+		se.SlaPerService[k.team][k.service] = streak
 	}
 	se.uptimeMu.Unlock()
 
@@ -999,6 +1011,7 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 	} else {
 		slog.Debug("refresh already in progress, skipping refresh spawn", "round", currentRound)
 	}
+	return nil
 }
 
 func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.PostgresContainer, slaThreshold int) *ScoringEngine {
