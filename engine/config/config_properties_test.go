@@ -207,3 +207,20 @@ func TestPropertyConfigCredlistPathNormalization(t *testing.T) {
 		}
 	})
 }
+
+// A negative Jitter would make runChecks call rand.Intn with a negative
+// argument and panic at the first round.
+func TestConfigRejectsNegativeJitter(t *testing.T) {
+	conf := &ConfigSettings{
+		RequiredSettings: RequiredConfig{
+			EventName:    "Test Event",
+			EventType:    "rvb",
+			DBConnectURL: "postgres://test:test@localhost:5432/test",
+			BindAddress:  "0.0.0.0:8080",
+		},
+		MiscSettings: MiscConfig{Delay: 60, Jitter: -5, Timeout: 30},
+	}
+	err := checkConfig(conf)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "jitter must not be negative")
+}

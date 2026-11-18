@@ -96,3 +96,14 @@ func TestCheckConfigParsesSchedule(t *testing.T) {
 	require.NotNil(t, conf.InjectSettings.End)
 	assert.Equal(t, time.Date(2027, time.March, 19, 23, 30, 0, 0, time.UTC), conf.InjectSettings.End.UTC())
 }
+
+// 01:30 on 2027-11-07 happens twice in America/Los_Angeles (PDT, then PST).
+func TestInjectConfigParseRejectsAmbiguousLocalTime(t *testing.T) {
+	settings := InjectConfig{
+		CompetitionStartTime: "2027-11-07 01:30",
+		CompetitionTimezone:  "America/Los_Angeles",
+	}
+	err := settings.parse()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ambiguous")
+}
