@@ -743,7 +743,11 @@ func (se *ScoringEngine) runChecks(roundID uint, preflight bool) ([]checks.Resul
 		return nil, err
 	}
 
-	runners := 0
+	// expected holds the key of every enqueued task. A result is accepted only
+	// for a key still in it, so a duplicate or stray result (e.g. from a check
+	// the previous engine process started under the same round ID) can neither
+	// be counted twice nor crowd out another team's result.
+	expected := make(map[resultKey]struct{})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Until(se.NextRoundStartTime))
 	defer cancel()
 
@@ -832,69 +836,89 @@ func (se *ScoringEngine) runChecks(roundID uint, preflight bool) ([]checks.Resul
 				slog.Error("failed to marshal service task", "error", err)
 				continue
 			}
-			se.RedisClient.RPush(ctx, "tasks", payload)
-			runners++
+			if err := se.RedisClient.RPush(ctx, "tasks", payload).Err(); err != nil {
+				slog.Error("failed to enqueue service task", "team", team.ID, "service", r.GetName(), "error", err)
+				continue
+			}
+			expected[resultKey{team.ID, r.GetName()}] = struct{}{}
 		}
 	}
-	slog.Info("Enqueued checks", "count", runners)
+	slog.Info("Enqueued checks", "count", len(expected))
 
-	results := make([]checks.Result, 0, runners)
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Until(se.NextRoundStartTime))
-	defer cancel()
-
-	i := 0
-COLLECTION:
-	for i < runners {
+	// Runners give up at the task deadline and then push a timeout result, so
+	// keep collecting a little past it. BLPOP waits whole seconds, so poll in
+	// one-second slices and decide on the wall clock, not on a BLPOP timeout.
+	collectUntil := se.NextRoundStartTime.Add(resultGracePeriod)
+	results := make([]checks.Result, 0, len(expected))
+	for len(expected) > 0 && time.Now().Before(collectUntil) {
 		select {
 		case msg := <-eventsChannel:
 			slog.Info("Received message", "message", msg.Payload)
 			if msg.Payload == "reset" {
 				slog.Info("Reset event received, quitting...")
 				return nil, errReset
-			} else {
-				continue
 			}
+			continue
 		default:
-			val, err := se.RedisClient.BLPop(timeoutCtx, time.Until(se.NextRoundStartTime), "results").Result()
-			if err == redis.Nil {
-				slog.Warn("Timeout waiting for results", "remaining", runners-i, "collected", i, "expected", runners)
-				results = []checks.Result{}
-				break COLLECTION
-			} else if err != nil {
-				// Check if the timeout context has expired
-				if timeoutCtx.Err() != nil {
-					slog.Warn("Round deadline exceeded while waiting for results", "remaining", runners-i, "collected", i, "expected", runners, "error", err)
-					results = []checks.Result{}
-					break COLLECTION
-				}
-				slog.Error("Failed to fetch results from Redis:", "error", err)
-				time.Sleep(2 * time.Second)
-				continue
-			}
-
-			// val[0] = "results", val[1] = JSON checks.Result
-			if len(val) < 2 {
-				slog.Warn("Malformed result from Redis", "val", val)
-				continue
-			}
-			raw := val[1]
-
-			var result checks.Result
-			if err := json.Unmarshal([]byte(raw), &result); err != nil {
-				slog.Error("Failed to unmarshal check result", "error", err)
-				continue
-			}
-			if result.RoundID != roundID || result.Preflight != preflight {
-				slog.Warn("Ignoring out of round result", "receivedRound", result.RoundID, "receivedPreflight", result.Preflight, "currentRound", roundID, "currentPreflight", preflight)
-				continue
-			}
-			results = append(results, result)
-			i++
-			slog.Debug("service check finished", "round_id", result.RoundID, "team_id", result.TeamID, "service_name", result.ServiceName, "result", result.Status, "debug", result.Debug, "error", result.Error)
 		}
+
+		val, err := se.RedisClient.BLPop(context.Background(), time.Second, "results").Result()
+		if err == redis.Nil {
+			continue
+		}
+		if err != nil {
+			slog.Error("Failed to fetch results from Redis:", "error", err)
+			time.Sleep(min(time.Second, time.Until(collectUntil)))
+			continue
+		}
+
+		// val[0] = "results", val[1] = JSON checks.Result
+		if len(val) < 2 {
+			slog.Warn("Malformed result from Redis", "val", val)
+			continue
+		}
+
+		var result checks.Result
+		if err := json.Unmarshal([]byte(val[1]), &result); err != nil {
+			slog.Error("Failed to unmarshal check result", "error", err)
+			continue
+		}
+		if result.RoundID != roundID || result.Preflight != preflight {
+			slog.Warn("Ignoring out of round result", "receivedRound", result.RoundID, "receivedPreflight", result.Preflight, "currentRound", roundID, "currentPreflight", preflight)
+			continue
+		}
+		key := resultKey{result.TeamID, result.ServiceName}
+		if _, ok := expected[key]; !ok {
+			slog.Warn("Ignoring duplicate or unexpected result", "round", roundID, "team_id", result.TeamID, "service_name", result.ServiceName)
+			continue
+		}
+		delete(expected, key)
+		results = append(results, result)
+		slog.Debug("service check finished", "round_id", result.RoundID, "team_id", result.TeamID, "service_name", result.ServiceName, "result", result.Status, "debug", result.Debug, "error", result.Error)
+	}
+
+	if len(expected) > 0 {
+		// A check the runner gave up on still reports a timeout result, so a
+		// missing one means a runner or Redis lost it. That says nothing about
+		// the team's service: leave it unscored (no points, no uptime or SLA
+		// change) rather than discard the round or count it as down.
+		missing := make([]string, 0, len(expected))
+		for key := range expected {
+			missing = append(missing, fmt.Sprintf("team %d %s", key.teamID, key.service))
+		}
+		slog.Warn("Checks without a result by the round deadline are left unscored", "missing", missing, "collected", len(results), "round", roundID, "preflight", preflight)
 	}
 
 	return results, nil
+}
+
+// resultGracePeriod is how long past the task deadline the engine keeps
+// collecting, so the timeout result a runner pushes at the deadline still counts.
+const resultGracePeriod = 2 * time.Second
+
+type resultKey struct {
+	teamID  uint
+	service string
 }
 
 func sanitizeDBString(s string) string {
