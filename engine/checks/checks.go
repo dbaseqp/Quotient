@@ -27,6 +27,7 @@ type Runner interface {
 	GetAttempts() int
 	GetAttemptDelay() int
 	GetTimeout() int
+	GetPoints() int
 	GetCredlists() []string
 	SetTaskCredentials(creds []TaskCredential)
 }
@@ -88,6 +89,10 @@ func (service *Service) GetAttemptDelay() int {
 
 func (service *Service) GetTimeout() int {
 	return service.Timeout
+}
+
+func (service *Service) GetPoints() int {
+	return service.Points
 }
 
 // SetAttemptDefaults fills Attempts and AttemptDelay from the event-wide
@@ -189,7 +194,6 @@ func (service *Service) Run(teamID uint, teamIdentifier string, roundID uint, re
 		TeamID:      teamID,
 		ServiceName: service.Name,
 		Target:      service.Target,
-		Points:      service.Points,
 		Status:      false,
 		ServiceType: service.ServiceType,
 		RoundID:     roundID,
