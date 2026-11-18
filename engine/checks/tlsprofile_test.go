@@ -18,6 +18,7 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
+	utls "github.com/refraction-networking/utls"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -73,7 +74,21 @@ func TestBrowserProfilesAreConsistent(t *testing.T) {
 			}
 		}
 		assert.True(t, matched, "no platform for %s", p.name)
-		assert.Equal(t, "Chrome", p.hello.Client, p.name)
+		spec, err := p.helloSpec()
+		require.NoError(t, err, p.name)
+		var alpn []string
+		var sigalgs []utls.SignatureScheme
+		for _, ext := range spec.Extensions {
+			switch e := ext.(type) {
+			case *utls.ALPNExtension:
+				alpn = e.AlpnProtocols
+			case *utls.SignatureAlgorithmsExtension:
+				sigalgs = e.SupportedSignatureAlgorithms
+			}
+		}
+		assert.Equal(t, []string{"h2", "http/1.1"}, alpn, p.name)
+		require.GreaterOrEqual(t, len(sigalgs), 3, p.name)
+		assert.Equal(t, chromeMLDSASignatureSchemes, sigalgs[:3], p.name)
 		for _, f := range p.navigationHeaders(true) {
 			if f.name == "sec-ch-ua" {
 				assert.Contains(t, f.value, `"Chrome";v="158"`)
@@ -236,7 +251,10 @@ func TestBrowserTransportProtocolsAndReuse(t *testing.T) {
 				assert.Equal(t, "navigate", r.Header.Get("Sec-Fetch-Mode"))
 				assert.Equal(t, `"macOS"`, r.Header.Get("Sec-Ch-Ua-Platform"))
 				if tc.tls {
-					assert.Equal(t, "gzip, deflate, br, zstd", r.Header.Get("Accept-Encoding"))
+					assert.Equal(t, []string{"gzip, deflate, br, zstd"}, r.Header.Values("Accept-Encoding"))
+				}
+				if tc.h2 {
+					assert.Equal(t, "u=0, i", r.Header.Get("Priority"))
 				}
 			}
 		})

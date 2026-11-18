@@ -32,23 +32,43 @@ import (
 // browser build; a Chrome User-Agent over a Go ClientHello with Go's header
 // order is easier to spot than any one of them alone.
 type browserProfile struct {
-	name     string
-	platform string // sec-ch-ua-platform value, quoted the way Chrome sends it
-	uaOS     string // the OS part of the User-Agent
-	hello    utls.ClientHelloID
+	name      string
+	platform  string // sec-ch-ua-platform value, quoted the way Chrome sends it
+	uaOS      string // the OS part of the User-Agent
+	helloSpec func() (*utls.ClientHelloSpec, error)
 }
 
 // chromeMajor is the Chrome release the profiles claim to be. Keep it at the
 // current stable release: Chrome ships every four weeks, and a version months
-// behind is itself unusual. The ClientHello comes from uTLS's Chrome 133
-// template, which matches the ClientHello of Chrome 151 byte for byte except
-// for GREASE values and the shuffled extension order (JA4 is equal).
+// behind is itself unusual.
 const chromeMajor = 158
 
 var browserProfiles = []browserProfile{
-	{name: "chrome-windows", platform: `"Windows"`, uaOS: "Windows NT 10.0; Win64; x64", hello: utls.HelloChrome_133},
-	{name: "chrome-macos", platform: `"macOS"`, uaOS: "Macintosh; Intel Mac OS X 10_15_7", hello: utls.HelloChrome_133},
-	{name: "chrome-linux", platform: `"Linux"`, uaOS: "X11; Linux x86_64", hello: utls.HelloChrome_133},
+	{name: "chrome-windows", platform: `"Windows"`, uaOS: "Windows NT 10.0; Win64; x64", helloSpec: chromeHelloSpec},
+	{name: "chrome-macos", platform: `"macOS"`, uaOS: "Macintosh; Intel Mac OS X 10_15_7", helloSpec: chromeHelloSpec},
+	{name: "chrome-linux", platform: `"Linux"`, uaOS: "X11; Linux x86_64", helloSpec: chromeHelloSpec},
+}
+
+// chromeMLDSASignatureSchemes are the ML-DSA-44/65/87 signature algorithms
+// Chrome lists first; uTLS's Chrome 133 template predates them.
+var chromeMLDSASignatureSchemes = []utls.SignatureScheme{0x0904, 0x0905, 0x0906}
+
+// chromeHelloSpec is uTLS's Chrome 133 ClientHello with the ML-DSA signature
+// algorithms added in front, which gives the JA4 of Chrome 151
+// (t13i1515h2_8daaf6152771_806a8c22fdea when no SNI is sent). Build it for
+// every connection: uTLS shuffles Chrome's extension order while building the
+// spec, as Chrome does for each connection.
+func chromeHelloSpec() (*utls.ClientHelloSpec, error) {
+	spec, err := utls.UTLSIdToSpec(utls.HelloChrome_133)
+	if err != nil {
+		return nil, err
+	}
+	for _, ext := range spec.Extensions {
+		if sa, ok := ext.(*utls.SignatureAlgorithmsExtension); ok {
+			sa.SupportedSignatureAlgorithms = append(slices.Clone(chromeMLDSASignatureSchemes), sa.SupportedSignatureAlgorithms...)
+		}
+	}
+	return &spec, nil
 }
 
 func randomBrowserProfile() browserProfile {
@@ -140,7 +160,14 @@ func (p browserProfile) tlsHandshake(ctx context.Context, conn net.Conn, host st
 	if net.ParseIP(host) == nil {
 		cfg.ServerName = host
 	}
-	uc := utls.UClient(conn, cfg, p.hello)
+	spec, err := p.helloSpec()
+	if err != nil {
+		return nil, err
+	}
+	uc := utls.UClient(conn, cfg, utls.HelloCustom)
+	if err := uc.ApplyPreset(spec); err != nil {
+		return nil, err
+	}
 	if err := uc.HandshakeContext(ctx); err != nil {
 		return nil, err
 	}
@@ -294,14 +321,17 @@ func (t *browserTransport) CloseIdleConnections() {
 func (t *browserTransport) roundTripH2(cc *http2.ClientConn, req *http.Request, headers []headerField) (*http.Response, error) {
 	r := req.Clone(req.Context())
 	r.Host = hostHeader(req)
-	r.Header = make(http.Header, len(headers))
+	r.Header = make(http.Header, len(headers)+1)
 	for _, f := range headers {
 		if strings.EqualFold(f.name, "Connection") {
 			continue // connection-specific headers are not allowed in HTTP/2
 		}
-		key := strings.ToLower(f.name)
-		r.Header[key] = append(r.Header[key], f.value)
+		// Add canonicalizes the name so x/net/http2 sees our Accept-Encoding
+		// and does not add its own; HTTP/2 sends every name in lower case.
+		r.Header.Add(f.name, f.value)
 	}
+	// Chrome sends the RFC 9218 priority of a navigation over HTTP/2 only.
+	r.Header.Add("Priority", "u=0, i")
 	resp, err := cc.RoundTrip(r)
 	if err != nil {
 		return nil, err
