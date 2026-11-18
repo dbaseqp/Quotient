@@ -39,9 +39,11 @@ func (c Ldap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			response <- checkResult
 			return
 		}
+		// Unbind before closing, as ldapsearch and other LDAP clients do; Unbind also closes.
 		defer func() {
-			if err := lconn.Close(); err != nil {
-				slog.Error("failed to close ldap connection", "error", err)
+			if err := lconn.Unbind(); err != nil {
+				slog.Error("failed to unbind ldap connection", "error", err)
+				_ = lconn.Close()
 			}
 		}()
 
