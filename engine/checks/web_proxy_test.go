@@ -223,7 +223,7 @@ func TestWebRun_Socks5Proxy(t *testing.T) {
 		assert.NotEmpty(t, r.Error)
 	})
 
-	t.Run("unparsable proxy fails the check", func(t *testing.T) {
+	t.Run("proxy with a scheme other than socks5 fails the check", func(t *testing.T) {
 		w := &Web{
 			Service: Service{Target: "canonical.example.test", Port: backendPort, Timeout: 2},
 			Scheme:  "http",
@@ -250,6 +250,8 @@ func TestWebVerify_Proxy(t *testing.T) {
 		{name: "no scheme rejected", proxy: "127.0.0.1:1080", wantErr: "invalid proxy"},
 		{name: "missing port rejected", proxy: "socks5h://127.0.0.1", wantErr: "no port"},
 		{name: "missing host rejected", proxy: "socks5h://:1080", wantErr: "no host"},
+		{name: "port out of range rejected", proxy: "socks5h://127.0.0.1:70000", wantErr: "outside 1-65535"},
+		{name: "credentials rejected", proxy: "socks5h://user:secret@127.0.0.1:1080", wantErr: "credentials"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

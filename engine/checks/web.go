@@ -32,6 +32,28 @@ type urlData struct {
 	CompareFile string `toml:",omitempty"` // TODO implement
 }
 
+// parseProxy replaces every "_" in the proxy setting with the team identifier and returns the result as
+// a socks5 or socks5h URL with a host and a port, and no credentials. Errors do not repeat the setting.
+func parseProxy(raw, identifier string) (*url.URL, error) {
+	proxyURL, err := url.Parse(strings.ReplaceAll(raw, "_", identifier))
+	if err != nil {
+		return nil, errors.New("not a valid URL")
+	}
+	if proxyURL.Scheme != "socks5" && proxyURL.Scheme != "socks5h" {
+		return nil, errors.New("the scheme must be socks5 or socks5h")
+	}
+	if proxyURL.Hostname() == "" {
+		return nil, errors.New("no host")
+	}
+	if port, err := strconv.Atoi(proxyURL.Port()); err != nil || port < 1 || port > 65535 {
+		return nil, errors.New("no port, or a port outside 1-65535")
+	}
+	if proxyURL.User != nil {
+		return nil, errors.New("credentials are not supported")
+	}
+	return proxyURL, nil
+}
+
 func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		u := c.Url[rand.Intn(len(c.Url))] // #nosec G404 -- non-crypto selection of URL to test
@@ -48,10 +70,10 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			},
 		}
 		if c.Proxy != "" {
-			proxyURL, err := url.Parse(strings.ReplaceAll(c.Proxy, "_", teamIdentifier))
-			if err != nil || (proxyURL.Scheme != "socks5" && proxyURL.Scheme != "socks5h") || proxyURL.Host == "" {
+			proxyURL, err := parseProxy(c.Proxy, teamIdentifier)
+			if err != nil {
 				checkResult.Error = "invalid proxy URL"
-				checkResult.Debug = "proxy failed validation: " + strings.ReplaceAll(c.Proxy, "_", teamIdentifier)
+				checkResult.Debug = err.Error()
 				response <- checkResult
 				return
 			}
@@ -185,19 +207,9 @@ func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty 
 		}
 	}
 	if c.Proxy != "" {
-		// "_" is the team identifier placeholder; use a digit so the port parses
-		pu, err := url.Parse(strings.ReplaceAll(c.Proxy, "_", "0"))
-		if err != nil {
-			return fmt.Errorf("web check %s: invalid proxy %q: %w", c.Name, c.Proxy, err)
-		}
-		if pu.Scheme != "socks5" && pu.Scheme != "socks5h" {
-			return fmt.Errorf("web check %s: proxy %q must use scheme socks5 or socks5h", c.Name, c.Proxy)
-		}
-		if pu.Hostname() == "" {
-			return fmt.Errorf("web check %s: proxy %q has no host", c.Name, c.Proxy)
-		}
-		if pu.Port() == "" {
-			return fmt.Errorf("web check %s: proxy %q has no port", c.Name, c.Proxy)
+		// "_" is the team identifier placeholder; a digit stands in for it so the port parses
+		if _, err := parseProxy(c.Proxy, "0"); err != nil {
+			return fmt.Errorf("web check %s: invalid proxy: %w", c.Name, err)
 		}
 	}
 
