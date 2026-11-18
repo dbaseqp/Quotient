@@ -46,8 +46,8 @@ func commandCredentials(command string) (named []string, plain bool, malformed b
 	return named, plain, strings.Count(command, "PASSWORD[") != matched
 }
 
-// credentials draws the login behind USERNAME and PASSWORD, from the credlists the command does not
-// name, and the shell-escaped password of each credlist it does name.
+// credentials draws the login for USERNAME and PASSWORD (only when the command uses them) from the
+// credlists it does not name, and returns the shell-escaped password of each credlist it does name.
 func (c *Custom) credentials(teamID uint, named []string, plain bool) (username, password string, secrets map[string]string, err error) {
 	if len(c.CredLists) > 0 && plain {
 		if username, password, err = c.getCreds(teamID, named...); err != nil {
@@ -219,8 +219,8 @@ func (c *Custom) Verify(box string, ip string, points int, timeout int, slapenal
 			return fmt.Errorf("custom check %s reads PASSWORD[%s], which is not one of its credlists", c.Name, name)
 		}
 	}
-	readOnlyByName := !slices.ContainsFunc(c.CredLists, func(list string) bool { return !slices.Contains(named, list) })
-	if plain && len(c.CredLists) > 0 && readOnlyByName {
+	allReadByName := !slices.ContainsFunc(c.CredLists, func(list string) bool { return !slices.Contains(named, list) })
+	if plain && len(c.CredLists) > 0 && allReadByName {
 		return fmt.Errorf("custom check %s uses USERNAME or PASSWORD but reads every one of its credlists by name", c.Name)
 	}
 

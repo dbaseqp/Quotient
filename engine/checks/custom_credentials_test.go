@@ -10,7 +10,7 @@ import (
 )
 
 // runCustom runs a Custom check with the given task credentials and returns the command output and
-// the result. The output is the text after " in " in Debug (the regex-matched output).
+// the result. The output is the text after " in " in Debug, which ends with `found regex "..." in <output>`.
 func runCustom(t *testing.T, credlists []string, creds []TaskCredential, command string) (string, Result) {
 	t.Helper()
 	check := &Custom{
