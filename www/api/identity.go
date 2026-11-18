@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/hmac"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -98,8 +99,9 @@ func requireOwnTeam(w http.ResponseWriter, r *http.Request, teamID uint, bypassR
 }
 
 // resolveIdentity turns an authenticated username and auth source into roles
-// and a team.
-func (a *API) resolveIdentity(username string, authSource string) (Identity, error) {
+// and a team. credential is the localCredential fingerprint from a local
+// session cookie; other auth sources ignore it.
+func (a *API) resolveIdentity(username, authSource, credential string) (Identity, error) {
 	id := Identity{Username: username}
 
 	// teamFor carries what this auth source needs to pick the team: the OIDC
@@ -126,6 +128,9 @@ func (a *API) resolveIdentity(username string, authSource string) (Identity, err
 		roles := a.localRoles(username)
 		if len(roles) == 0 {
 			return Identity{}, errors.New("local user has no roles")
+		}
+		if !hmac.Equal([]byte(credential), []byte(a.localCredential(username))) {
+			return Identity{}, errors.New("local session predates a password change - please login again")
 		}
 		id.Roles = roles
 		// A local team account's username is the team name.

@@ -2,6 +2,8 @@ package api
 
 import (
 	"bufio"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -173,7 +175,11 @@ func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bo
 		authSource = source
 	}
 
-	id, err := a.resolveIdentity(username, authSource)
+	// Local sessions carry a fingerprint of the account's passwords. Cookies
+	// issued before it existed have none and are rejected.
+	credential, _ := value["credential"].(string)
+
+	id, err := a.resolveIdentity(username, authSource, credential)
 	if err != nil {
 		slog.Error(err.Error())
 		http.SetCookie(w, &http.Cookie{
@@ -203,25 +209,8 @@ func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bo
 }
 
 func (a *API) auth(username string, password string) (map[string]any, error) {
-	for _, admin := range a.conf.Admin {
-		if username == admin.Name && password == admin.Pw {
-			return map[string]any{"username": username, "authSource": "local"}, nil
-		}
-	}
-	for _, team := range a.conf.Team {
-		if username == team.Name && password == team.Pw {
-			return map[string]any{"username": username, "authSource": "local"}, nil
-		}
-	}
-	for _, red := range a.conf.Red {
-		if username == red.Name && password == red.Pw {
-			return map[string]any{"username": username, "authSource": "local"}, nil
-		}
-	}
-	for _, inject := range a.conf.Inject {
-		if username == inject.Name && password == inject.Pw {
-			return map[string]any{"username": username, "authSource": "local"}, nil
-		}
+	if a.localPasswordMatches(username, password) {
+		return map[string]any{"username": username, "authSource": "local", "credential": a.localCredential(username)}, nil
 	}
 
 	// auth from other sources
@@ -238,4 +227,58 @@ func (a *API) auth(username string, password string) (map[string]any, error) {
 	}
 
 	return nil, errors.New("no auth source matched credentials")
+}
+
+// localPasswordMatches reports whether password is the configured password of
+// a local account named username, in any role.
+func (a *API) localPasswordMatches(username, password string) bool {
+	for _, admin := range a.conf.Admin {
+		if username == admin.Name && password == admin.Pw {
+			return true
+		}
+	}
+	for _, team := range a.conf.Team {
+		if username == team.Name && password == team.Pw {
+			return true
+		}
+	}
+	for _, red := range a.conf.Red {
+		if username == red.Name && password == red.Pw {
+			return true
+		}
+	}
+	for _, inject := range a.conf.Inject {
+		if username == inject.Name && password == inject.Pw {
+			return true
+		}
+	}
+	return false
+}
+
+// localCredential fingerprints every password configured for the local account
+// username. Login stores it in the session cookie and resolveIdentity compares
+// it on every request, so changing any of the account's passwords ends the
+// sessions issued before the change. It is an HMAC keyed with the cookie hash
+// key, so the cookie never carries the password or a plain hash of it.
+func (a *API) localCredential(username string) string {
+	mac := hmac.New(sha256.New, hashKey)
+	_, _ = fmt.Fprintf(mac, "local-session\x00%d:%s", len(username), username)
+	add := func(role, name, pw string) {
+		if name == username {
+			_, _ = fmt.Fprintf(mac, "\x00%s\x00%d:%s", role, len(pw), pw)
+		}
+	}
+	for _, admin := range a.conf.Admin {
+		add("admin", admin.Name, admin.Pw)
+	}
+	for _, red := range a.conf.Red {
+		add("red", red.Name, red.Pw)
+	}
+	for _, team := range a.conf.Team {
+		add("team", team.Name, team.Pw)
+	}
+	for _, inject := range a.conf.Inject {
+		add("inject", inject.Name, inject.Pw)
+	}
+	return base64.RawStdEncoding.EncodeToString(mac.Sum(nil)[:16])
 }
