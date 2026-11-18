@@ -378,8 +378,6 @@ All checks support these common properties:
 | `port` | Service port | Type-specific |
 | `points` | Points awarded for success | Global default |
 | `timeout` | Check timeout in seconds | Global default |
-| `slathreshold` | Failures before SLA penalty | Global default |
-| `slapenalty` | Points deducted on SLA violation | Global default |
 | `attempts` | Tries before the check fails | Global default |
 | `attemptdelay` | Seconds to wait before retrying a failed attempt | Global default |
 | `credlists` | Array of credlist names for authentication | None |
