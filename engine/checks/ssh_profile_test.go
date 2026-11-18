@@ -358,6 +358,38 @@ func TestSshRun_ProfileAgainstModernServer(t *testing.T) {
 	assert.Equal(t, uint32(0), modes[ssh.ECHO], "echo stays off")
 }
 
+// A server that hangs up after reading the client's KEXINIT must not get a
+// second connection with the legacy (old Go) algorithm lists.
+func TestSshRun_HangUpAfterKEXINITIsNotRetried(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = ln.Close() }()
+	var mu sync.Mutex
+	var kexLists []string
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_, lists, err := readClientKEXINIT(c)
+			_ = c.Close()
+			if err == nil {
+				mu.Lock()
+				kexLists = append(kexLists, lists[0])
+				mu.Unlock()
+			}
+		}
+	}()
+	r := runSshCheck(t, ln.Addr().(*net.TCPAddr).Port, "s3cret", 0)
+	assert.False(t, r.Status)
+	assert.Contains(t, r.Error, "error logging in to ssh server")
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{withoutUnimplemented(sshProfileFor("127.0.0.1").kex) + "," + kexMarkers}, kexLists)
+}
+
 func TestSshRun_WrongPasswordIsNotRetried(t *testing.T) {
 	s := startSSHTestServer(t, false)
 	r := runSshCheck(t, s.port, "wrong", 0)

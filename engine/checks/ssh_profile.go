@@ -122,8 +122,8 @@ func (p sshClientProfile) clientConfig(user string, auth []ssh.AuthMethod, timeo
 
 // legacyConfig returns the config the check used before profiles existed:
 // x/crypto/ssh defaults, plus 3des-cbc for the scored login (bad attempts
-// never appended it). It is only used when a handshake with the profile's
-// algorithms fails, so servers that only speak old algorithms score exactly
+// never appended it). It is only used when the server shares no algorithm
+// with the profile, so servers that only speak old algorithms score exactly
 // as before.
 func (p sshClientProfile) legacyConfig(user string, auth []ssh.AuthMethod, timeout time.Duration, with3DES bool) *ssh.ClientConfig {
 	config := &ssh.ClientConfig{
@@ -140,13 +140,14 @@ func (p sshClientProfile) legacyConfig(user string, auth []ssh.AuthMethod, timeo
 	return config
 }
 
-// dial connects with the profile's algorithms. If the SSH handshake fails
-// before authentication (no common algorithm, or the server hangs up on the
-// proposal), it retries once with the legacy algorithm set. Authentication
-// failures are not retried, so failed logins on the server are not doubled.
+// dial connects with the profile's algorithms and retries once with the legacy
+// set only when negotiation finds no common algorithm. Any other failure
+// (refused, hang-up after KEXINIT, authentication) is returned as is: a retry
+// there would let a server that drops the first connection make the check
+// reveal the old Go fingerprint, and would double failed logins.
 func (p sshClientProfile) dial(addr, user string, auth []ssh.AuthMethod, timeout time.Duration, with3DES bool) (*ssh.Client, error) {
 	conn, err := ssh.Dial("tcp", addr, p.clientConfig(user, auth, timeout))
-	if err == nil || !strings.Contains(err.Error(), "ssh: handshake failed") || strings.Contains(err.Error(), "unable to authenticate") {
+	if err == nil || !strings.Contains(err.Error(), "no common algorithm") {
 		return conn, err
 	}
 	return ssh.Dial("tcp", addr, p.legacyConfig(user, auth, timeout, with3DES))
