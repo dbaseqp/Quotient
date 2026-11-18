@@ -7,6 +7,7 @@ import (
 	"net"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/hirochachacha/go-smb2"
 )
@@ -55,8 +56,10 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 
 		d := &smb2.Dialer{
 			Initiator: &smb2.NTLMInitiator{
-				User:     username,
-				Password: password,
+				User:        username,
+				Password:    password,
+				Workstation: workstationName(teamID, c.Name),
+				TargetSPN:   "cifs/" + c.Target,
 			},
 		}
 
@@ -75,7 +78,7 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		defer s.Logoff()
 
 		if len(c.File) > 0 {
-			fs, err := s.Mount(c.Share)
+			fs, err := s.Mount(uncShare(c.Target, c.Share))
 			if err != nil {
 				checkResult.Error = "failed to mount share"
 				checkResult.Debug = "share " + c.Share + ", creds " + username + ":" + password
@@ -160,6 +163,16 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 	}
 
 	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
+}
+
+// uncShare returns the tree-connect path \\target\share. go-smb2 would otherwise build it from the
+// connection's remote address and send \\target:445\share, which no Windows or Samba client does.
+// A share that already contains a path separator is passed through unchanged, as before.
+func uncShare(target, share string) string {
+	if strings.ContainsAny(share, `\/`) {
+		return share
+	}
+	return `\\` + target + `\` + share
 }
 
 func (c *Smb) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
