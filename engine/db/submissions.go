@@ -47,10 +47,19 @@ func (submission *SubmissionSchema) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// CreateSubmission stores a new submission with the next version for its
+// team and inject. A transaction-scoped advisory lock on (inject, team)
+// serializes concurrent submissions so BeforeCreate never hands out the same
+// version twice.
 func (d *DB) CreateSubmission(submission SubmissionSchema) (SubmissionSchema, error) {
-	result := d.db.Create(&submission)
-	if result.Error != nil {
-		return SubmissionSchema{}, result.Error
+	err := d.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?::int4, ?::int4)", submission.InjectID, submission.TeamID).Error; err != nil {
+			return err
+		}
+		return tx.Create(&submission).Error
+	})
+	if err != nil {
+		return SubmissionSchema{}, err
 	}
 	return submission, nil
 }

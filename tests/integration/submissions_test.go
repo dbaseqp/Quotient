@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -196,4 +197,57 @@ func TestDownloadAllSubmissions_MultipleTeamsSameFilename(t *testing.T) {
 
 	// All 3 team contents should be unique
 	assert.Len(t, contents, numTeams, "All team submissions should have unique content in ZIP")
+}
+
+// TestConcurrentSubmissionVersions verifies that teammates submitting the same
+// inject at the same moment each get their own version. The version is the
+// directory the file is stored in and the key used to download it.
+func TestConcurrentSubmissionVersions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	_, pg := testutil.StartContainers(t)
+	team := pg.CreateTestTeam(t, "SubVer", "01")
+
+	const attempts, writers = 20, 4
+	for a := range attempts {
+		inject, err := pg.DB.CreateInject(db.InjectSchema{
+			Title:     fmt.Sprintf("SubVer-%d-%d", a, time.Now().UnixNano()),
+			OpenTime:  time.Now().Add(-time.Hour),
+			DueTime:   time.Now().Add(time.Hour),
+			CloseTime: time.Now().Add(2 * time.Hour),
+		})
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		versions := make([]int, writers)
+		errs := make([]error, writers)
+		for w := range writers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				sub, err := pg.DB.CreateSubmission(db.SubmissionSchema{
+					TeamID:             team.ID,
+					InjectID:           inject.ID,
+					SubmissionTime:     time.Now(),
+					SubmissionFileName: fmt.Sprintf("report-%d.pdf", w),
+				})
+				versions[w], errs[w] = sub.Version, err
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		seen := map[int]bool{}
+		for w := range writers {
+			require.NoError(t, errs[w])
+			require.False(t, seen[versions[w]], "attempt %d: duplicate version in %v", a, versions)
+			seen[versions[w]] = true
+		}
+		for v := 1; v <= writers; v++ {
+			assert.True(t, seen[v], "attempt %d: versions %v are not 1..%d", a, versions, writers)
+		}
+	}
 }
