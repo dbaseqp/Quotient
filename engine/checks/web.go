@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand"
-	randv2 "math/rand/v2"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -43,12 +42,12 @@ var webAcceptLanguages = []string{
 }
 
 func randomAcceptLanguage() string {
-	return webAcceptLanguages[randv2.IntN(len(webAcceptLanguages))] // #nosec G404 -- non-crypto selection of header value
+	return webAcceptLanguages[rand.IntN(len(webAcceptLanguages))] // #nosec G404 -- non-crypto selection of header value
 }
 
 func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		u := c.Url[rand.Intn(len(c.Url))] // #nosec G404 -- non-crypto selection of URL to test
+		u := c.Url[rand.IntN(len(c.Url))] // #nosec G404 -- non-crypto selection of URL to test
 
 		// random user agent
 		ua := uarand.GetRandom()
