@@ -35,7 +35,7 @@ func headerNames(fields []headerField) []string {
 // tellcap; headless-shell omits Accept-Language, which desktop Chrome sends
 // last.
 func TestChromeSecCHUAMatchesChrome(t *testing.T) {
-	assert.Equal(t, `"Not=A?Brand";v="99", "Chrome";v="151", "Chromium";v="151"`, chromeSecCHUA(151))
+	assert.Equal(t, `"Not=A?Brand";v="99", "Chrome";v="151", "Chromium";v="151"`, ChromeSecCHUA(151))
 }
 
 func TestNavigationHeadersFollowChromeOrder(t *testing.T) {

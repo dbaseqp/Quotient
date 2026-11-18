@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -37,11 +36,6 @@ type browserProfile struct {
 	uaOS      string // the OS part of the User-Agent
 	helloSpec func() (*utls.ClientHelloSpec, error)
 }
-
-// chromeMajor is the Chrome release the profiles claim to be. Keep it at the
-// current stable release: Chrome ships every four weeks, and a version months
-// behind is itself unusual.
-const chromeMajor = 158
 
 var browserProfiles = []browserProfile{
 	{name: "chrome-windows", platform: `"Windows"`, uaOS: "Windows NT 10.0; Win64; x64", helloSpec: chromeHelloSpec},
@@ -78,25 +72,7 @@ func randomBrowserProfile() browserProfile {
 // userAgent is the reduced User-Agent Chrome sends since version 110: the
 // minor, build and patch numbers are always zero.
 func (p browserProfile) userAgent() string {
-	return "Mozilla/5.0 (" + p.uaOS + ") AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + strconv.Itoa(chromeMajor) + ".0.0.0 Safari/537.36"
-}
-
-// chromeSecCHUA builds the sec-ch-ua value the way Chromium does
-// (GetUserAgentBrandList in components/embedder_support/user_agent_utils.cc):
-// the GREASE brand, its version and the brand order all derive from the major
-// version.
-func chromeSecCHUA(major int) string {
-	greaseyChars := []string{" ", "(", ":", "-", ".", "/", ")", ";", "=", "?", "_"}
-	greasedVersions := []string{"8", "99", "24"}
-	orders := [6][3]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}}
-	v := strconv.Itoa(major)
-	grease := `"Not` + greaseyChars[major%len(greaseyChars)] + "A" + greaseyChars[(major+1)%len(greaseyChars)] + `Brand";v="` + greasedVersions[major%len(greasedVersions)] + `"`
-	var brands [3]string
-	order := orders[major%len(orders)]
-	brands[order[0]] = grease
-	brands[order[1]] = `"Chromium";v="` + v + `"`
-	brands[order[2]] = `"Chrome";v="` + v + `"`
-	return strings.Join(brands[:], ", ")
+	return ChromeUserAgent(p.uaOS)
 }
 
 const (
@@ -123,7 +99,7 @@ func (p browserProfile) navigationHeaders(trustworthy bool) []headerField {
 	}
 	return []headerField{
 		{"Connection", "keep-alive"},
-		{"sec-ch-ua", chromeSecCHUA(chromeMajor)},
+		{"sec-ch-ua", ChromeSecCHUA(ChromeMajor)},
 		{"sec-ch-ua-mobile", "?0"},
 		{"sec-ch-ua-platform", p.platform},
 		{"Upgrade-Insecure-Requests", "1"},
