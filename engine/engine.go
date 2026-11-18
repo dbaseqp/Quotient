@@ -56,6 +56,12 @@ type ScoringEngine struct {
 	// for a manual pause); owned by the round loop, which alone decides overtime.
 	pausedAtEnd *time.Time
 
+	// resetMu orders ResetScores against storing a round: a round that began
+	// before a reset (resetGen changed since) is discarded instead of being
+	// written into the freshly reset database.
+	resetMu  sync.Mutex
+	resetGen uint64
+
 	// roundFunc is called each round. Set by Start() from the event type, or
 	// overridden by NewTestEngine to inject faults without touching the DB.
 	roundFunc func() error
@@ -616,6 +622,12 @@ func (se *ScoringEngine) pauseAtCompetitionEnd(s Schedule) bool {
 func (se *ScoringEngine) ResetScores() error {
 	slog.Info("Resetting scores and clearing Redis queues")
 
+	// Waits for a round write in progress; a round still being collected sees
+	// the new generation and is discarded instead of stored.
+	se.resetMu.Lock()
+	defer se.resetMu.Unlock()
+	se.resetGen++
+
 	// Reset the database
 	if err := se.DB.ResetScores(); err != nil {
 		slog.Error("failed to reset scores", "error", err)
@@ -635,15 +647,23 @@ func (se *ScoringEngine) ResetScores() error {
 	// Reset engine state
 	se.RedisClient.Publish(context.Background(), "events", "reset")
 
-	se.CurrentRound = 1
+	// CurrentRound is owned by the round loop; Start reloads it from the
+	// (now empty) rounds table when scoring restarts.
 	se.uptimeMu.Lock()
 	se.UptimePerService = make(map[uint]map[string]db.Uptime)
-	se.uptimeMu.Unlock()
 	se.SlaPerService = make(map[uint]map[string]int)
+	se.uptimeMu.Unlock()
 	se.notifyRoundListeners()
 	slog.Info("Scores reset and Redis queues cleared successfully")
 
 	return nil
+}
+
+// resetGeneration identifies the scores a round started against.
+func (se *ScoringEngine) resetGeneration() uint64 {
+	se.resetMu.Lock()
+	defer se.resetMu.Unlock()
+	return se.resetGen
 }
 
 func (se *ScoringEngine) koth() error {
@@ -654,13 +674,14 @@ func (se *ScoringEngine) koth() error {
 // perform a round of rvb
 func (se *ScoringEngine) rvb() error {
 	slog.Info("Starting round", "round", se.CurrentRound)
+	gen := se.resetGeneration()
 	results, err := se.runChecks(se.CurrentRound, false)
 	if err != nil {
 		return err
 	}
 	// A failed write leaves CurrentRound unchanged, so the round loop's retry
 	// runs this round ID again instead of skipping it.
-	if err := se.processCollectedResults(results); err != nil {
+	if err := se.processCollectedResults(results, gen); err != nil {
 		return err
 	}
 	se.finishScoredRound()
@@ -702,6 +723,7 @@ func (se *ScoringEngine) preflight() error {
 	}
 	round := db.PreflightRoundSchema{ID: last + 1, StartTime: se.CurrentRoundStartTime}
 	slog.Info("Starting preflight round", "preflight_round", round.ID)
+	gen := se.resetGeneration()
 	results, err := se.runChecks(round.ID, true)
 	if err != nil {
 		return err
@@ -719,9 +741,16 @@ func (se *ScoringEngine) preflight() error {
 			Debug:       sanitizeDBString(result.Debug),
 		})
 	}
+	se.resetMu.Lock()
+	if se.resetGen != gen {
+		se.resetMu.Unlock()
+		slog.Info("Discarding preflight round that started before a score reset", "preflight_round", round.ID)
+		return errReset
+	}
 	if err := se.DB.CreatePreflightRound(round); err != nil {
 		slog.Error("failed to save preflight round", "preflight_round", round.ID, "error", err)
 	}
+	se.resetMu.Unlock()
 	slog.Info(fmt.Sprintf("Preflight round %d complete", round.ID))
 	se.announceRoundFinish()
 	return nil
@@ -914,7 +943,7 @@ func sanitizeDBString(s string) string {
 // processCollectedResults stores the round, its checks and any SLA violations
 // in one transaction, and updates the in-memory uptime and SLA streaks only
 // after it commits, so a failed write leaves both untouched.
-func (se *ScoringEngine) processCollectedResults(results []checks.Result) error {
+func (se *ScoringEngine) processCollectedResults(results []checks.Result, gen uint64) error {
 	if len(results) == 0 {
 		slog.Warn("No results collected for round", "round", se.CurrentRound)
 		return nil
@@ -977,6 +1006,12 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) error 
 		ID:        uint(se.CurrentRound),
 		StartTime: se.CurrentRoundStartTime,
 		Checks:    dbResults,
+	}
+	se.resetMu.Lock()
+	defer se.resetMu.Unlock()
+	if se.resetGen != gen {
+		slog.Info("Discarding round that started before a score reset", "round", se.CurrentRound)
+		return errReset
 	}
 	if err := se.DB.CreateRoundWithSLAs(round, slas); err != nil {
 		return fmt.Errorf("failed to store round %d: %w", se.CurrentRound, err)

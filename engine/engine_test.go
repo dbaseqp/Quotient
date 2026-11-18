@@ -46,7 +46,7 @@ func TestProcessCollectedResults_SavesRound(t *testing.T) {
 		},
 	}
 
-	engine.processCollectedResults(results)
+	engine.processCollectedResults(results, 0)
 
 	// Verify round was saved
 	round, err := pg.DB.GetLastRound()
@@ -85,19 +85,19 @@ func TestProcessCollectedResults_TracksUptime(t *testing.T) {
 	engine.CurrentRound = 1
 	engine.processCollectedResults([]checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: true, Points: 10, RoundID: 1},
-	})
+	}, 0)
 
 	// Round 2: fail
 	engine.CurrentRound = 2
 	engine.processCollectedResults([]checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: false, Points: 0, RoundID: 2},
-	})
+	}, 0)
 
 	// Round 3: pass
 	engine.CurrentRound = 3
 	engine.processCollectedResults([]checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: true, Points: 10, RoundID: 3},
-	})
+	}, 0)
 
 	// Verify uptime: 2 passed out of 3 total
 	uptime := engine.UptimePerService[team.ID]["svc"]
@@ -126,7 +126,7 @@ func TestProcessCollectedResults_TriggersSLA(t *testing.T) {
 		engine.CurrentRound = round
 		engine.processCollectedResults([]checks.Result{
 			{TeamID: team.ID, ServiceName: "failing-svc", Status: false, Points: 0, RoundID: round},
-		})
+		}, 0)
 	}
 
 	// SLA counter should reset after triggering (this proves SLA was created)
@@ -158,17 +158,17 @@ func TestProcessCollectedResults_SLAResetsOnPass(t *testing.T) {
 	engine.CurrentRound = 1
 	engine.processCollectedResults([]checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: false, RoundID: 1},
-	})
+	}, 0)
 	engine.CurrentRound = 2
 	engine.processCollectedResults([]checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: false, RoundID: 2},
-	})
+	}, 0)
 
 	// Pass once - should reset counter
 	engine.CurrentRound = 3
 	engine.processCollectedResults([]checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: true, Points: 10, RoundID: 3},
-	})
+	}, 0)
 
 	// Counter should be 0
 	assert.Equal(t, 0, engine.SlaPerService[team.ID]["svc"])
@@ -177,11 +177,11 @@ func TestProcessCollectedResults_SLAResetsOnPass(t *testing.T) {
 	engine.CurrentRound = 4
 	engine.processCollectedResults([]checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: false, RoundID: 4},
-	})
+	}, 0)
 	engine.CurrentRound = 5
 	engine.processCollectedResults([]checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: false, RoundID: 5},
-	})
+	}, 0)
 
 	// Counter should be 2 (not triggered yet)
 	assert.Equal(t, 2, engine.SlaPerService[team.ID]["svc"],
@@ -215,7 +215,7 @@ func TestProcessCollectedResults_MultipleTeamsIndependent(t *testing.T) {
 		engine.processCollectedResults([]checks.Result{
 			{TeamID: team1.ID, ServiceName: "svc", Status: false, RoundID: round},
 			{TeamID: team2.ID, ServiceName: "svc", Status: true, Points: 10, RoundID: round},
-		})
+		}, 0)
 	}
 
 	// Team 1 should have SLA (counter reset proves it triggered)
