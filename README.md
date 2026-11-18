@@ -440,7 +440,7 @@ port = 53
 
 #### Web Check
 
-HTTP/HTTPS request with optional status code and content matching. The check sends browser-style `Accept` and `Accept-Language` headers along with a random `User-Agent`.
+HTTP/HTTPS request with optional status code and content matching. Each run picks a desktop Chrome profile (Windows, macOS or Linux) and sends what that browser sends for a typed-in URL: its User-Agent, client hints and request headers in Chrome's order, Chrome's TLS ClientHello (via uTLS, offering HTTP/2), and a keep-alive connection that is reused for redirects and left open for 30–110 seconds afterwards. Compressed responses (gzip, deflate, br, zstd) are decoded before matching.
 
 ```toml
 [[box.web]]

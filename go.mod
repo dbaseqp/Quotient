@@ -5,8 +5,8 @@ go 1.27.1
 require (
 	al.essio.dev/pkg/shellescape v1.5.0
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c
+	github.com/andybalholm/brotli v1.0.6
 	github.com/coreos/go-oidc/v3 v3.11.0
-	github.com/corpix/uarand v0.2.0
 	github.com/emersion/go-imap v1.2.1
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/go-ldap/ldap/v3 v3.4.8
@@ -16,6 +16,7 @@ require (
 	github.com/gorilla/securecookie v1.1.1
 	github.com/hirochachacha/go-smb2 v1.1.0
 	github.com/jlaffaye/ftp v0.2.0
+	github.com/klauspost/compress v1.17.4
 	github.com/knadh/go-pop3 v1.0.0
 	github.com/lib/pq v1.10.9
 	github.com/masterzen/winrm v0.0.0-20240702205601-3fad6e106085
@@ -24,11 +25,13 @@ require (
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/ramr/go-reaper v0.3.1
 	github.com/redis/go-redis/v9 v9.7.0
+	github.com/refraction-networking/utls v1.8.2
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/crypto v0.33.0
+	golang.org/x/crypto v0.36.0
 	golang.org/x/image v0.24.0
+	golang.org/x/net v0.38.0
 	golang.org/x/oauth2 v0.24.0
-	golang.org/x/text v0.22.0
+	golang.org/x/text v0.23.0
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.11
 	pgregory.net/rapid v1.2.0
@@ -72,9 +75,8 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/tidwall/transform v0.0.0-20201103190739-32f242e2dbde // indirect
 	golang.org/x/mod v0.23.0 // indirect
-	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sync v0.11.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/sync v0.12.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/tools v0.30.1-0.20250220174815-31e3bb2b8fd1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

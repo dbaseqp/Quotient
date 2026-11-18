@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -46,17 +45,10 @@ func TestWebCheckSendsBrowserHeaders(t *testing.T) {
 
 	require.Len(t, got, 2, "expected initial request and one redirect hop")
 	for _, h := range got {
-		assert.Equal(t, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", h.Get("Accept"))
-		assert.NotContains(t, strings.ToLower(h.Get("Accept")), "json")
-		assert.Contains(t, webAcceptLanguages, h.Get("Accept-Language"))
-		assert.NotEmpty(t, h.Get("User-Agent"))
+		assert.Equal(t, chromeNavigationAccept, h.Get("Accept"))
+		assert.Equal(t, chromeAcceptLanguage, h.Get("Accept-Language"))
+		assert.Contains(t, h.Get("User-Agent"), " Chrome/")
+		assert.Empty(t, h.Get("Referer"), "no Referer on a typed-in navigation or its redirect")
 	}
-	assert.Equal(t, got[0].Get("Accept-Language"), got[1].Get("Accept-Language"), "redirect must keep the same Accept-Language")
-}
-
-func TestRandomAcceptLanguage(t *testing.T) {
-	assert.GreaterOrEqual(t, len(webAcceptLanguages), 3)
-	for i := 0; i < 500; i++ {
-		assert.Contains(t, webAcceptLanguages, randomAcceptLanguage())
-	}
+	assert.Equal(t, got[0].Get("User-Agent"), got[1].Get("User-Agent"), "a redirect is followed by the same browser")
 }
