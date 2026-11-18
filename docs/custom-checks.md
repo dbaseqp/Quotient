@@ -13,7 +13,7 @@ Custom checks are defined under a `[[box.custom]]` section in `event.conf`. The 
 | `TEAMIDENTIFIER` | The team's unique identifier (e.g., "01") |
 | `USERNAME` | A username from the configured credlists |
 | `PASSWORD` | The corresponding password |
-| `PASSWORD[name]` | The password from the credlist `name`, for a secret that is not a login, such as an API key. `name` must be one of the check's `credlists`. Credlists a command names this way are left out of the pool `USERNAME` and `PASSWORD` draw from. The credlist should hold one row per team; if it holds several, one is picked at random |
+| `PASSWORD[name]` | The password from the credlist `name`, for a secret that is not a login, such as an API key. `name` must be one of the check's `credlists` and cannot contain spaces or `]`. Credlists a command names this way are left out of the pool `USERNAME` and `PASSWORD` draw from. The credlist should hold one row per team; if it holds several, one is picked at random, and if the team has none the check fails. A command that uses `USERNAME` or `PASSWORD` needs at least one credlist that it does not read by name |
 
 Example configuration:
 
@@ -34,7 +34,7 @@ command = "/app/checks/example.sh TARGET USERNAME PASSWORD --api-key=PASSWORD[my
 credlists = ["users.credlist", "myservice-key.credlist"]
 ```
 
-Write the option as `--api-key=PASSWORD[...]` so a value that starts with `-` is not read as another option.
+Write the option as `--api-key=PASSWORD[...]` (or put the value after `--`) so a value that starts with `-` is not read as another option.
 
 ### Configuration Options
 

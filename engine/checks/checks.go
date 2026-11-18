@@ -14,7 +14,7 @@ import (
 type TaskCredential struct {
 	Username string
 	Password string
-	Credlist string // name of the credlist the row came from
+	Credlist string
 }
 
 // checks for each service

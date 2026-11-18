@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// runCustom runs a Custom check with the given task credentials and returns the command output
-// (everything after the marker) and the result.
+// runCustom runs a Custom check with the given task credentials and returns the command output and
+// the result. The output is the text after " in " in Debug, which ends with `found regex "..." in <output>`.
 func runCustom(t *testing.T, credlists []string, creds []TaskCredential, command string) (string, Result) {
 	t.Helper()
 	check := &Custom{
@@ -91,6 +91,32 @@ func TestCustomCredentialValuesAreNotRescannedOrExecuted(t *testing.T) {
 		require.True(t, result.Status, result.Debug)
 		assert.Equal(t, "RESULT:PASSWORD alice-pw", out)
 	})
+}
+
+func TestCustomVerifyRejectsCredentialPlaceholdersThatCannotWork(t *testing.T) {
+	cases := []struct {
+		name      string
+		credlists []string
+		command   string
+		wantErr   string
+	}{
+		{"unterminated", []string{"ad", "api"}, "c.sh PASSWORD[api", "PASSWORD["},
+		{"space in the name", []string{"ad", "api key"}, "c.sh PASSWORD[api key]", "PASSWORD["},
+		{"empty name", []string{"ad"}, "c.sh PASSWORD[]", "PASSWORD["},
+		{"every credlist is read by name", []string{"api"}, "c.sh USERNAME PASSWORD[api]", "every one of its credlists"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			check := &Custom{Service: Service{CredLists: tc.credlists}, Command: tc.command}
+			err := check.Verify("box", "10.0.0.1", 1, 5, 0, 0)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+
+	// Only the named credlist needs no plain credentials, so this is fine.
+	check := &Custom{Service: Service{CredLists: []string{"api"}}, Command: "c.sh PASSWORD[api]"}
+	assert.NoError(t, check.Verify("box", "10.0.0.1", 1, 5, 0, 0))
 }
 
 func TestCustomVerifyRejectsACredlistTheCheckDoesNotList(t *testing.T) {

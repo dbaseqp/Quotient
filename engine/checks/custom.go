@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"al.essio.dev/pkg/shellescape"
@@ -27,36 +28,34 @@ type Custom struct {
 // inserted for one keyword (a team controls its passwords) is never scanned for the others.
 var commandPlaceholder = regexp.MustCompile(`PASSWORD\[([^\]\s]+)\]|ROUND|TARGET|TEAMIDENTIFIER|USERNAME|PASSWORD`)
 
-// namedCredlists returns the credlists a command reads through PASSWORD[name].
-func namedCredlists(command string) []string {
-	var names []string
+// commandCredentials reports the credlists a command reads through PASSWORD[name], whether it also
+// uses USERNAME or a bare PASSWORD, and whether it has a PASSWORD[ that is not a valid named placeholder.
+func commandCredentials(command string) (named []string, plain bool, malformed bool) {
+	matched := 0
 	for _, m := range commandPlaceholder.FindAllStringSubmatch(command, -1) {
-		if m[1] != "" && !slices.Contains(names, m[1]) {
-			names = append(names, m[1])
+		switch {
+		case m[1] != "":
+			matched++
+			if !slices.Contains(named, m[1]) {
+				named = append(named, m[1])
+			}
+		case m[0] == "USERNAME" || m[0] == "PASSWORD":
+			plain = true
 		}
 	}
-	return names
-}
-
-// usesPlainCredentials reports whether a command contains USERNAME or a bare PASSWORD.
-func usesPlainCredentials(command string) bool {
-	for _, m := range commandPlaceholder.FindAllStringSubmatch(command, -1) {
-		if m[0] == "USERNAME" || m[0] == "PASSWORD" {
-			return true
-		}
-	}
-	return false
+	return named, plain, strings.Count(command, "PASSWORD[") != matched
 }
 
 func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 
-		// USERNAME and PASSWORD come from the credlists the command does not name; a named credlist
-		// is only ever read through its own PASSWORD[name].
+		named, plain, _ := commandCredentials(c.Command)
+
+		// USERNAME and PASSWORD draw from the credlists the command does not name.
 		var username, password string
 		var err error
-		if len(c.CredLists) > 0 && usesPlainCredentials(c.Command) {
-			username, password, err = c.getCreds(teamID, namedCredlists(c.Command)...)
+		if len(c.CredLists) > 0 && plain {
+			username, password, err = c.getCreds(teamID, named...)
 			if err != nil {
 				checkResult.Error = "error getting creds"
 				checkResult.Debug = err.Error()
@@ -64,10 +63,19 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 				return
 			}
 		}
+		secrets := make(map[string]string, len(named))
+		for _, name := range named {
+			value, err := c.getCredlistPassword(name)
+			if err != nil {
+				checkResult.Error = "error getting creds"
+				checkResult.Debug = err.Error()
+				response <- checkResult
+				return
+			}
+			secrets[name] = shellescape.Quote(value)
+		}
 
 		// Replace command input keywords. Credentials are shell escaped, who knows what format they are.
-		named := map[string]string{}
-		var namedErr error
 		formedCommand := commandPlaceholder.ReplaceAllStringFunc(c.Command, func(match string) string {
 			switch match {
 			case "ROUND":
@@ -81,22 +89,8 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 			case "PASSWORD":
 				return shellescape.Quote(password)
 			}
-			name := match[len("PASSWORD[") : len(match)-1]
-			if _, ok := named[name]; !ok {
-				value, err := c.getCredlistPassword(name)
-				if err != nil {
-					namedErr = err
-				}
-				named[name] = shellescape.Quote(value)
-			}
-			return named[name]
+			return secrets[match[len("PASSWORD["):len(match)-1]]
 		})
-		if namedErr != nil {
-			checkResult.Error = "error getting creds"
-			checkResult.Debug = namedErr.Error()
-			response <- checkResult
-			return
-		}
 		slog.Debug("CUSTOM CHECK COMMAND", "command", formedCommand)
 		checkResult.Debug = formedCommand
 
@@ -214,10 +208,17 @@ func (c *Custom) Verify(box string, ip string, points int, timeout int, slapenal
 	if c.Command == "" {
 		return errors.New("no command found for custom check " + c.Name)
 	}
-	for _, name := range namedCredlists(c.Command) {
+	named, plain, malformed := commandCredentials(c.Command)
+	if malformed {
+		return fmt.Errorf("custom check %s has a PASSWORD[ that is not PASSWORD[credlist] with a name free of spaces and ]", c.Name)
+	}
+	for _, name := range named {
 		if !slices.Contains(c.CredLists, name) {
 			return fmt.Errorf("custom check %s reads PASSWORD[%s], which is not one of its credlists", c.Name, name)
 		}
+	}
+	if plain && len(c.CredLists) > 0 && len(named) == len(c.CredLists) {
+		return fmt.Errorf("custom check %s uses USERNAME or PASSWORD but reads every one of its credlists by name", c.Name)
 	}
 
 	return nil
