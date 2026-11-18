@@ -4,6 +4,7 @@ go 1.27.1
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.0
+	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c
 	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/corpix/uarand v0.2.0
@@ -36,7 +37,6 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
 	github.com/ChrisTrenkamp/goxpath v0.0.0-20210404020558-97928f7e12b6 // indirect
 	github.com/bodgit/ntlmssp v0.0.0-20240506230425-31973bb52d9b // indirect
 	github.com/bodgit/windows v1.0.1 // indirect

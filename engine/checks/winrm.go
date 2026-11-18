@@ -36,22 +36,25 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 			return
 		}
 
-		params := *winrm.DefaultParameters
-		params.TransportDecorator = func() winrm.Transporter {
-			return &winrm.ClientNTLM{}
+		// newClient keeps masterzen's NTLM flow but sends the Windows client's HTTP identity.
+		newClient := func(password string) (*winrm.Client, error) {
+			params := *winrm.DefaultParameters
+			params.TransportDecorator = func() winrm.Transporter {
+				return &winrmTransport{username: username, password: password}
+			}
+			endpoint := winrm.NewEndpoint(c.Target, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
+			return winrm.NewClientWithParameters(endpoint, username, password, &params)
 		}
 
 		// Run bad attempts if specified
 		for range c.BadAttempts {
-			endpoint := winrm.NewEndpoint(c.Target, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
-			if _, err := winrm.NewClientWithParameters(endpoint, username, uuid.New().String(), &params); err != nil {
+			if _, err := newClient(uuid.New().String()); err != nil {
 				slog.Error("failed bad winrm attempt", "error", err)
 			}
 		}
 
 		// Log in to WinRM
-		endpoint := winrm.NewEndpoint(c.Target, c.Port, c.Encrypted, true, nil, nil, nil, time.Duration(c.Timeout)*time.Second)
-		client, err := winrm.NewClientWithParameters(endpoint, username, password, &params)
+		client, err := newClient(password)
 		if err != nil {
 			checkResult.Error = "error creating winrm client"
 			checkResult.Debug = err.Error()
