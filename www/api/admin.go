@@ -246,6 +246,9 @@ func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) UpdateTeams(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
 	type Form struct {
 		Teams []struct {
 			TeamID     uint   `json:"id"`
