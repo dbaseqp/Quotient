@@ -10,7 +10,7 @@ import (
 )
 
 // runCustom runs a Custom check with the given task credentials and returns the command output and
-// the result. The output is the text after " in " in Debug, which ends with `found regex "..." in <output>`.
+// the result. The output is the text after " in " in Debug (the regex-matched output).
 func runCustom(t *testing.T, credlists []string, creds []TaskCredential, command string) (string, Result) {
 	t.Helper()
 	check := &Custom{
@@ -104,6 +104,7 @@ func TestCustomVerifyRejectsCredentialPlaceholdersThatCannotWork(t *testing.T) {
 		{"space in the name", []string{"ad", "api key"}, "c.sh PASSWORD[api key]", "PASSWORD["},
 		{"empty name", []string{"ad"}, "c.sh PASSWORD[]", "PASSWORD["},
 		{"every credlist is read by name", []string{"api"}, "c.sh USERNAME PASSWORD[api]", "every one of its credlists"},
+		{"every credlist is read by name, listed twice", []string{"api", "api"}, "c.sh USERNAME PASSWORD[api]", "every one of its credlists"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

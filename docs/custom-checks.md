@@ -34,7 +34,7 @@ command = "/app/checks/example.sh TARGET USERNAME PASSWORD --api-key=PASSWORD[my
 credlists = ["users.credlist", "myservice-key.credlist"]
 ```
 
-Write the option as `--api-key=PASSWORD[...]` (or put the value after `--`) so a value that starts with `-` is not read as another option.
+Write the option as `--api-key=PASSWORD[...]` so a value that starts with `-` is not read as another option.
 
 ### Configuration Options
 
