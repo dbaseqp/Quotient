@@ -20,6 +20,7 @@ runner/runner
 /custom-checks/*
 !/custom-checks/.gitkeep
 !/custom-checks/example.sh
+!/custom-checks/browser-curl.sh
 !/custom-checks/requirements.txt
 
 /submissions/*

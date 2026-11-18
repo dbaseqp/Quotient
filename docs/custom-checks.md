@@ -138,18 +138,22 @@ docker-compose up -d runner
 - **Use meaningful output.** Print context on both success and failure (see [Failure Messages](#failure-messages)).
 - **Handle escaped credentials.** USERNAME, PASSWORD and PASSWORD[name] are shell-escaped by the runner. If your script passes them to other tools, ensure those tools handle quoted strings correctly.
 - **Test locally first.** Run your script manually before deploying to catch errors early.
+- **Don't announce the scorer.** Teams can see which requests are scoring traffic when a check sends what no real client sends, and serve those requests differently from everyone else. Plain `curl` sends `User-Agent: curl/8.x` and `Accept: */*`; Python `requests` sends `python-requests/x.y` with its own header order. Load web pages through `browser_curl` (below) or a client that matches the browser it claims to be, and give mail clients a realistic `EHLO` name (`smtplib.SMTP(..., local_hostname=...)`) instead of the container's address.
 
 ## Examples
 
 ### HTTP Check with curl
+
+`custom-checks/browser-curl.sh` defines `browser_curl`, which takes curl's options and adds the headers desktop Chrome sends to load a page, in Chrome's order, with a current Chrome `User-Agent`. Responses are decompressed, so a regex sees the page text. On `https`, curl's TLS handshake still differs from Chrome's.
 
 ```sh
 #!/bin/sh
 ADDRESS="$2"
 USERNAME="$4"
 PASSWORD="$5"
+. /app/checks/browser-curl.sh
 
-response=$(curl -s -o /dev/null -w "%{http_code}" -u "$USERNAME:$PASSWORD" "http://$ADDRESS/api/health")
+response=$(browser_curl -s -o /dev/null -w "%{http_code}" -u "$USERNAME:$PASSWORD" "http://$ADDRESS/api/health")
 if [ "$response" = "200" ]; then
     echo "SUCCESS: API returned 200"
     exit 0
