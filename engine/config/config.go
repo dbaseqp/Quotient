@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata"
+	"unicode"
 
 	"github.com/dbaseqp/Quotient/engine/checks"
 
@@ -119,6 +120,12 @@ type MiscConfig struct {
 	Port                int
 	LogoImage           string
 	LogFile             string
+	// WorkstationNames are templates of the names of the teams' own
+	// workstations ("_" is replaced by the team identifier), e.g.
+	// ["WS_-01", "LAB_-PC"]. Each team's pool of 4-6 names that checks claim
+	// to run on (SMTP EHLO, SMB workstation) mixes them with Windows-style
+	// DESKTOP-XXXXXXX names. Empty: Windows-style names only.
+	WorkstationNames []string
 
 	StartPaused bool
 
@@ -393,6 +400,11 @@ func checkConfig(conf *ConfigSettings) error {
 	if conf.MiscSettings.Jitter >= conf.MiscSettings.Delay {
 		errResult = errors.Join(errResult, errors.New("jitter must be smaller than delay"))
 	}
+	for _, name := range conf.MiscSettings.WorkstationNames {
+		if name == "" || strings.ContainsFunc(name, unicode.IsSpace) {
+			errResult = errors.Join(errResult, fmt.Errorf("workstation name template %q must be non-empty and contain no spaces", name))
+		}
+	}
 
 	if conf.MiscSettings.Timeout == 0 {
 		conf.MiscSettings.Timeout = conf.MiscSettings.Delay / 2
@@ -518,6 +530,9 @@ func checkConfig(conf *ConfigSettings) error {
 			for _, check := range checks {
 				if setter, ok := check.(interface{ SetAttemptDefaults(int, int) }); ok {
 					setter.SetAttemptDefaults(conf.MiscSettings.Attempts, conf.MiscSettings.AttemptDelay)
+				}
+				if setter, ok := check.(interface{ SetWorkstationNaming(string, []string) }); ok {
+					setter.SetWorkstationNaming(conf.RequiredSettings.EventName, conf.MiscSettings.WorkstationNames)
 				}
 				if err := check.Verify(
 					conf.Box[i].Name,

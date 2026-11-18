@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net"
 	"os"
-	"regexp"
 	"syscall"
 	"testing"
 	"time"
@@ -108,8 +107,7 @@ func TestSmbRun_ClientIdentity(t *testing.T) {
 	s := f.last(t)
 
 	assert.Equal(t, []string{`\\127.0.0.1\share`}, s.TreePaths, "no :port in the tree-connect path")
-	assert.Regexp(t, regexp.MustCompile(`^DESKTOP-[A-Z0-9]{7}$`), s.Workstation)
-	assert.Equal(t, workstationName(1, "test-smb"), s.Workstation, "stable per team and check")
+	assert.Contains(t, workstationPool("", "01", nil), s.Workstation, "one of team 01's workstation names")
 	assert.Equal(t, "cifs/127.0.0.1", fromU16le(s.AvPairs[9]), "MsvAvTargetName")
 	assert.Equal(t, "tester", s.User)
 

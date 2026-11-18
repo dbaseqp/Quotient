@@ -58,7 +58,7 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			Initiator: &smb2.NTLMInitiator{
 				User:        username,
 				Password:    password,
-				Workstation: workstationName(teamID, c.Name),
+				Workstation: c.workstation(teamIdentifier),
 				TargetSPN:   "cifs/" + c.Target,
 			},
 		}
