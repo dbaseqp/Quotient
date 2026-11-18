@@ -436,7 +436,7 @@ port = 53
 
 #### Web Check
 
-HTTP/HTTPS request with optional status code and content matching.
+HTTP/HTTPS request with optional status code and content matching. The check sends browser-style `Accept` and `Accept-Language` headers along with a random `User-Agent`.
 
 ```toml
 [[box.web]]
