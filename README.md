@@ -30,7 +30,7 @@ The system is designed as a group of Docker components using Docker Compose:
 | **Server** | Scoring engine, web frontend/API, configuration parser, and check coordinator |
 | **Database** | PostgreSQL database for persisting checks, rounds, scores, and submissions |
 | **Redis** | Message queue passing tasks between the server and runners |
-| **Runner** | Alpine containers (5 replicas by default) that execute service checks. Customize via `Dockerfile.runner` for additional packages |
+| **Runner** | Alpine containers (5 replicas by default) that execute service checks. Each check attempt runs in its own short-lived runner process, so a check that crashes (for example on a malformed reply from a team's service) fails only that check, reported as `check crashed`. Customize via `Dockerfile.runner` for additional packages |
 | **Divisor** | Optional IP rotation container - assigns unique source IPs from a subnet pool to runners, preventing target systems from blocking based on IP. See [Divisor](https://github.com/dbaseqp/Divisor) |
 
 ## Environment Variables
