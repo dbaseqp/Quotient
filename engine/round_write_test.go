@@ -36,6 +36,9 @@ END $$ LANGUAGE plpgsql`)
 
 func roundWriteEngine(t *testing.T, slaThreshold int) (*ScoringEngine, *testutil.PostgresContainer, db.TeamSchema) {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
 	pg.Exec(t, "UPDATE team_schemas SET active = false")
@@ -92,6 +95,9 @@ func TestRvb_SLAWriteFailureKeepsPenalty(t *testing.T) {
 // LoadSLAs rebuilds streaks at startup; it must replay rows in round order,
 // not in whatever physical order Postgres returns them.
 func TestLoadSLAsReplaysInRoundOrder(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	_, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
 	team := pg.CreateTestTeam(t, "SLA Order Team", "01")
