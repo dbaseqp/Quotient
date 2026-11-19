@@ -19,6 +19,9 @@ import (
 
 // The score export lists teams in team ID order, so two exports can be diffed.
 func TestExportScoresOrdersTeamsByID(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
 	eng := engine.NewTestEngine(t, redis, pg, 2)
