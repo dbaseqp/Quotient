@@ -1,6 +1,8 @@
 package checks
 
 import (
+	"time"
+
 	"github.com/knadh/go-pop3"
 )
 
@@ -17,6 +19,7 @@ func (c Pop3) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			Host:       c.Target,
 			Port:       c.Port,
 			TLSEnabled: c.Encrypted,
+			Dialer:     clientLinux.dialer(time.Duration(c.Timeout) * time.Second),
 		})
 
 		// Create a new connection. POP3 connections are stateful and should end

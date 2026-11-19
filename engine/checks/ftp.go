@@ -26,7 +26,7 @@ type FtpFile struct {
 
 func (c Ftp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		conn, err := ftp.Dial(c.Target+":"+strconv.Itoa(c.Port), ftp.DialWithTimeout(time.Duration(c.Timeout)*time.Second))
+		conn, err := ftp.Dial(c.Target+":"+strconv.Itoa(c.Port), ftp.DialWithDialer(*clientLinux.dialer(time.Duration(c.Timeout) * time.Second)))
 		if err != nil {
 			checkResult.Error = "ftp connection failed"
 			checkResult.Debug = err.Error()

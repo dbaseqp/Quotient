@@ -33,10 +33,8 @@ func (a unencryptedAuth) Start(server *smtp.ServerInfo) (string, []byte, error) 
 
 func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		// Create a dialer
-		dialer := net.Dialer{
-			Timeout: time.Duration(c.Timeout) * time.Second,
-		}
+		// The socket announces the window scale of the Windows workstation the EHLO name claims.
+		dialer := clientWindows.dialer(time.Duration(c.Timeout) * time.Second)
 
 		heloName := c.HeloName
 		if heloName == "" {
@@ -80,7 +78,7 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 		var conn net.Conn
 
 		if c.Encrypted {
-			conn, err = tls.DialWithDialer(&dialer, "tcp", fmt.Sprintf("%s:%d", c.Target, c.Port), &tlsConfig)
+			conn, err = tls.DialWithDialer(dialer, "tcp", fmt.Sprintf("%s:%d", c.Target, c.Port), &tlsConfig)
 		} else {
 			conn, err = dialer.DialContext(context.TODO(), "tcp", fmt.Sprintf("%s:%d", c.Target, c.Port))
 		}

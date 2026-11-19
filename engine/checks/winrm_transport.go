@@ -42,7 +42,7 @@ func (t *winrmTransport) Transport(endpoint *winrm.Endpoint) error {
 			InsecureSkipVerify: endpoint.Insecure, // #nosec G402 -- competition services may use self-signed certs
 			ServerName:         endpoint.TLSServerName,
 		},
-		DialContext:           (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		DialContext:           winrmDialer().DialContext,
 		ResponseHeaderTimeout: endpoint.Timeout,
 		DisableCompression:    true,
 	}
@@ -78,4 +78,12 @@ func (t *winrmTransport) Post(_ *winrm.Client, request *soap.SoapMessage) (strin
 		return "", fmt.Errorf("http error %d: %s", resp.StatusCode, body)
 	}
 	return string(body), nil
+}
+
+// winrmDialer gives the WinRM client's sockets the window scale of the
+// Windows host its User-Agent claims.
+func winrmDialer() *net.Dialer {
+	d := clientWindows.dialer(30 * time.Second)
+	d.KeepAlive = 30 * time.Second
+	return d
 }
