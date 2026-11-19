@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 
 	"github.com/mitchellh/go-vnc"
 )
@@ -32,7 +31,7 @@ func (c Vnc) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		}
 
 		// Dial the vnc server
-		dialer := net.Dialer{}
+		dialer := clientLinux.dialer(0)
 		conn, err := dialer.DialContext(context.TODO(), "tcp", fmt.Sprintf("%s:%d", c.Target, c.Port))
 		if err != nil {
 			checkResult.Error = "connection to vnc server failed"

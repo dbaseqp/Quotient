@@ -32,7 +32,7 @@ func (c Ldap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 		if c.Encrypted {
 			scheme = "ldaps"
 		}
-		lconn, err := ldap.DialURL(fmt.Sprintf("%s://%s:%d", scheme, c.Target, c.Port))
+		lconn, err := ldap.DialURL(fmt.Sprintf("%s://%s:%d", scheme, c.Target, c.Port), ldap.DialWithDialer(clientLinux.dialer(time.Duration(c.Timeout)*time.Second)))
 		if err != nil {
 			checkResult.Error = "failed to connect"
 			checkResult.Debug = "login " + username + " password " + password + " failed with error: " + err.Error()

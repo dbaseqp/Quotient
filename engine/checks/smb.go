@@ -4,10 +4,10 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
-	"net"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hirochachacha/go-smb2"
 )
@@ -41,7 +41,8 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			}
 		}
 
-		conn, err := net.Dial("tcp", c.Target+":"+strconv.Itoa(c.Port))
+		// The socket announces the window scale of the Windows workstation NTLM names.
+		conn, err := clientWindows.dialer(time.Duration(c.Timeout)*time.Second).Dial("tcp", c.Target+":"+strconv.Itoa(c.Port))
 		if err != nil {
 			checkResult.Error = "smb connection failed"
 			checkResult.Debug = err.Error()

@@ -45,7 +45,7 @@ func (c Dns) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		// defer cancel()
 
 		// Send the query
-		client := dns.Client{Timeout: time.Duration(c.Timeout-1) * time.Second, DialTimeout: time.Duration(c.Timeout-1) * time.Second}
+		client := dns.Client{Timeout: time.Duration(c.Timeout-1) * time.Second, Dialer: clientLinux.dialer(time.Duration(c.Timeout-1) * time.Second)}
 		// _, _ = dns.ExchangeContext(deadctx, &msg, fmt.Sprintf("%s:%d", c.Target, c.Port)) // double tap for propagation
 		in, rtt, err := exchangeLikeStub(&client, &msg, fmt.Sprintf("%s:%d", c.Target, c.Port))
 		if err != nil {
