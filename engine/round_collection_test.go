@@ -63,6 +63,9 @@ func passed(task Task) checks.Result {
 // collectSetup starts from empty scores and queues with only the new teams active.
 func collectSetup(t *testing.T, teams int, services ...string) (*ScoringEngine, *testutil.RedisContainer, *testutil.PostgresContainer, []db.TeamSchema) {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, redis.Client.Del(context.Background(), "tasks", "results").Err())
 	require.NoError(t, pg.DB.ResetScores())
