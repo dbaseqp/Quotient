@@ -14,6 +14,9 @@ import (
 // A database error while Start reads the stored rounds must delay scoring, not
 // start it from round 0, whose writes would all collide with stored rounds.
 func TestStart_WaitsForRoundStateAfterLoadError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
 	for id := uint(1); id <= 3; id++ {
