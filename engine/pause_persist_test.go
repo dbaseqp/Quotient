@@ -22,6 +22,9 @@ func bootEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.Postg
 // With StartPaused and a scheduled start, a restart after the start must keep
 // scoring instead of coming back paused until an admin notices.
 func TestLoadPauseState_RestartAfterScheduledStartKeepsScoring(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
 	pg.ResetCompetitionState(t)
@@ -37,6 +40,9 @@ func TestLoadPauseState_RestartAfterScheduledStartKeepsScoring(t *testing.T) {
 // An admin pause (e.g. during an infrastructure outage) must survive a
 // restart, and a score reset forgets it so StartPaused applies again.
 func TestLoadPauseState_AdminPauseSurvivesRestartUntilReset(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
 	pg.ResetCompetitionState(t)
