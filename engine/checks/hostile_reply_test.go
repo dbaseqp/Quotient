@@ -81,7 +81,7 @@ func TestFtpHostileEpsvReplyFailsCheck(t *testing.T) {
 	if os.Getenv(hostileChildEnv) == "" {
 		port = hostileServe(t, func(c net.Conn) {
 			r := bufio.NewReader(c)
-			fmt.Fprint(c, "220 hi\r\n")
+			_, _ = fmt.Fprint(c, "220 hi\r\n")
 			for {
 				line, err := r.ReadString('\n')
 				if err != nil {
@@ -89,16 +89,16 @@ func TestFtpHostileEpsvReplyFailsCheck(t *testing.T) {
 				}
 				switch cmd := strings.ToUpper(strings.Fields(line + " x")[0]); cmd {
 				case "USER":
-					fmt.Fprint(c, "230 logged in\r\n")
+					_, _ = fmt.Fprint(c, "230 logged in\r\n")
 				case "FEAT":
-					fmt.Fprint(c, "211 End\r\n")
+					_, _ = fmt.Fprint(c, "211 End\r\n")
 				case "EPSV":
-					fmt.Fprint(c, "229 Entering Extended Passive Mode (|||)\r\n")
+					_, _ = fmt.Fprint(c, "229 Entering Extended Passive Mode (|||)\r\n")
 				case "QUIT":
-					fmt.Fprint(c, "221 bye\r\n")
+					_, _ = fmt.Fprint(c, "221 bye\r\n")
 					return
 				default:
-					fmt.Fprint(c, "200 ok\r\n")
+					_, _ = fmt.Fprint(c, "200 ok\r\n")
 				}
 			}
 		})
@@ -119,7 +119,7 @@ func TestPop3HostileStatReplyFailsCheck(t *testing.T) {
 	if os.Getenv(hostileChildEnv) == "" {
 		port = hostileServe(t, func(c net.Conn) {
 			r := bufio.NewReader(c)
-			fmt.Fprint(c, "+OK ready\r\n")
+			_, _ = fmt.Fprint(c, "+OK ready\r\n")
 			for {
 				line, err := r.ReadString('\n')
 				if err != nil {
@@ -127,12 +127,12 @@ func TestPop3HostileStatReplyFailsCheck(t *testing.T) {
 				}
 				switch strings.ToUpper(strings.Fields(line + " x")[0]) {
 				case "STAT":
-					fmt.Fprint(c, "+OK\r\n")
+					_, _ = fmt.Fprint(c, "+OK\r\n")
 				case "QUIT":
-					fmt.Fprint(c, "+OK bye\r\n")
+					_, _ = fmt.Fprint(c, "+OK bye\r\n")
 					return
 				default:
-					fmt.Fprint(c, "+OK fine\r\n")
+					_, _ = fmt.Fprint(c, "+OK fine\r\n")
 				}
 			}
 		})
