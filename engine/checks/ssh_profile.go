@@ -146,11 +146,26 @@ func (p sshClientProfile) legacyConfig(user string, auth []ssh.AuthMethod, timeo
 // there would let a server that drops the first connection make the check
 // reveal the old Go fingerprint, and would double failed logins.
 func (p sshClientProfile) dial(addr, user string, auth []ssh.AuthMethod, timeout time.Duration, with3DES bool) (*ssh.Client, error) {
-	conn, err := ssh.Dial("tcp", addr, p.clientConfig(user, auth, timeout))
+	conn, err := dialSSH(addr, p.clientConfig(user, auth, timeout))
 	if err == nil || !strings.Contains(err.Error(), "no common algorithm") {
 		return conn, err
 	}
-	return ssh.Dial("tcp", addr, p.legacyConfig(user, auth, timeout, with3DES))
+	return dialSSH(addr, p.legacyConfig(user, auth, timeout, with3DES))
+}
+
+// dialSSH is ssh.Dial over a socket with the window scale of the Linux host
+// the OpenSSH banner claims.
+func dialSSH(addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+	conn, err := clientLinux.dialer(config.Timeout).Dial("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	c, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return ssh.NewClient(c, chans, reqs), nil
 }
 
 // opensshPtyModes is the terminal-mode list OpenSSH sends from a Linux
