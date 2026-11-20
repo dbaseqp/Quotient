@@ -59,9 +59,9 @@ func TestSSHProfiles_MatchRealClientCapture(t *testing.T) {
 			r, ok := captured[p.banner]
 			require.True(t, ok, "no capture of a real client sending %q", p.banner)
 			assert.Equal(t, r.KexInit["kex"], strings.Join(p.kex, ",")+","+kexMarkers)
-			assert.Equal(t, r.KexInit["enc_c2s"], strings.Join(p.ciphers, ","))
-			assert.Equal(t, r.KexInit["mac_c2s"], strings.Join(p.macs, ","))
-			assert.Equal(t, r.KexInit["hostkey"], strings.Join(p.hostKeyAlgos, ","))
+			assert.Equal(t, r.KexInit["enc_c2s"], strings.Join(opensshCiphers, ","))
+			assert.Equal(t, r.KexInit["mac_c2s"], strings.Join(opensshMACs, ","))
+			assert.Equal(t, r.KexInit["hostkey"], strings.Join(opensshHostKeyAlgos, ","))
 		})
 	}
 }
@@ -96,6 +96,17 @@ func readClientKEXINIT(c net.Conn) (string, []string, error) {
 		p = p[4+n:]
 	}
 	return strings.TrimRight(banner, "\r\n"), lists, nil
+}
+
+// sshUnimplementedAlgos are algorithms the profiles advertise that
+// x/crypto/ssh does not implement and so leaves out of the KEXINIT on the
+// wire.
+var sshUnimplementedAlgos = []string{
+	"sntrup761x25519-sha512", "sntrup761x25519-sha512@openssh.com",
+	"diffie-hellman-group18-sha512",
+	"umac-64-etm@openssh.com", "umac-128-etm@openssh.com",
+	"hmac-sha1-etm@openssh.com",
+	"umac-64@openssh.com", "umac-128@openssh.com",
 }
 
 func withoutUnimplemented(algos []string) string {
@@ -134,11 +145,11 @@ func TestSSHProfiles_WireKEXINIT(t *testing.T) {
 			require.NoError(t, g.err)
 			assert.Equal(t, p.banner, g.banner)
 			assert.Equal(t, withoutUnimplemented(p.kex)+","+kexMarkers, g.lists[0], "kex")
-			assert.Equal(t, strings.Join(p.hostKeyAlgos, ","), g.lists[1], "host key algorithms")
-			assert.Equal(t, withoutUnimplemented(p.ciphers), g.lists[2], "ciphers c2s")
-			assert.Equal(t, withoutUnimplemented(p.ciphers), g.lists[3], "ciphers s2c")
-			assert.Equal(t, withoutUnimplemented(p.macs), g.lists[4], "macs c2s")
-			assert.Equal(t, withoutUnimplemented(p.macs), g.lists[5], "macs s2c")
+			assert.Equal(t, strings.Join(opensshHostKeyAlgos, ","), g.lists[1], "host key algorithms")
+			assert.Equal(t, withoutUnimplemented(opensshCiphers), g.lists[2], "ciphers c2s")
+			assert.Equal(t, withoutUnimplemented(opensshCiphers), g.lists[3], "ciphers s2c")
+			assert.Equal(t, withoutUnimplemented(opensshMACs), g.lists[4], "macs c2s")
+			assert.Equal(t, withoutUnimplemented(opensshMACs), g.lists[5], "macs s2c")
 			assert.Equal(t, "none", g.lists[6], "compression c2s")
 		})
 	}
@@ -319,14 +330,8 @@ func runSshCheck(t *testing.T, port int, password string, badAttempts int) Resul
 		Command:     []commandData{{Command: "hostname", Contains: true, Output: "out:hostname"}},
 	}
 	res := make(chan Result, 1)
-	c.Run(1, "01", 1, res)
-	select {
-	case r := <-res:
-		return r
-	case <-time.After(10 * time.Second):
-		t.Fatal("ssh check timed out")
-		return Result{}
-	}
+	c.Run(1, "01", 1, res) // Service.Run sends its result before returning
+	return <-res
 }
 
 func TestSshRun_ProfileAgainstModernServer(t *testing.T) {
@@ -373,18 +378,19 @@ func TestSshRun_HangUpAfterKEXINITIsNotRetried(t *testing.T) {
 				return
 			}
 			_, lists, err := readClientKEXINIT(c)
-			_ = c.Close()
 			if err == nil {
 				mu.Lock()
 				kexLists = append(kexLists, lists[0])
 				mu.Unlock()
 			}
+			// Hang up only after recording, so the check's result
+			// arrives after every attempt it made is in kexLists.
+			_ = c.Close()
 		}
 	}()
 	r := runSshCheck(t, ln.Addr().(*net.TCPAddr).Port, "s3cret", 0)
 	assert.False(t, r.Status)
 	assert.Contains(t, r.Error, "error logging in to ssh server")
-	time.Sleep(100 * time.Millisecond)
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, []string{withoutUnimplemented(sshProfileFor("127.0.0.1").kex) + "," + kexMarkers}, kexLists)

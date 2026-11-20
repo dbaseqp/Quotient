@@ -42,7 +42,6 @@ func formatSSHUsername(username, domain, teamIdentifier string) string {
 func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 
-		// Create client config
 		username, password, err := c.getCreds(teamID)
 		if err != nil {
 			checkResult.Error = "error getting creds"
@@ -90,7 +89,6 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			}
 		}
 
-		// Connect to ssh server
 		conn, err := profile.dial(addr, username, auth, timeout, true)
 		if err != nil {
 			if c.PrivKey != "" {
@@ -122,7 +120,6 @@ func (c Ssh) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		// Like OpenSSH, promise the server no further sessions on this connection.
 		_, _, _ = conn.SendRequest("no-more-sessions@openssh.com", false, nil)
 
-		// Request pseudo terminal
 		if err := requestOpenSSHPty(session); err != nil {
 			checkResult.Error = "couldn't allocate pts"
 			checkResult.Debug = err.Error()

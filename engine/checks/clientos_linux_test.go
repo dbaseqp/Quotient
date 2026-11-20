@@ -40,14 +40,14 @@ func TestClientOSSYNOnTheWire(t *testing.T) {
 	if err != nil {
 		t.Skipf("no packet socket (%v): run as root to check the SYN on the wire", err)
 	}
-	defer syscall.Close(fd)
+	defer func() { _ = syscall.Close(fd) }()
 	require.NoError(t, syscall.Bind(fd, &syscall.SockaddrLinklayer{Protocol: htons(syscall.ETH_P_ALL), Ifindex: lo.Index}))
 	tv := syscall.NsecToTimeval(int64(200 * time.Millisecond))
 	require.NoError(t, syscall.SetsockoptTimeval(fd, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &tv))
 
 	ln, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	port := uint16(ln.Addr().(*net.TCPAddr).Port)
 	host := hostWindowScale(t)
 
@@ -67,7 +67,6 @@ func TestClientOSSYNOnTheWire(t *testing.T) {
 	}
 }
 
-// hostWindowScale is the window scale this host's sysctls allow a socket.
 // hostWindowScale is the window scale this host's sysctls allow a socket.
 func hostWindowScale(t *testing.T) int {
 	read := func(p string) int {
@@ -130,10 +129,10 @@ func TestClientOSMacOSReceiveBuffer(t *testing.T) {
 	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	def, err := net.Dial("tcp", ln.Addr().String())
 	require.NoError(t, err)
-	defer def.Close()
+	defer func() { _ = def.Close() }()
 	for o, want := range map[clientOS]int{clientMacOS: 2 * macOSRcvBuf, clientWindows: sockoptInt(t, def, syscall.SOL_SOCKET, syscall.SO_RCVBUF), clientLinux: sockoptInt(t, def, syscall.SOL_SOCKET, syscall.SO_RCVBUF)} {
 		conn, err := o.dialer(time.Second).Dial("tcp", ln.Addr().String())
 		require.NoError(t, err)

@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"encoding/binary"
 	"errors"
 	"hash/fnv"
 	"strings"
@@ -10,22 +11,16 @@ import (
 )
 
 // sshClientProfile is the identity the SSH check presents to a team's server:
-// the version banner of a real OpenSSH client build and the KEXINIT name-lists
-// that build sends with its default configuration, copied from a capture of
-// that client (see ssh_profile_test.go).
-//
-// The lists are kept exactly as the real client sends them. x/crypto/ssh drops
-// the entries it does not implement (Config.SetDefaults), so the KEXINIT on the
-// wire is the real one minus sshUnimplementedAlgos. kex excludes the
-// "ext-info-c,kex-strict-c-v00@openssh.com" tail, which x/crypto/ssh appends
-// itself in the same order as OpenSSH; every profile is a build that sends
-// both markers.
+// the version banner of a captured OpenSSH client build and that build's
+// default key exchange list (see ssh_profile_test.go). Both profiles' builds
+// send the same cipher, MAC and host key lists (opensshCiphers, opensshMACs,
+// opensshHostKeyAlgos). x/crypto/ssh appends the
+// "ext-info-c,kex-strict-c-v00@openssh.com" tail itself and drops the entries
+// it does not implement, and it offers no zlib compression, so the KEXINIT on
+// the wire is the captured one minus those.
 type sshClientProfile struct {
-	banner       string
-	kex          []string
-	ciphers      []string
-	macs         []string
-	hostKeyAlgos []string
+	banner string
+	kex    []string
 }
 
 var (
@@ -52,7 +47,7 @@ var (
 		"sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com",
 		"rsa-sha2-512", "rsa-sha2-256",
 	}
-	// OpenSSH 8.5-9.8 default key exchange list.
+	// OpenSSH 9.0-9.8 default key exchange list.
 	opensshSntrupKex = []string{
 		"sntrup761x25519-sha512@openssh.com",
 		"curve25519-sha256", "curve25519-sha256@libssh.org",
@@ -69,30 +64,13 @@ var (
 // backport.
 var sshClientProfiles = []sshClientProfile{
 	{ // Ubuntu 24.04, openssh-client 1:9.6p1-3ubuntu13.20
-		banner:       "SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.20",
-		kex:          opensshSntrupKex,
-		ciphers:      opensshCiphers,
-		macs:         opensshMACs,
-		hostKeyAlgos: opensshHostKeyAlgos,
+		banner: "SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.20",
+		kex:    opensshSntrupKex,
 	},
 	{ // Debian 12, openssh-client 1:9.2p1-2+deb12u10 (Debian backported the sntrup761x25519-sha512 alias)
-		banner:       "SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u10",
-		kex:          append([]string{"sntrup761x25519-sha512"}, opensshSntrupKex...),
-		ciphers:      opensshCiphers,
-		macs:         opensshMACs,
-		hostKeyAlgos: opensshHostKeyAlgos,
+		banner: "SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u10",
+		kex:    append([]string{"sntrup761x25519-sha512"}, opensshSntrupKex...),
 	},
-}
-
-// sshUnimplementedAlgos are algorithms the profiles advertise that
-// x/crypto/ssh does not implement. They are left out of the KEXINIT on the
-// wire, which is why it still differs from the real client's (HASSH included).
-var sshUnimplementedAlgos = []string{
-	"sntrup761x25519-sha512", "sntrup761x25519-sha512@openssh.com",
-	"diffie-hellman-group18-sha512",
-	"umac-64-etm@openssh.com", "umac-128-etm@openssh.com",
-	"hmac-sha1-etm@openssh.com",
-	"umac-64@openssh.com", "umac-128@openssh.com",
 }
 
 // sshProfileFor picks the client identity for a target. The choice is stable
@@ -104,7 +82,6 @@ func sshProfileFor(target string) sshClientProfile {
 	return sshClientProfiles[h.Sum32()%uint32(len(sshClientProfiles))]
 }
 
-// clientConfig returns a config that advertises this profile.
 func (p sshClientProfile) clientConfig(user string, auth []ssh.AuthMethod, timeout time.Duration) *ssh.ClientConfig {
 	config := &ssh.ClientConfig{
 		User:              user,
@@ -112,19 +89,17 @@ func (p sshClientProfile) clientConfig(user string, auth []ssh.AuthMethod, timeo
 		HostKeyCallback:   ssh.InsecureIgnoreHostKey(), // #nosec G106 -- competition hosts have unknown keys
 		Timeout:           timeout,
 		ClientVersion:     p.banner,
-		HostKeyAlgorithms: p.hostKeyAlgos,
+		HostKeyAlgorithms: opensshHostKeyAlgos,
 	}
 	config.KeyExchanges = p.kex
-	config.Ciphers = p.ciphers
-	config.MACs = p.macs
+	config.Ciphers = opensshCiphers
+	config.MACs = opensshMACs
 	return config
 }
 
-// legacyConfig returns the config the check used before profiles existed:
-// x/crypto/ssh defaults, plus 3des-cbc for the scored login (bad attempts
-// never appended it). It is only used when the server shares no algorithm
-// with the profile, so servers that only speak old algorithms score exactly
-// as before.
+// legacyConfig is x/crypto/ssh's default algorithms under the profile's
+// banner, plus 3des-cbc for the scored login (with3DES); bad attempts keep the
+// defaults alone, so a server that only speaks 3DES fails them.
 func (p sshClientProfile) legacyConfig(user string, auth []ssh.AuthMethod, timeout time.Duration, with3DES bool) *ssh.ClientConfig {
 	config := &ssh.ClientConfig{
 		User:            user,
@@ -140,11 +115,11 @@ func (p sshClientProfile) legacyConfig(user string, auth []ssh.AuthMethod, timeo
 	return config
 }
 
-// dial connects with the profile's algorithms and retries once with the legacy
-// set only when negotiation finds no common algorithm. Any other failure
-// (refused, hang-up after KEXINIT, authentication) is returned as is: a retry
-// there would let a server that drops the first connection make the check
-// reveal the old Go fingerprint, and would double failed logins.
+// dial retries with legacyConfig only when negotiation finds no common
+// algorithm in some category; retrying other failures would show the Go
+// fingerprint to a server that drops the first connection and would double
+// failed logins. A server that only speaks older algorithms therefore gets one
+// failed negotiation before every login (and logs "Unable to negotiate").
 func (p sshClientProfile) dial(addr, user string, auth []ssh.AuthMethod, timeout time.Duration, with3DES bool) (*ssh.Client, error) {
 	conn, err := dialSSH(addr, p.clientConfig(user, auth, timeout))
 	if err == nil || !strings.Contains(err.Error(), "no common algorithm") {
@@ -168,11 +143,8 @@ func dialSSH(addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
 	return ssh.NewClient(c, chans, reqs), nil
 }
 
-// opensshPtyModes is the terminal-mode list OpenSSH sends from a Linux
-// terminal at its default settings, in OpenSSH's order, except that ECHO is
-// off as the check always had it. The values equal a Linux pty's defaults, so
-// the remote terminal behaves as it did with the old three-entry list; only
-// the request now has OpenSSH's shape and size.
+// opensshPtyModes are the terminal modes OpenSSH sends from a default Linux
+// pty, in OpenSSH's order, with ECHO off.
 var opensshPtyModes = []struct {
 	op  byte
 	val uint32
@@ -191,13 +163,12 @@ var opensshPtyModes = []struct {
 	{ssh.CS7, 1}, {ssh.CS8, 1}, {ssh.PARENB, 0}, {ssh.PARODD, 0},
 }
 
-// requestOpenSSHPty asks for the same 80x40 "xterm" terminal the check always
-// used, encoded the way OpenSSH encodes it: zero pixel size (Session.RequestPty
-// sends 8 pixels per cell) and the full mode list in OpenSSH's order.
+// requestOpenSSHPty sends an 80x40 xterm pty-req as OpenSSH does: zero pixel
+// size (Session.RequestPty sends 8 pixels per cell) and the full mode list.
 func requestOpenSSHPty(session *ssh.Session) error {
 	modes := make([]byte, 0, len(opensshPtyModes)*5+1)
 	for _, m := range opensshPtyModes {
-		modes = append(modes, m.op, byte(m.val>>24), byte(m.val>>16), byte(m.val>>8), byte(m.val))
+		modes = binary.BigEndian.AppendUint32(append(modes, m.op), m.val)
 	}
 	modes = append(modes, 0) // TTY_OP_END
 	req := struct {
