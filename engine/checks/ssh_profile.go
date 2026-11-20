@@ -79,7 +79,7 @@ var sshClientProfiles = []sshClientProfile{
 func sshProfileFor(target string) sshClientProfile {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(target))
-	return sshClientProfiles[h.Sum32()%uint32(len(sshClientProfiles))]
+	return sshClientProfiles[h.Sum32()%uint32(len(sshClientProfiles))] // #nosec G115 -- len of a two-entry table
 }
 
 func (p sshClientProfile) clientConfig(user string, auth []ssh.AuthMethod, timeout time.Duration) *ssh.ClientConfig {
