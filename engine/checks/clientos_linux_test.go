@@ -68,7 +68,6 @@ func TestClientOSSYNOnTheWire(t *testing.T) {
 }
 
 // hostWindowScale is the window scale this host's sysctls allow a socket.
-// hostWindowScale is the window scale this host's sysctls allow a socket.
 func hostWindowScale(t *testing.T) int {
 	read := func(p string) int {
 		b, err := os.ReadFile(p)
