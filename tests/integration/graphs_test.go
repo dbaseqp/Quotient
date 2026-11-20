@@ -356,19 +356,18 @@ func TestScoreGraphLeaderboardBeforeViewRefresh(t *testing.T) {
 	second, err := pg.DB.CreateTeam(db.TeamSchema{Name: fmt.Sprintf("second-%d", suffix), Identifier: "02", Active: true})
 	require.NoError(t, err)
 
-	store := func(round uint, leaderSvc2 bool) {
+	store := func(round uint, leaderSvc2 bool, slas ...db.SLASchema) {
 		_, err := pg.DB.CreateRound(db.RoundSchema{ID: round, StartTime: time.Now(), Checks: []db.ServiceCheckSchema{
 			{TeamID: leader.ID, ServiceName: "svc1", Points: 10, Result: true},
 			{TeamID: leader.ID, ServiceName: "svc2", Points: 10, Result: leaderSvc2},
 			{TeamID: second.ID, ServiceName: "svc1", Points: 10, Result: true},
-		}})
+		}, SLAs: slas})
 		require.NoError(t, err)
 	}
-	for r := uint(1); r <= 7; r++ {
+	for r := uint(1); r <= 6; r++ {
 		store(r, r < 6)
 	}
-	_, err = pg.DB.CreateSLA(db.SLASchema{TeamID: leader.ID, RoundID: 7, ServiceName: "svc2", Penalty: 30})
-	require.NoError(t, err)
+	store(7, false, db.SLASchema{TeamID: leader.ID, RoundID: 7, ServiceName: "svc2", Penalty: 30})
 	require.NoError(t, pg.DB.RefreshScoresMaterializedView())
 	// leader = 70 + 50 - 30 = 90, second = 70
 

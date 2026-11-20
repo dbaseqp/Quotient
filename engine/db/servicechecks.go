@@ -194,13 +194,8 @@ func (d *DB) loadUptimes(table string) (map[uint]map[string]Uptime, error) {
 	return uptimes, rows.Err()
 }
 
-func (d *DB) LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
-	uptimes, err := d.loadUptimes("service_check_schemas")
-	if err != nil {
-		return err
-	}
-	*uptimePerService = uptimes
-	return nil
+func (d *DB) LoadUptimes() (map[uint]map[string]Uptime, error) {
+	return d.loadUptimes("service_check_schemas")
 }
 
 type ServiceScoreData struct {
@@ -308,34 +303,44 @@ func (d *DB) GetServiceScores() ([]ServiceScoreData, error) {
 	return results, nil
 }
 
-func (d *DB) LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) error {
-	rows, err := d.db.Table("service_check_schemas").Select("team_id, service_name, result").Rows()
+// LoadSLAs returns each team's failures per service since its last pass or
+// stored SLA violation; stored violations, not the current SlaThreshold, mark the resets.
+func (d *DB) LoadSLAs() (map[uint]map[string]int, error) {
+	rows, err := d.db.Raw(`
+		WITH last_reset AS (
+			SELECT team_id, service_name, MAX(round_id) AS round_id FROM (
+				SELECT team_id, service_name, round_id FROM service_check_schemas WHERE result
+				UNION ALL
+				SELECT team_id, service_name, round_id FROM sla_schemas
+			) resets
+			GROUP BY team_id, service_name
+		)
+		SELECT c.team_id, c.service_name, COUNT(*)
+		FROM service_check_schemas c
+		LEFT JOIN last_reset r ON r.team_id = c.team_id AND r.service_name = c.service_name
+		WHERE NOT c.result AND c.round_id > COALESCE(r.round_id, 0)
+		GROUP BY c.team_id, c.service_name
+	`).Rows()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// nolint:errcheck
 	defer rows.Close()
 
+	streaks := make(map[uint]map[string]int)
 	for rows.Next() {
 		var teamID uint
 		var serviceName string
-		var result bool
-
-		if err := rows.Scan(&teamID, &serviceName, &result); err != nil {
-			return err
+		var streak int
+		if err := rows.Scan(&teamID, &serviceName, &streak); err != nil {
+			return nil, err
 		}
-
-		if (*slaPerService)[teamID] == nil {
-			(*slaPerService)[teamID] = make(map[string]int)
+		if streaks[teamID] == nil {
+			streaks[teamID] = make(map[string]int)
 		}
-
-		if result {
-			(*slaPerService)[teamID][serviceName] = 0
-		} else {
-			(*slaPerService)[teamID][serviceName] = ((*slaPerService)[teamID][serviceName] + 1) % slaThreshold
-		}
+		streaks[teamID][serviceName] = streak
 	}
-	return nil
+	return streaks, rows.Err()
 }
 
 // CheckResult is one team's result for one service in one round.
