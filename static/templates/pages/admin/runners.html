@@ -92,6 +92,7 @@
                             document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString(undefined, { timeZoneName: 'short' });
 
                             // Get tasks from each category
+                            const scheduledTasks = tasks.scheduled || [];
                             const runningTasks = tasks.running || [];
                             const successTasks = tasks.success || [];
                             const failedTasks = tasks.failed || [];
@@ -100,8 +101,8 @@
                             const runnerMap = new Map();
                             const activeRunners = new Set();
 
-                            // Process running tasks to get active runners
-                            runningTasks.forEach(task => {
+                            // Runners holding scheduled or running tasks are active
+                            [...scheduledTasks, ...runningTasks].forEach(task => {
                                 if (task.runner_id) {
                                     activeRunners.add(task.runner_id);
 
@@ -185,7 +186,10 @@
 
                                     // Create the badge inside the link
                                     const taskBadge = document.createElement('span');
-                                    taskBadge.className = 'badge bg-primary';
+                                    taskBadge.className = task.status_text === 'scheduled' ? 'badge bg-secondary' : 'badge bg-primary';
+                                    if (task.status_text === 'scheduled') {
+                                        taskBadge.title = `Scheduled for ${new Date(task.start_time).toLocaleTimeString()}`;
+                                    }
                                     taskBadge.setAttribute('style', 'text-decoration: none;');
                                     taskBadge.textContent = `${task.service_type} (Team ${task.team_id})`;
 
@@ -205,7 +209,7 @@
                                 let longestElapsedTime = 0;
 
                                 tasks.forEach(task => {
-                                    if (task.start_time) {
+                                    if (task.start_time && task.status_text === 'running') {
                                         const startTime = new Date(task.start_time);
                                         const now = new Date();
                                         const elapsedSeconds = Math.round((now - startTime) / 1000);

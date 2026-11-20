@@ -210,7 +210,9 @@ func (se *ScoringEngine) Start() {
 
 // roundFinishSettle is the least time between a round_finish and the next round's start. Divisor
 // rotates runner source addresses on round_finish (about 1 s per address it probes, NUM_IPS of them),
-// so this only delays the round after one that ran to its deadline.
+// so it delays the next round only when round_finish comes less than this before it was due: after a
+// round that ran to its deadline, or one whose results came in its last seconds. SpreadMargin keeps
+// spread checks from finishing that late.
 const roundFinishSettle = 5 * time.Second
 
 func (se *ScoringEngine) waitForReset() {
@@ -331,6 +333,7 @@ func (se *ScoringEngine) GetActiveTasks() (map[string]any, error) {
 
 	// Default empty response structure
 	result := map[string]any{
+		"scheduled":   []any{},
 		"running":     []any{},
 		"success":     []any{},
 		"failed":      []any{},
@@ -385,7 +388,7 @@ func (se *ScoringEngine) GetActiveTasks() (map[string]any, error) {
 		}
 
 		// Categorize by status - directly using the status as map key for cleaner code
-		if statusKey := taskStatus.StatusText; statusKey == "running" || statusKey == "success" || statusKey == "failed" {
+		if statusKey := taskStatus.StatusText; statusKey == "scheduled" || statusKey == "running" || statusKey == "success" || statusKey == "failed" {
 			result[statusKey] = append(result[statusKey].([]any), taskStatus)
 		}
 	}
@@ -743,9 +746,8 @@ func (se *ScoringEngine) preflight() error {
 
 // runChecks enqueues the checks of conf, one config snapshot for the whole round.
 func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, preflight bool) ([]checks.Result, error) {
-	// reassign the next round start time with jitter drawn from [-Jitter, Jitter)
-	// at nanosecond resolution: whole-second jitter put round starts on whole
-	// seconds apart, which shows on the wire
+	// jitter is drawn from [-Jitter, Jitter) at nanosecond resolution, so
+	// round starts are not whole seconds apart
 	roundStart := time.Now()
 	jitterRange := time.Duration(conf.MiscSettings.Jitter) * time.Second
 	jitter := time.Duration(rand.Int63n(int64(2*jitterRange))) - jitterRange // #nosec G404 -- non-crypto randomization for timing jitter
@@ -788,13 +790,11 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 		}
 	}
 
-	// Spread is nil only in configs that skipped checkConfig (tests): off.
-	spread := 0
-	if p := conf.MiscSettings.Spread; p != nil {
-		spread = *p
+	type pending struct {
+		task    Task
+		timeout int
 	}
-	shortestRound := time.Duration(conf.MiscSettings.Delay-conf.MiscSettings.Jitter) * time.Second
-	var payloads []any
+	var tasks []pending
 	for _, team := range teams {
 		if !team.Active {
 			continue
@@ -828,13 +828,8 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 				Deadline:       se.NextRoundStartTime,
 				Attempts:       r.GetAttempts(),
 				AttemptDelay:   r.GetAttemptDelay(),
-				Spread:         spread,
+				Spread:         *conf.MiscSettings.Spread,
 				CheckData:      data, // the entire specialized struct
-			}
-			// Each team's check gets its own start offset, drawn again every round.
-			if spread > 0 {
-				task.StartAt = SpreadStart(roundStart, shortestRound, r.GetTimeout(), task.Attempts, task.AttemptDelay,
-					time.Duration(spread)*time.Second, rand.Int63n) // #nosec G404 -- non-crypto randomization of check timing
 			}
 
 			// Populate credentials if check needs them
@@ -860,16 +855,30 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 				}
 			}
 
-			payload, err := json.Marshal(task)
-			if err != nil {
-				slog.Error("failed to marshal service task", "error", err)
-				continue
-			}
-			payloads = append(payloads, payload)
+			tasks = append(tasks, pending{task, r.GetTimeout()})
 		}
 	}
-	// Queue order is start order: shuffled, so no team or service is always
-	// checked first.
+
+	// Offsets are drawn just before the push, from what is left of the shortest
+	// round then, and sent relative to pickup so runner clock skew cancels.
+	// A spread task's worst case ends SpreadMargin before the shortest round does.
+	spread := time.Duration(*conf.MiscSettings.Spread) * time.Second
+	finishWithin := time.Until(roundStart.Add(time.Duration(conf.MiscSettings.Delay-conf.MiscSettings.Jitter)*time.Second - SpreadMargin))
+	payloads := make([]any, 0, len(tasks))
+	for _, p := range tasks {
+		task := p.task
+		if spread > 0 {
+			task.StartAfter = SpreadDelay(finishWithin, p.timeout, task.Attempts, task.AttemptDelay, spread, rand.Int63n) // #nosec G404 -- non-crypto randomization of check timing
+			task.FinishWithin = finishWithin
+		}
+		payload, err := json.Marshal(task)
+		if err != nil {
+			slog.Error("failed to marshal service task", "error", err)
+			continue
+		}
+		payloads = append(payloads, payload)
+	}
+	// Shuffled, so runners don't pop one team's or service's tasks first.
 	rand.Shuffle(len(payloads), func(i, j int) { payloads[i], payloads[j] = payloads[j], payloads[i] }) // #nosec G404 -- non-crypto randomization of check order
 	if len(payloads) > 0 {
 		if err := se.RedisClient.RPush(ctx, "tasks", payloads...).Err(); err != nil {
@@ -1045,7 +1054,7 @@ func (se *ScoringEngine) processCollectedResults(conf *config.ConfigSettings, re
 func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.PostgresContainer, slaThreshold int) *ScoringEngine {
 	t.Helper()
 
-	slaPenalty := 30
+	slaPenalty, spread := 30, 0
 	conf := &config.ConfigSettings{
 		RequiredSettings: config.RequiredConfig{
 			EventName:    "Test Event",
@@ -1055,11 +1064,12 @@ func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.Po
 		},
 		MiscSettings: config.MiscConfig{
 			Delay:        5,
-			Jitter:       1, // Must be non-zero to avoid rand.Intn(0) panic
+			Jitter:       1, // Must be non-zero: rand.Int63n(0) panics
 			Timeout:      3,
 			Points:       10,
 			SlaThreshold: slaThreshold,
 			SlaPenalty:   &slaPenalty,
+			Spread:       &spread,
 		},
 	}
 

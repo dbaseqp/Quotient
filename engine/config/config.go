@@ -138,8 +138,8 @@ type MiscConfig struct {
 	// Spread caps, in seconds, how far into the round a check's first attempt
 	// may start, and how long past AttemptDelay a retry may wait, so that
 	// rounds don't hit every team at the same instant or in the same order.
-	// The engine draws each team's check start every round; no wait eats into
-	// the time the check's attempts need to finish in the shortest round.
+	// The engine draws each team's check start every round, only from the time
+	// left once the check's worst case and the round tail are set aside.
 	// Omitted: Delay - Jitter (as much as the round allows); 0: off.
 	Spread *int
 }

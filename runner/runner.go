@@ -160,14 +160,8 @@ func createRunner(task *engine.Task) (checks.Runner, error) {
 }
 
 func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, task *engine.Task) {
+	picked := time.Now()
 	taskKey := fmt.Sprintf("task:%t:%d:%d:%s:%s", task.Preflight, task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
-
-	// Start the first attempt at the time the engine drew for this team and
-	// service this round, so a round doesn't reach every team at the same
-	// instant or in the same order.
-	if !sleepCtx(ctx, engine.StartDelay(time.Now(), task, runner.GetTimeout())) {
-		return
-	}
 
 	result := checks.Result{
 		TeamID:      task.TeamID,
@@ -177,13 +171,23 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 		Preflight:   task.Preflight,
 		Status:      false,
 		RunnerID:    runnerID,
-		StartTime:   time.Now().Format(time.RFC3339),
-		StatusText:  "running",
 		// From the definition, not the check's answer: a check the round deadline cuts off never answers, and the
 		// export's max_points sums stored points.
 		Points: runner.GetPoints(),
 	}
 
+	if task.StartAfter > 0 {
+		result.StartTime = picked.Add(task.StartAfter).Format(time.RFC3339)
+		result.StatusText = "scheduled"
+		statusJSON, _ := json.Marshal(result)
+		rdb.Set(ctx, taskKey, statusJSON, time.Until(task.Deadline))
+		if !sleepCtx(ctx, time.Until(picked.Add(task.StartAfter))) {
+			return
+		}
+	}
+
+	result.StartTime = time.Now().Format(time.RFC3339)
+	result.StatusText = "running"
 	// Set initial "running" status in Redis for visualization
 	statusJSON, _ := json.Marshal(result)
 	rdb.Set(ctx, taskKey, statusJSON, time.Until(task.Deadline))
@@ -237,7 +241,7 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 		if result.Status || time.Now().After(task.Deadline) {
 			break
 		}
-		if i < task.Attempts-1 && !waitForRetry(ctx, retryDelay(time.Now(), task, runner.GetTimeout(), i+1), task.Deadline) {
+		if i < task.Attempts-1 && !waitForRetry(ctx, retryDelay(task, runner.GetTimeout(), i+1, picked, time.Now()), task.Deadline) {
 			break
 		}
 	}
@@ -262,12 +266,18 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 	rdb.Set(ctx, taskKey, resultJSON, 3*time.Minute)
 }
 
-// retryDelay is how long to wait after failed attempt number done before the
-// next one: AttemptDelay, plus a random extra when the task is spread that
-// still lets the remaining attempts finish before the deadline worst case.
-func retryDelay(now time.Time, task *engine.Task, timeout, done int) time.Duration {
+// retryDelay is how long to wait at now, after failed attempt number done of
+// a task picked up at picked, before the next attempt: AttemptDelay, plus a
+// random extra for a spread task that still lets the remaining attempts end
+// by FinishWithin worst case (by SpreadMargin before the deadline when the
+// engine sent no FinishWithin).
+func retryDelay(task *engine.Task, timeout, done int, picked, now time.Time) time.Duration {
 	delay := time.Duration(task.AttemptDelay) * time.Second
-	extra := engine.SpreadDelay(now.Add(delay), task.Deadline, timeout, task.Attempts-done, task.AttemptDelay, time.Duration(task.Spread)*time.Second, rand.Int64N)
+	budget := task.FinishWithin - now.Sub(picked)
+	if task.FinishWithin == 0 {
+		budget = task.Deadline.Sub(now) - engine.SpreadMargin
+	}
+	extra := engine.SpreadDelay(budget-delay, timeout, task.Attempts-done, task.AttemptDelay, time.Duration(task.Spread)*time.Second, rand.Int64N)
 	return delay + extra
 }
 

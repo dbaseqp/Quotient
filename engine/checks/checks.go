@@ -68,7 +68,7 @@ type Result struct {
 	RunnerID   string `json:"runner_id,omitempty"`
 	StartTime  string `json:"start_time,omitempty"`
 	EndTime    string `json:"end_time,omitempty"`
-	StatusText string `json:"status_text,omitempty"` // "running", "success", or "failed"
+	StatusText string `json:"status_text,omitempty"` // "scheduled", "running", "success", or "failed"
 }
 
 func (service *Service) GetType() string {
@@ -110,9 +110,6 @@ func (service *Service) SetAttemptDefaults(attempts int, attemptDelay int) {
 // attempt running until Run cuts it off at timeout, plus attemptDelay between
 // attempts.
 func WorstCaseSeconds(timeout, attempts, attemptDelay int) int {
-	if attempts < 1 {
-		return 0
-	}
 	return attempts*timeout + (attempts-1)*attemptDelay
 }
 
