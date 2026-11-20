@@ -643,8 +643,10 @@ func (a *API) extractUserInfoFromClaims(claims *IDTokenClaims) (username string,
 		username = claims.Subject
 	}
 
-	// Extract groups based on configured claim
-	groupClaim := a.conf.Current().OIDCSettings.OIDCGroupClaim
+	// Extract groups based on configured claim. One snapshot serves both settings, so a reload
+	// cannot pair the claim location from one config with the client id from another.
+	oidcCfg := a.conf.Current().OIDCSettings
+	groupClaim := oidcCfg.OIDCGroupClaim
 	if groupClaim == "" {
 		groupClaim = "groups"
 	}
@@ -658,7 +660,7 @@ func (a *API) extractUserInfoFromClaims(claims *IDTokenClaims) (username string,
 		groups = claims.RealmAccess.Roles
 	case "resource_access.roles":
 		// Client roles live under the client this deployment logs in as.
-		groups = claims.ResourceAccess[a.conf.Current().OIDCSettings.OIDCClientID].Roles
+		groups = claims.ResourceAccess[oidcCfg.OIDCClientID].Roles
 	default:
 		// Unsupported group claim location
 		slog.Warn("Unsupported OIDCGroupClaim value", "claim", groupClaim)
