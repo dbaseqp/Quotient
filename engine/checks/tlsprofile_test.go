@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -126,16 +127,8 @@ func TestHostHeaderDropsDefaultPort(t *testing.T) {
 // exactly Chrome's headers leave, in Chrome's order and spelling, with Host
 // first and the request's own headers left out.
 func TestBrowserTransportWireOrder(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer func() { _ = ln.Close() }()
 	heads := make(chan []string, 1)
-	go func() {
-		c, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer func() { _ = c.Close() }()
+	addr, _ := serveRaw(t, func(c net.Conn) {
 		r := bufio.NewReader(c)
 		var lines []string
 		for {
@@ -147,11 +140,11 @@ func TestBrowserTransportWireOrder(t *testing.T) {
 		}
 		heads <- lines
 		_, _ = io.WriteString(c, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
-	}()
+	})
 
 	tr := newBrowserTransport(clientWindows)
 	defer tr.CloseIdleConnections()
-	req, err := http.NewRequest("GET", "http://"+ln.Addr().String()+"/a?b=c", nil)
+	req, err := http.NewRequest("GET", "http://"+addr+"/a?b=c", nil)
 	require.NoError(t, err)
 	req.Header.Set("X-Extra", "1")
 	req.Header.Set("Referer", "http://example.com/")
@@ -163,7 +156,7 @@ func TestBrowserTransportWireOrder(t *testing.T) {
 	assert.Equal(t, "ok", string(body))
 
 	lines := <-heads
-	want := []string{"GET /a?b=c HTTP/1.1", "Host: " + ln.Addr().String()}
+	want := []string{"GET /a?b=c HTTP/1.1", "Host: " + addr}
 	for _, f := range navigationHeaders(clientWindows, true) { // 127.0.0.1 is a trustworthy origin
 		want = append(want, f.name+": "+f.value)
 	}
@@ -237,7 +230,8 @@ func TestBrowserTransportProtocolsAndReuse(t *testing.T) {
 			assert.Len(t, cc.addrs, 1, "the redirect should reuse the first connection")
 			for _, r := range got {
 				assert.Equal(t, tc.proto, r.ProtoMajor)
-				assert.Equal(t, ChromeUserAgent(clientMacOS.chromeUAOS()), r.UserAgent())
+				uaOS, _ := clientMacOS.chromeIdentity()
+				assert.Equal(t, ChromeUserAgent(uaOS), r.UserAgent())
 				assert.Equal(t, "navigate", r.Header.Get("Sec-Fetch-Mode"))
 				assert.Equal(t, `"macOS"`, r.Header.Get("Sec-Ch-Ua-Platform"))
 				if tc.tls {
@@ -343,6 +337,28 @@ func TestBrowserTransportBoundsResponseHeaders(t *testing.T) {
 	assert.ErrorIs(t, err, errResponseHeaderTooLarge)
 }
 
+// TestBrowserTransportBoundsH2ResponseHeaders: the same limit holds when the
+// server selects HTTP/2.
+func TestBrowserTransportBoundsH2ResponseHeaders(t *testing.T) {
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pad := strings.Repeat("a", 1000)
+		for i := range 2 * maxResponseHeaderBytes / len(pad) {
+			w.Header().Set("X-Pad-"+strconv.Itoa(i), pad)
+		}
+	}))
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	defer srv.Close()
+	tr := newBrowserTransport(clientLinux)
+	defer tr.CloseIdleConnections()
+	resp, err := (&http.Client{Transport: tr, Timeout: 5 * time.Second}).Get("https://" + srv.Listener.Addr().String() + "/")
+	if err == nil {
+		_ = resp.Body.Close()
+		assert.Equal(t, 2, resp.ProtoMajor)
+	}
+	assert.Error(t, err)
+}
+
 func TestDecodeResponse(t *testing.T) {
 	const page = `<html><a href="/gif/wilee3.gif"></a></html>`
 	encode := map[string]func(io.Writer) io.WriteCloser{
@@ -376,7 +392,7 @@ func TestDecodeResponse(t *testing.T) {
 				buf.WriteString(page)
 			}
 			resp := &http.Response{Header: http.Header{"Content-Encoding": {header}}, Body: io.NopCloser(&buf)}
-			require.NoError(t, decodeResponse(resp))
+			decodeResponse(resp)
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 			require.NoError(t, resp.Body.Close())
@@ -389,16 +405,32 @@ func TestDecodeResponse(t *testing.T) {
 		})
 	}
 
-	t.Run("empty body with coding", func(t *testing.T) {
-		resp := &http.Response{Header: http.Header{"Content-Encoding": {"gzip"}}, Body: http.NoBody}
-		require.NoError(t, decodeResponse(resp))
-		require.NoError(t, resp.Body.Close())
-	})
+	for _, ce := range []string{"gzip", "deflate", "br", "zstd", "gzip, br, zstd", "br, br"} {
+		t.Run("empty body with "+ce, func(t *testing.T) {
+			resp := &http.Response{Header: http.Header{"Content-Encoding": {ce}}, Body: http.NoBody}
+			decodeResponse(resp)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			assert.Empty(t, body)
+			require.NoError(t, resp.Body.Close())
+		})
+	}
 
 	for _, ce := range []string{"gzip, br, zstd", "br, br", "gzip, x-gzip"} {
 		t.Run("rejects "+ce, func(t *testing.T) {
-			resp := &http.Response{Header: http.Header{"Content-Encoding": {ce}}, Body: http.NoBody}
-			assert.Error(t, decodeResponse(resp))
+			resp := &http.Response{Header: http.Header{"Content-Encoding": {ce}}, Body: io.NopCloser(strings.NewReader("x"))}
+			decodeResponse(resp)
+			_, err := io.ReadAll(resp.Body)
+			assert.Error(t, err)
 		})
 	}
+
+	t.Run("unknown coding after a duplicate is left in place", func(t *testing.T) {
+		resp := &http.Response{Header: http.Header{"Content-Encoding": {"gzip, gzip, compress"}}, Body: io.NopCloser(strings.NewReader(page))}
+		decodeResponse(resp)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Equal(t, page, string(body))
+		assert.Equal(t, "gzip, gzip, compress", resp.Header.Get("Content-Encoding"))
+	})
 }

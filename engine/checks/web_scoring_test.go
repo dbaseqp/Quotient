@@ -143,8 +143,8 @@ func TestWebCheckConnectionRefused(t *testing.T) {
 }
 
 // TestWebCheckFailsOversizedPages: a page over maxWebBodyBytes fails the
-// check, and a few-KB br or zstd body that decodes to 64 MiB fails without
-// being decoded in full.
+// check, and a br or zstd body of a few tens of KB that decodes to 64 MiB
+// fails without being decoded in full.
 func TestWebCheckFailsOversizedPages(t *testing.T) {
 	const decoded = 64 << 20
 	bomb := func(buf *bytes.Buffer, w io.WriteCloser) []byte {
@@ -190,6 +190,37 @@ func TestWebCheckFailsOversizedPages(t *testing.T) {
 			}
 			if coding != "identity" {
 				assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(decoded*3/4), "bytes allocated while decoding")
+			}
+		})
+	}
+}
+
+// TestWebCheckPassesEmptyEncodedBodies: an empty body that names a coding,
+// including a chain the transport refuses to decode, reads as an empty page,
+// and an empty redirect naming such a chain is followed.
+func TestWebCheckPassesEmptyEncodedBodies(t *testing.T) {
+	for _, coding := range []string{"gzip", "deflate", "br", "zstd", "br, br"} {
+		t.Run(coding, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Encoding", coding)
+				if r.URL.Path == "/" {
+					w.Header().Set("Location", "/empty")
+					w.WriteHeader(http.StatusFound)
+				}
+			}))
+			defer srv.Close()
+			c := Web{
+				Service: Service{Target: "127.0.0.1", Port: srv.Listener.Addr().(*net.TCPAddr).Port, Timeout: 5},
+				Scheme:  "http",
+				Url:     []urlData{{Path: "/", Status: 200}},
+			}
+			results := make(chan Result, 1)
+			c.Run(1, "01", 1, results)
+			select {
+			case r := <-results:
+				assert.True(t, r.Status, "error: %s debug: %s", r.Error, r.Debug)
+			case <-time.After(10 * time.Second):
+				t.Fatal("check did not report")
 			}
 		})
 	}

@@ -36,27 +36,18 @@ func randomClientOS() clientOS {
 	return chromeClientOSes[rand.IntN(len(chromeClientOSes))] // #nosec G404 -- non-crypto selection of the claimed OS
 }
 
-// chromeUAOS is the OS part of desktop Chrome's User-Agent on o.
-func (o clientOS) chromeUAOS() string {
+// chromeIdentity is the OS part of desktop Chrome's User-Agent on o and its
+// sec-ch-ua-platform value, quoted the way Chrome sends it.
+func (o clientOS) chromeIdentity() (uaOS, platform string) {
 	switch o {
 	case clientWindows:
-		return "Windows NT 10.0; Win64; x64"
+		return "Windows NT 10.0; Win64; x64", `"Windows"`
 	case clientMacOS:
-		return "Macintosh; Intel Mac OS X 10_15_7"
+		return "Macintosh; Intel Mac OS X 10_15_7", `"macOS"`
+	case clientLinux:
+		return "X11; Linux x86_64", `"Linux"`
 	}
-	return "X11; Linux x86_64"
-}
-
-// chromePlatform is desktop Chrome's sec-ch-ua-platform value on o, quoted
-// the way Chrome sends it.
-func (o clientOS) chromePlatform() string {
-	switch o {
-	case clientWindows:
-		return `"Windows"`
-	case clientMacOS:
-		return `"macOS"`
-	}
-	return `"Linux"`
+	panic(fmt.Sprintf("no Chrome identity for client OS %v", o))
 }
 
 // chromeMLDSASignatureSchemes are the ML-DSA-44/65/87 signature algorithms
@@ -93,7 +84,8 @@ type headerField struct{ name, value string }
 // without Host. Client hints, Sec-Fetch-* and br/zstd are only sent to
 // potentially trustworthy origins (HTTPS, localhost and loopback addresses).
 func navigationHeaders(o clientOS, trustworthy bool) []headerField {
-	ua := ChromeUserAgent(o.chromeUAOS())
+	uaOS, platform := o.chromeIdentity()
+	ua := ChromeUserAgent(uaOS)
 	if !trustworthy {
 		return []headerField{
 			{"Connection", "keep-alive"},
@@ -108,7 +100,7 @@ func navigationHeaders(o clientOS, trustworthy bool) []headerField {
 		{"Connection", "keep-alive"},
 		{"sec-ch-ua", ChromeSecCHUA(ChromeMajor)},
 		{"sec-ch-ua-mobile", "?0"},
-		{"sec-ch-ua-platform", o.chromePlatform()},
+		{"sec-ch-ua-platform", platform},
 		{"Upgrade-Insecure-Requests", "1"},
 		{"User-Agent", ua},
 		{"Accept", chromeNavigationAccept},
@@ -181,8 +173,8 @@ func newBrowserTransport(o clientOS) *browserTransport {
 	return &browserTransport{os: o, dialer: o.dialer(0), idleH1: map[string]*h1Conn{}, h2: map[string]*http.ClientConn{}}
 }
 
-// maxResponseHeaderBytes bounds the HTTP/1.1 response heads read for one
-// request, as http.Transport's MaxResponseHeaderBytes does.
+// maxResponseHeaderBytes bounds the response heads read for one request over
+// HTTP/1.1 and HTTP/2, as http.Transport's MaxResponseHeaderBytes does.
 const maxResponseHeaderBytes = 1 << 20
 
 var errResponseHeaderTooLarge = fmt.Errorf("server response headers exceeded %d bytes; aborted", maxResponseHeaderBytes)
@@ -232,8 +224,9 @@ func (t *browserTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		if !dead || req.Context().Err() != nil {
 			return resp, err
 		}
-		// The server closed the idle connection before the request reached
-		// it; a browser retries an idempotent request on a new one.
+		// The idle connection was found closed: the request could not be
+		// written, or the connection ended before any response. A browser
+		// retries an idempotent request on a new connection.
 	}
 
 	conn, err := t.dialer.DialContext(req.Context(), "tcp", addr)
@@ -278,8 +271,9 @@ func newH2ClientConn(ctx context.Context, uc *utls.UConn, addr string) (*http.Cl
 	var protocols http.Protocols
 	protocols.SetHTTP2(true)
 	tr := &http.Transport{
-		DialTLSContext: func(context.Context, string, string) (net.Conn, error) { return conn, nil },
-		Protocols:      &protocols,
+		DialTLSContext:         func(context.Context, string, string) (net.Conn, error) { return conn, nil },
+		Protocols:              &protocols,
+		MaxResponseHeaderBytes: maxResponseHeaderBytes,
 	}
 	return tr.NewClientConn(ctx, "https", addr)
 }
@@ -358,18 +352,15 @@ func (t *browserTransport) roundTripH2(cc *http.ClientConn, req *http.Request, h
 		return nil, err
 	}
 	resp.Request = req
-	if err := decodeResponse(resp); err != nil {
-		_ = resp.Body.Close()
-		return nil, err
-	}
+	decodeResponse(resp)
 	return resp, nil
 }
 
 var aLongTimeAgo = time.Unix(1, 0)
 
-// roundTripH1 sends req over pc. dead reports that pc was already closed by
-// the server: the request could not be written, or the connection ended
-// before the first byte of a response.
+// roundTripH1 sends req over pc. dead reports that pc was found closed: the
+// request could not be written, or the connection ended before the first
+// byte of a response.
 func (t *browserTransport) roundTripH1(pc *h1Conn, origin string, req *http.Request, headers []headerField) (resp *http.Response, dead bool, err error) {
 	ctx := req.Context()
 	// Unblock reads and writes when the request is cancelled or the client
@@ -416,10 +407,7 @@ func (t *browserTransport) roundTripH1(pc *h1Conn, origin string, req *http.Requ
 		}
 		_ = pc.conn.Close()
 	}}
-	if err := decodeResponse(resp); err != nil {
-		_ = resp.Body.Close()
-		return nil, false, err
-	}
+	decodeResponse(resp)
 	return resp, false, nil
 }
 
@@ -506,7 +494,6 @@ func newDeflateReader(r io.Reader) (io.ReadCloser, error) {
 func newZstdReader(r io.Reader) (io.ReadCloser, error) {
 	zr, err := zstd.NewReader(r,
 		zstd.WithDecoderConcurrency(1),
-		zstd.WithDecoderMaxMemory(maxWebBodyBytes),
 		zstd.WithDecoderMaxWindow(zstdMaxWindow))
 	if err != nil {
 		return nil, err
@@ -517,8 +504,9 @@ func newZstdReader(r io.Reader) (io.ReadCloser, error) {
 // decodeResponse replaces resp.Body with a reader that undoes the response's
 // Content-Encoding, as a browser does. A list naming a coding this package
 // does not know is left in place. A list of more than maxContentCodings
-// codings, or naming one twice, is an error.
-func decodeResponse(resp *http.Response) error {
+// codings, or naming one twice, fails the body's first Read unless the body
+// is empty.
+func decodeResponse(resp *http.Response) {
 	ce := resp.Header.Get("Content-Encoding")
 	var codings []string
 	for _, c := range strings.Split(ce, ",") {
@@ -530,31 +518,26 @@ func decodeResponse(resp *http.Response) error {
 			continue
 		}
 		if _, ok := contentDecoders[c]; !ok {
-			return nil
-		}
-		if slices.Contains(codings, c) {
-			return fmt.Errorf("response Content-Encoding %q applies %s twice", ce, c)
+			return
 		}
 		codings = append(codings, c)
 	}
-	if len(codings) > maxContentCodings {
-		return fmt.Errorf("response Content-Encoding %q chains more than %d codings", ce, maxContentCodings)
-	}
 	if len(codings) == 0 {
-		return nil
+		return
 	}
-	resp.Body = &decodedBody{src: resp.Body, codings: codings}
+	resp.Body = &decodedBody{src: resp.Body, ce: ce, codings: codings}
 	resp.Header.Del("Content-Encoding")
 	resp.Header.Del("Content-Length")
 	resp.ContentLength = -1
 	resp.Uncompressed = true
-	return nil
 }
 
-// decodedBody builds its decoders on the first Read so an empty body (a 204
-// or 304 that still names a coding) does not fail.
+// decodedBody builds its decoders on the first Read, once the body is known
+// not to be empty, so an empty body (a 204 or 304 that still names a coding)
+// reads as empty whatever the coding list.
 type decodedBody struct {
 	src     io.ReadCloser
+	ce      string
 	codings []string
 	r       io.Reader
 	closers []io.Closer
@@ -572,7 +555,19 @@ func (d *decodedBody) Read(p []byte) (int, error) {
 }
 
 func (d *decodedBody) build() (io.Reader, error) {
-	var r io.Reader = d.src
+	src := bufio.NewReader(d.src)
+	if _, err := src.Peek(1); err != nil {
+		return nil, err
+	}
+	if len(d.codings) > maxContentCodings {
+		return nil, fmt.Errorf("response Content-Encoding %q chains more than %d codings", d.ce, maxContentCodings)
+	}
+	for i, c := range d.codings {
+		if slices.Contains(d.codings[:i], c) {
+			return nil, fmt.Errorf("response Content-Encoding %q applies %s twice", d.ce, c)
+		}
+	}
+	var r io.Reader = src
 	// Codings are listed in the order they were applied.
 	for i := len(d.codings) - 1; i >= 0; i-- {
 		dr, err := contentDecoders[d.codings[i]](r)
