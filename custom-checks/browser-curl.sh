@@ -12,10 +12,10 @@
 # with a Referer (-e or -H) Sec-Fetch-Site and Sec-Fetch-User are left out.
 # Responses are decompressed (--compressed), so a regex sees plain text.
 #
-# What browser_curl writes to stdout is capped at BROWSER_CURL_MAX_BYTES
-# (default 10 MiB, the web check's page limit): past it the output is cut
-# there and browser_curl exits 23, curl's write error. Files written with -o
-# are not capped. Otherwise browser_curl exits with curl's status.
+# browser_curl prints at most the first BROWSER_CURL_MAX_BYTES (default
+# 10 MiB) of the body, like the web check's prefix, and exits 0 when it cut
+# the body there, so a regex scores on that prefix. Files written with -o are
+# not cut. Otherwise browser_curl exits with curl's status.
 #
 # Limits: on https, curl's TLS ClientHello is OpenSSL's, not Chrome's, so a
 # TLS (JA3/JA4) fingerprint still shows curl. When an https server offers
@@ -35,10 +35,15 @@ case $(command curl --version) in
 *) _bc_trusted_encodings='gzip, deflate' ;;
 esac
 
-# curl's options that take a value: short ones (also last in a cluster such as
-# -sH, or with the value attached as in -HAccept:x) and long ones.
-_bc_short_values=ACDEFHKPQTUXYbcdehmortuwxyz
-_bc_long_values=' abstract-unix-socket alt-svc aws-sigv4 cacert capath cert cert-type ciphers config connect-timeout connect-to continue-at cookie cookie-jar create-file-mode crlfile curves data data-ascii data-binary data-raw data-urlencode delegation dns-interface dns-ipv4-addr dns-ipv6-addr dns-servers doh-url dump-header ech egd-file engine etag-compare etag-save expect100-timeout form form-string ftp-account ftp-alternative-to-user ftp-method ftp-port ftp-ssl-ccc-mode happy-eyeballs-timeout-ms header help hostpubmd5 hostpubsha256 hsts interface ip-tos ipfs-gateway json keepalive-time key key-type krb libcurl limit-rate local-port login-options mail-auth mail-from mail-rcpt max-filesize max-redirs max-time netrc-file noproxy oauth2-bearer output output-dir parallel-max pass pinnedpubkey preproxy proto proto-default proto-redir proxy proxy-cacert proxy-capath proxy-cert proxy-cert-type proxy-ciphers proxy-crlfile proxy-header proxy-key proxy-key-type proxy-pass proxy-pinnedpubkey proxy-service-name proxy-tls13-ciphers proxy-tlsauthtype proxy-tlspassword proxy-tlsuser proxy-user pubkey quote random-file range rate referer request request-target resolve retry retry-delay retry-max-time sasl-authzid service-name sigalgs socks4 socks4a socks5 socks5-gssapi-service socks5-hostname speed-limit speed-time ssl-sessions stderr telnet-option tftp-blksize time-cond tls-max tls13-ciphers tlsauthtype tlspassword tlsuser trace trace-ascii trace-config unix-socket upload-file upload-flags url url-query user user-agent variable vlan-priority write-out '
+# curl's options that take a value (those --help all shows with an <arg>, or
+# [arg] in older curl): short ones (also last in a cluster such as -sH, or
+# with the value attached as in -HAccept:x) and long ones.
+_bc_help=$(command curl --help all)
+_bc_short_values=$(printf '%s\n' "$_bc_help" | sed -n 's/^ *-\(.\), --[^ ]* [<[].*/\1/p' | tr -d '\n')
+_bc_long_values=$(printf '%s\n' "$_bc_help" | sed -n 's/^ *\(-., \)\{0,1\}--\([^ ]*\) [<[].*/\2/p' | tr '\n' ' ')
+_bc_no_help='browser-curl.sh: curl --help all lists no options that take a value, so browser_curl cannot tell option values from URLs'
+: "${_bc_short_values:?$_bc_no_help}" "${_bc_long_values:?$_bc_no_help}"
+_bc_long_values=" $_bc_long_values"
 
 # _bc_option_value records what the value $2 of option $1 says about the
 # request: a header the check sets, or (--url) the URL.
@@ -51,12 +56,24 @@ _bc_option_value() {
 	esac
 }
 
-# _bc_url notes whether the request's first http(s) URL is a trustworthy origin.
+# _bc_url notes whether the request's first http(s) URL is a potentially
+# trustworthy origin as Chrome counts them: https, localhost, *.localhost,
+# 127.0.0.0/8 and [::1].
 _bc_url() {
 	[ -z "$_bc_trusted" ] || return 0
 	case $1 in
-	https://* | http://localhost | http://localhost[:/]* | http://127.* | http://\[::1\]*) _bc_trusted=yes ;;
-	http://*) _bc_trusted=no ;;
+	https://*) _bc_trusted=yes ;;
+	http://*)
+		_bc_host=${1#http://}
+		_bc_host=${_bc_host%%[/?#]*}
+		_bc_host=${_bc_host##*@}
+		case $_bc_host in \[*\]) ;; *:*) _bc_host=${_bc_host%:*} ;; esac
+		case $_bc_host in
+		localhost | *.localhost | \[::1\]) _bc_trusted=yes ;;
+		*[!0-9.]* | *..* | *. | *.*.*.*.*) _bc_trusted=no ;;
+		127.*.*.*) _bc_trusted=yes ;;
+		*) _bc_trusted=no ;;
+		esac ;;
 	esac
 }
 
@@ -127,21 +144,22 @@ browser_curl() {
 		_bc_n=$((_bc_n - 1))
 	done
 
-	# Keep one byte past the cap to tell a body of exactly the cap from a
-	# longer one, whose curl may have finished before head stopped reading.
+	# dd copies the first $_bc_max bytes to stdout (fd 4). It reads exactly
+	# that many from the pipe, where busybox head -c reads ahead, so a byte
+	# left in the pipe means the body was longer; head then exits and stops
+	# curl. curl's status and "over" come back on fd 3, without temp files.
 	_bc_max=${BROWSER_CURL_MAX_BYTES:-10485760}
-	_bc_tmp=$(mktemp -d) || return
 	{
-		command curl "$@"
-		echo $? >"$_bc_tmp/status"
-	} | head -c "$((_bc_max + 1))" >"$_bc_tmp/out"
-	_bc_status=$(cat "$_bc_tmp/status")
-	if [ "$(($(wc -c <"$_bc_tmp/out")))" -gt "$_bc_max" ]; then
-		head -c "$_bc_max" "$_bc_tmp/out"
-		_bc_status=23
-	else
-		cat "$_bc_tmp/out"
-	fi
-	rm -rf "$_bc_tmp"
+		_bc_status=$(
+			{
+				{ command curl "$@" 3>&- 4>&- && echo 0 >&3 || echo $? >&3; } |
+					{
+						dd bs=65536 iflag=fullblock,count_bytes count="$_bc_max" status=none >&4 3>&- 4>&-
+						if [ "$(($(head -c 1 | wc -c)))" -gt 0 ]; then echo over >&3; fi
+					}
+			} 3>&1
+		)
+	} 4>&1
+	case $_bc_status in *over*) return 0 ;; esac
 	return "$_bc_status"
 }

@@ -321,10 +321,12 @@ func TestBrowserCurlCheckHeadersWinInClusters(t *testing.T) {
 
 // Option values that look like URLs (a Referer, POST data) are not the
 // request's URL: a plain-http page gets no client hints and no br/zstd, and
-// --url's value is the URL.
+// --url's value is the URL. A path or user name that says localhost does not
+// make the host trustworthy; a *.localhost host does.
 func TestBrowserCurlTrustworthinessFromTheURLOnly(t *testing.T) {
 	s := startRawServer(t, false)
-	target := fmt.Sprintf("--resolve team.example:%d:127.0.0.1 http://team.example:%d/", s.port(), s.port())
+	resolve := fmt.Sprintf("--resolve team.example:%d:127.0.0.1 ", s.port())
+	target := resolve + fmt.Sprintf("http://team.example:%d/", s.port())
 	for _, c := range []string{
 		"-s -e https://ref.example/ " + target,
 		"-se https://ref.example/ " + target,
@@ -332,7 +334,9 @@ func TestBrowserCurlTrustworthinessFromTheURLOnly(t *testing.T) {
 		"-s --referer https://ref.example/ " + target,
 		"-s -d https://data.example/ " + target,
 		"-s --data-raw https://data.example/ " + target,
-		fmt.Sprintf("-s --referer https://ref.example/ --resolve team.example:%d:127.0.0.1 --url http://team.example:%d/", s.port(), s.port()),
+		fmt.Sprintf("-s --referer https://ref.example/ %s--url http://team.example:%d/", resolve, s.port()),
+		fmt.Sprintf("-s %shttp://team.example:%d/a.localhost", resolve, s.port()),
+		fmt.Sprintf("-s %shttp://localhost@team.example:%d/", resolve, s.port()),
 	} {
 		_, code := sh(t, "browser_curl "+c)
 		require.Equal(t, 0, code, c)
@@ -342,10 +346,54 @@ func TestBrowserCurlTrustworthinessFromTheURLOnly(t *testing.T) {
 		assert.Equal(t, "gzip, deflate", r.Headers["accept-encoding"], c)
 	}
 
+	_, code := sh(t, fmt.Sprintf("browser_curl -s --resolve team.localhost:%d:127.0.0.1 http://team.localhost:%d/", s.port(), s.port()))
+	require.Equal(t, 0, code)
+	assert.Contains(t, s.take(t)[0].Names, "sec-ch-ua", "*.localhost is trustworthy")
+
 	tlsServer := startRawServer(t, true)
-	_, code := sh(t, fmt.Sprintf("browser_curl -sk -e http://ref.example/ --url https://127.0.0.1:%d/", tlsServer.port()))
+	_, code = sh(t, fmt.Sprintf("browser_curl -sk -e http://ref.example/ --url https://127.0.0.1:%d/", tlsServer.port()))
 	require.Equal(t, 0, code)
 	assert.Contains(t, tlsServer.take(t)[0].Names, "sec-ch-ua")
+}
+
+// browser-curl.sh reads which options take a value from the curl it runs;
+// a curl whose --help all lists none stops the check at source time.
+func TestBrowserCurlOptionValuesFromCurlHelp(t *testing.T) {
+	out, code := sh(t, `printf '%s|%s' "$_bc_short_values" "$_bc_long_values"`)
+	require.Equal(t, 0, code)
+	short, long, ok := strings.Cut(out, "|")
+	require.True(t, ok, out)
+	for _, o := range []string{"H", "e", "x"} {
+		assert.Contains(t, short, o, "-%s takes a value", o)
+	}
+	values := []string{"url", "referer", "data-raw", "header", "proxy"}
+	// Before 8.6.0, curl's help left out --haproxy-clientip's argument.
+	version, _ := exec.Command("curl", "--version").Output()
+	var major, minor int
+	_, err := fmt.Sscanf(string(version), "curl %d.%d", &major, &minor)
+	require.NoError(t, err)
+	if major > 8 || major == 8 && minor >= 6 {
+		values = append(values, "haproxy-clientip")
+	}
+	for _, o := range values {
+		assert.Contains(t, long, " "+o+" ", "--%s takes a value", o)
+	}
+	assert.NotContains(t, short, "s")
+	assert.NotContains(t, long, " silent ")
+
+	fake := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(fake, "curl"), []byte("#!/bin/sh\n[ \"$1\" = --version ] && echo 'Features: gzip'\nexit 0\n"), 0o755)) // #nosec G306 -- test stub must be executable
+	env := chromeEnv(t)
+	env["PATH"] = fake + string(os.PathListSeparator) + os.Getenv("PATH")
+	cmd := exec.Command("sh", "-c", ". "+helperPath(t)+"\necho sourced")
+	cmd.Env = os.Environ()
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	combined, err := cmd.CombinedOutput()
+	require.Error(t, err, "sourcing must fail")
+	assert.Contains(t, string(combined), "curl --help all lists no options")
+	assert.NotContains(t, string(combined), "sourced")
 }
 
 // A Referer set by the check claims a followed link; browser_curl does not
@@ -364,9 +412,10 @@ func TestBrowserCurlRefererDropsSiteAndUser(t *testing.T) {
 	}
 }
 
-// A small gzip response that decodes past the cap ends browser_curl quickly
-// with an error and at most the cap on stdout.
-func TestBrowserCurlCapsDecompressedOutput(t *testing.T) {
+// browser_curl prints the first BROWSER_CURL_MAX_BYTES of the body and exits
+// 0, so a regex scores on that prefix; a small gzip response that decodes
+// far past the cap ends it quickly.
+func TestBrowserCurlPrintsPrefix(t *testing.T) {
 	var bomb bytes.Buffer
 	zw, err := gzip.NewWriterLevel(&bomb, gzip.BestCompression)
 	require.NoError(t, err)
@@ -386,18 +435,44 @@ func TestBrowserCurlCapsDecompressedOutput(t *testing.T) {
 	start := time.Now()
 	out, code := sh(t, "browser_curl -s "+srv.URL+"/")
 	assert.Less(t, time.Since(start), 20*time.Second)
-	assert.NotEqual(t, 0, code)
-	assert.LessOrEqual(t, len(out), 10<<20)
+	assert.Equal(t, 0, code)
+	assert.Equal(t, 10<<20, len(out))
 
-	// Just past the cap fails even when curl finished first; at the cap the
-	// page is whole.
+	// Just past the cap prints the prefix even when curl finished first; at
+	// the cap the page is whole.
 	s := startRawServer(t, false)
 	out, code = sh(t, fmt.Sprintf("BROWSER_CURL_MAX_BYTES=9; browser_curl -s http://127.0.0.1:%d/", s.port()))
-	assert.Equal(t, 23, code)
+	assert.Equal(t, 0, code)
 	assert.Equal(t, "hello GET", out)
 	out, code = sh(t, fmt.Sprintf("BROWSER_CURL_MAX_BYTES=10; browser_curl -s http://127.0.0.1:%d/", s.port()))
 	assert.Equal(t, 0, code)
 	assert.Equal(t, "hello GET ", out)
+}
+
+// Under set -e a failing browser_curl stops the check with curl's status;
+// browser_curl leaves no files behind, whether curl succeeds, fails or the
+// body is cut.
+func TestBrowserCurlErrexitAndNoFiles(t *testing.T) {
+	s := startRawServer(t, false)
+	tmp := t.TempDir()
+	env := chromeEnv(t)
+	env["TMPDIR"] = tmp
+
+	out, code := shEnv(t, env, "set -e\nx=$(browser_curl -sf http://127.0.0.1:1/)\necho after")
+	assert.Equal(t, 7, code, "curl's couldn't-connect status")
+	assert.Equal(t, "", out)
+
+	out, code = shEnv(t, env, fmt.Sprintf("set -e\nx=$(browser_curl -sf http://127.0.0.1:%d/fail)\necho after", s.port()))
+	assert.Equal(t, 22, code, "curl -f's HTTP error status")
+	assert.Equal(t, "", out)
+
+	out, code = shEnv(t, env, fmt.Sprintf("set -e\nx=$(browser_curl -s http://127.0.0.1:%d/)\nprintf '%%s|' \"$x\"\nx=$(BROWSER_CURL_MAX_BYTES=5 browser_curl -s http://127.0.0.1:%d/)\nprintf '%%s' \"$x\"", s.port(), s.port()))
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "hello GET |hello", out)
+
+	entries, err := os.ReadDir(tmp)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "files left in TMPDIR")
 }
 
 // A shell check run by the runner claims checks.ChromeMajor; outside the
@@ -417,11 +492,7 @@ func TestBrowserCurlClaimsChromeMajorInCustomCheck(t *testing.T) {
 	require.True(t, res.Status, res.Error+" "+res.Debug)
 	reqs := s.take(t)
 	require.Len(t, reqs, 1)
-	assert.Contains(t, []string{
-		checks.ChromeUserAgent("Windows NT 10.0; Win64; x64"),
-		checks.ChromeUserAgent("Macintosh; Intel Mac OS X 10_15_7"),
-		checks.ChromeUserAgent("X11; Linux x86_64"),
-	}, reqs[0].Headers["user-agent"])
+	assert.Equal(t, checks.ChromeUserAgent("X11; Linux x86_64"), reqs[0].Headers["user-agent"])
 
 	cmd := exec.Command("sh", "-c", ". "+helper)
 	cmd.Env = []string{"PATH=/usr/bin:/bin"}
