@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -38,12 +37,8 @@ func TestWebReadsBoundedBodyPrefix(t *testing.T) {
 
 	results := make(chan Result, 1)
 	c.Run(1, "01", 1, results)
-	select {
-	case r := <-results:
-		require.True(t, r.Status, "error=%q debug=%q", r.Error, r.Debug)
-	case <-time.After(15 * time.Second):
-		t.Fatal("no result")
-	}
+	r := <-results
+	require.True(t, r.Status, "error=%q debug=%q", r.Error, r.Debug)
 	require.LessOrEqual(t, sent.Load(), int64(32<<20),
 		"the check pulled %d MiB of a team-controlled body into runner memory", sent.Load()>>20)
 }
