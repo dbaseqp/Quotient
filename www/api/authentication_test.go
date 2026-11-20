@@ -84,7 +84,7 @@ func TestLogoutEndpoint(t *testing.T) {
 // TestLogoutMethodRestriction verifies that only POST is accepted on /api/logout.
 func TestLogoutMethodRestriction(t *testing.T) {
 	mux := http.NewServeMux()
-	a := &API{conf: &config.ConfigSettings{}}
+	a := &API{conf: config.NewLive(&config.ConfigSettings{})}
 
 	// Register only POST, matching www/router.go.
 	mux.HandleFunc("POST /api/logout", a.Logout)

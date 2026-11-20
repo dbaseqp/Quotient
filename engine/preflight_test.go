@@ -64,7 +64,7 @@ func newPreflightEngine(t *testing.T, redis *testutil.RedisContainer, pg *testut
 	t.Helper()
 	se := NewTestEngine(t, redis, pg, 3)
 	svc := &mockRunner{Service: checks.Service{Display: "web", Name: "box01-web", ServiceType: "Mock", Points: 10}}
-	se.Config.Box = []config.Box{{Name: "box01", IP: "10.0.0.1", Runners: []checks.Runner{svc}}}
+	se.Config.Current().Box = []config.Box{{Name: "box01", IP: "10.0.0.1", Runners: []checks.Runner{svc}}}
 	return se
 }
 
@@ -185,7 +185,7 @@ func TestPreflight_StoresRoundWithoutResults(t *testing.T) {
 
 	pg.CreateTestTeam(t, "Team Preflight Timeout", "01")
 	se := newPreflightEngine(t, redis, pg)
-	se.Config.MiscSettings.Delay = 2
+	se.Config.Current().MiscSettings.Delay = 2
 
 	// No runner answers, so the round times out with nothing collected.
 	require.NoError(t, se.preflight())
