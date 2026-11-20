@@ -28,7 +28,7 @@ func TestRvb_EnqueueReadFailureRetriesRound(t *testing.T) {
 
 	se := NewTestEngine(t, redis, pg, 3)
 	svc := &mockRunner{Service: checks.Service{Display: "web", Name: "box01-web", ServiceType: "Mock", Points: 10}}
-	se.Config.Box = []config.Box{{Name: "box01", IP: "192.0.2.1", Runners: []checks.Runner{svc}}}
+	se.Config.Current().Box = []config.Box{{Name: "box01", IP: "192.0.2.1", Runners: []checks.Runner{svc}}}
 	fakeRunner(t, redis, nil)
 
 	pg.Exec(t, "ALTER TABLE team_service_check_schemas RENAME TO team_service_check_schemas_away")
