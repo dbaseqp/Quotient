@@ -46,7 +46,7 @@ func TestProcessCollectedResults_SavesRound(t *testing.T) {
 		},
 	}
 
-	engine.processCollectedResults(results)
+	engine.processCollectedResults(engine.Config.Current(), results)
 
 	// Verify round was saved
 	round, err := pg.DB.GetLastRound()
@@ -83,19 +83,19 @@ func TestProcessCollectedResults_TracksUptime(t *testing.T) {
 
 	// Round 1: pass
 	engine.CurrentRound = 1
-	engine.processCollectedResults([]checks.Result{
+	engine.processCollectedResults(engine.Config.Current(), []checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: true, Points: 10, RoundID: 1},
 	})
 
 	// Round 2: fail
 	engine.CurrentRound = 2
-	engine.processCollectedResults([]checks.Result{
+	engine.processCollectedResults(engine.Config.Current(), []checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: false, Points: 0, RoundID: 2},
 	})
 
 	// Round 3: pass
 	engine.CurrentRound = 3
-	engine.processCollectedResults([]checks.Result{
+	engine.processCollectedResults(engine.Config.Current(), []checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: true, Points: 10, RoundID: 3},
 	})
 
@@ -124,7 +124,7 @@ func TestProcessCollectedResults_TriggersSLA(t *testing.T) {
 	// Fail 3 times in a row - should trigger SLA
 	for round := uint(1); round <= 3; round++ {
 		engine.CurrentRound = round
-		engine.processCollectedResults([]checks.Result{
+		engine.processCollectedResults(engine.Config.Current(), []checks.Result{
 			{TeamID: team.ID, ServiceName: "failing-svc", Status: false, Points: 0, RoundID: round},
 		})
 	}
@@ -156,17 +156,17 @@ func TestProcessCollectedResults_SLAResetsOnPass(t *testing.T) {
 
 	// Fail twice
 	engine.CurrentRound = 1
-	engine.processCollectedResults([]checks.Result{
+	engine.processCollectedResults(engine.Config.Current(), []checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: false, RoundID: 1},
 	})
 	engine.CurrentRound = 2
-	engine.processCollectedResults([]checks.Result{
+	engine.processCollectedResults(engine.Config.Current(), []checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: false, RoundID: 2},
 	})
 
 	// Pass once - should reset counter
 	engine.CurrentRound = 3
-	engine.processCollectedResults([]checks.Result{
+	engine.processCollectedResults(engine.Config.Current(), []checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: true, Points: 10, RoundID: 3},
 	})
 
@@ -175,11 +175,11 @@ func TestProcessCollectedResults_SLAResetsOnPass(t *testing.T) {
 
 	// Fail twice more - still not at threshold
 	engine.CurrentRound = 4
-	engine.processCollectedResults([]checks.Result{
+	engine.processCollectedResults(engine.Config.Current(), []checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: false, RoundID: 4},
 	})
 	engine.CurrentRound = 5
-	engine.processCollectedResults([]checks.Result{
+	engine.processCollectedResults(engine.Config.Current(), []checks.Result{
 		{TeamID: team.ID, ServiceName: "svc", Status: false, RoundID: 5},
 	})
 
@@ -212,7 +212,7 @@ func TestProcessCollectedResults_MultipleTeamsIndependent(t *testing.T) {
 	// Team 1 fails, Team 2 passes - over 3 rounds
 	for round := uint(1); round <= 3; round++ {
 		engine.CurrentRound = round
-		engine.processCollectedResults([]checks.Result{
+		engine.processCollectedResults(engine.Config.Current(), []checks.Result{
 			{TeamID: team1.ID, ServiceName: "svc", Status: false, RoundID: round},
 			{TeamID: team2.ID, ServiceName: "svc", Status: true, Points: 10, RoundID: round},
 		})
@@ -290,7 +290,7 @@ func TestRvb_EnqueuesTasksAndCollectsResults(t *testing.T) {
 			Points:      10,
 		},
 	}
-	engine.Config.Box = []config.Box{
+	engine.Config.Current().Box = []config.Box{
 		{
 			Name:    "box01",
 			IP:      "10.0.0.1",
@@ -342,7 +342,7 @@ func TestRvb_StopsOnResetPublishedToEngineRedis(t *testing.T) {
 
 	engine := NewTestEngine(t, redis, pg, 3)
 	mockSvc := &mockRunner{Service: checks.Service{Display: "web", Name: "box01-web", ServiceType: "Mock", Points: 10}}
-	engine.Config.Box = []config.Box{{Name: "box01", IP: "10.0.0.1", Runners: []checks.Runner{mockSvc}}}
+	engine.Config.Current().Box = []config.Box{{Name: "box01", IP: "10.0.0.1", Runners: []checks.Runner{mockSvc}}}
 
 	// Once rvb is subscribed, publish a reset on the engine's own Redis, then
 	// return one result so the collection loop checks for events again.
@@ -397,7 +397,7 @@ func TestRvb_HandlesMultipleServices(t *testing.T) {
 	sshSvc := &mockRunner{Service: checks.Service{Display: "ssh", Name: "box01-ssh", ServiceType: "Mock", Points: 5}}
 	dnsSvc := &mockRunner{Service: checks.Service{Display: "dns", Name: "box01-dns", ServiceType: "Mock", Points: 15}}
 
-	engine.Config.Box = []config.Box{
+	engine.Config.Current().Box = []config.Box{
 		{
 			Name:    "box01",
 			IP:      "10.0.0.1",
@@ -457,15 +457,15 @@ func TestEnsureCredentialsSeeded_HotReload(t *testing.T) {
 
 	se := NewTestEngine(t, redis, pg, 3)
 	se.configPath = filepath.Join(dir, "event.conf")
-	se.Config.Team = []config.Team{
+	se.Config.Current().Team = []config.Team{
 		{Name: "ReloadTeam1", Pw: "pw1"},
 		{Name: "ReloadTeam2", Pw: "pw2"},
 	}
-	se.Config.CredlistSettings.Credlist = []config.Credlist{
+	se.Config.Current().CredlistSettings.Credlist = []config.Credlist{
 		{CredlistName: "Linux", CredlistPath: "reload_linux.credlist"},
 	}
 
-	require.NoError(t, pg.DB.AddTeams(se.Config))
+	require.NoError(t, pg.DB.AddTeams(se.Config.Current()))
 	require.NoError(t, se.EnsureCredentialsSeeded())
 
 	teamsByName := func() map[string]db.TeamSchema {
@@ -505,12 +505,12 @@ func TestEnsureCredentialsSeeded_HotReload(t *testing.T) {
 	require.NoError(t, os.WriteFile(linuxCreds, []byte("alice,pass1_updated\ncharlie,pass3\n"), 0o600))
 	winCreds := filepath.Join(credlistsDir, "reload_win.credlist")
 	require.NoError(t, os.WriteFile(winCreds, []byte("admin,winpass\n"), 0o600))
-	se.Config.CredlistSettings.Credlist = append(se.Config.CredlistSettings.Credlist,
+	se.Config.Current().CredlistSettings.Credlist = append(se.Config.Current().CredlistSettings.Credlist,
 		config.Credlist{CredlistName: "Windows", CredlistPath: "reload_win.credlist"},
 	)
-	se.Config.Team = append(se.Config.Team, config.Team{Name: "ReloadTeam3", Pw: "pw3"})
+	se.Config.Current().Team = append(se.Config.Current().Team, config.Team{Name: "ReloadTeam3", Pw: "pw3"})
 
-	require.NoError(t, pg.DB.AddTeams(se.Config))
+	require.NoError(t, pg.DB.AddTeams(se.Config.Current()))
 	require.NoError(t, se.EnsureCredentialsSeeded())
 
 	teams = teamsByName()
@@ -573,7 +573,7 @@ func TestRvb_IgnoresStaleResultsFromRestartedRound(t *testing.T) {
 	engine.CurrentRound = 1
 
 	svc := &mockRunner{Service: checks.Service{Display: "web", Name: "box01-web", ServiceType: "Mock", Points: 10}}
-	engine.Config.Box = []config.Box{{Name: "box01", IP: "10.0.0.1", Runners: []checks.Runner{svc}}}
+	engine.Config.Current().Box = []config.Box{{Name: "box01", IP: "10.0.0.1", Runners: []checks.Runner{svc}}}
 
 	// A failed result left behind by a round that was cut short by a restart.
 	stale, _ := json.Marshal(checks.Result{TeamID: team.ID, ServiceName: "box01-web", ServiceType: "Mock", RoundID: 1, Status: false})

@@ -13,11 +13,11 @@ import (
 // dereference a nil mutex.
 func TestCredentialsUnknownTeam(t *testing.T) {
 	se := &ScoringEngine{
-		Config: &config.ConfigSettings{
+		Config: config.NewLive(&config.ConfigSettings{
 			CredlistSettings: config.CredlistConfig{
 				Credlist: []config.Credlist{{CredlistPath: "linux.credlist"}},
 			},
-		},
+		}),
 		credentialsMutex: map[uint]*sync.Mutex{1: {}},
 	}
 

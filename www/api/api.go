@@ -18,12 +18,12 @@ import (
 )
 
 type API struct {
-	conf *config.ConfigSettings
+	conf *config.Live
 	eng  *engine.ScoringEngine
 	oidc *oidcState
 }
 
-func NewAPI(c *config.ConfigSettings, e *engine.ScoringEngine) *API {
+func NewAPI(c *config.Live, e *engine.ScoringEngine) *API {
 	return &API{conf: c, eng: e, oidc: nil}
 }
 
