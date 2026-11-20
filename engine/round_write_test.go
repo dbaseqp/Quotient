@@ -94,15 +94,23 @@ func TestRvb_SLAWriteFailureKeepsPenalty(t *testing.T) {
 
 // A round ID that is already stored (a commit whose reply was lost, or a
 // counter that failed to load at startup) is not retried forever: the failed
-// write reloads the counter from the database and the next round follows it.
+// write reloads the counter from the database, announces the stored round,
+// and the next round follows it.
 func TestRvb_StoredRoundIDReloadsCounter(t *testing.T) {
 	se, pg, team := roundWriteEngine(t, 3)
 
 	require.NoError(t, se.rvb())
+	roundCh, unsubscribe := se.SubscribeRounds()
+	defer unsubscribe()
 	se.CurrentRound = 1
 	require.Error(t, se.rvb())
 	assert.Equal(t, uint(2), se.CurrentRound)
 	assert.Equal(t, 1, se.UptimePerService[team.ID]["box01-web"].TotalChecks, "the rejected round is not counted")
+	select {
+	case <-roundCh:
+	default:
+		t.Fatal("the stored round was not announced")
+	}
 
 	require.NoError(t, se.rvb())
 	round, err := pg.DB.GetLastRound()

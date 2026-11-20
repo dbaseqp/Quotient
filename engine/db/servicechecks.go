@@ -303,10 +303,8 @@ func (d *DB) GetServiceScores() ([]ServiceScoreData, error) {
 	return results, nil
 }
 
-// LoadSLAs returns each team's current run of failed checks per service: the
-// failures after its last pass or last stored SLA violation, both of which
-// reset the streak. It reads the stored violations rather than replaying the
-// threshold, which may have changed since they were written.
+// LoadSLAs returns each team's failures per service since its last pass or
+// stored SLA violation; stored violations, not the current SlaThreshold, mark the resets.
 func (d *DB) LoadSLAs() (map[uint]map[string]int, error) {
 	rows, err := d.db.Raw(`
 		WITH last_reset AS (

@@ -665,11 +665,14 @@ func (se *ScoringEngine) rvb() error {
 		return err
 	}
 	if err := se.processCollectedResults(conf, results); err != nil {
-		// Re-read the round counter and streaks so the round loop's retry
-		// continues from what was stored: the same round ID after a rollback,
-		// the next one if the commit landed but its reply was lost.
+		// The write may have committed before erroring; reload so the retry
+		// resumes from what was stored, and announce a round that was stored.
+		attempted := se.CurrentRound
 		if loadErr := se.loadScoreState(); loadErr != nil {
 			slog.Error("failed to reload scoring state", "error", loadErr)
+		}
+		if se.CurrentRound > attempted {
+			se.announceRoundFinish()
 		}
 		return err
 	}
