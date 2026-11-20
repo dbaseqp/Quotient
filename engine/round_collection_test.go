@@ -80,7 +80,7 @@ func collectSetup(t *testing.T, teams int, services ...string) (*ScoringEngine, 
 	for _, s := range services {
 		runners = append(runners, &mockRunner{Service: checks.Service{Display: s, Name: "box01-" + s, ServiceType: "Mock", Points: 10}})
 	}
-	se.Config.Box = []config.Box{{Name: "box01", IP: "192.0.2.1", Runners: runners}}
+	se.Config.Current().Box = []config.Box{{Name: "box01", IP: "192.0.2.1", Runners: runners}}
 	return se, redis, pg, created
 }
 
@@ -98,9 +98,9 @@ func lastRoundChecks(t *testing.T, pg *testutil.PostgresContainer, teamID uint) 
 }
 
 // A task whose result never comes back (runner crashed after BLPOP, result
-// RPUSH failed) is left unscored; it must not erase every other team's
-// collected results for the round, nor count against the team it belonged to.
-func TestRvb_MissingResultIsUnscoredAndRoundKept(t *testing.T) {
+// RPUSH failed) discards the whole round: if one team can't be scored, no
+// team is, so the team whose result did arrive is not scored either.
+func TestRvb_MissingResultDiscardsRoundForEveryTeam(t *testing.T) {
 	se, redis, pg, teams := collectSetup(t, 2, "web")
 	up, lost := teams[0], teams[1]
 
@@ -113,40 +113,30 @@ func TestRvb_MissingResultIsUnscoredAndRoundKept(t *testing.T) {
 
 	require.NoError(t, se.rvb())
 
-	round, upChecks := lastRoundChecks(t, pg, up.ID)
-	require.Equal(t, uint(1), round.ID, "round 1 is stored with the results that arrived")
-	require.Len(t, upChecks, 1)
-	assert.True(t, upChecks[0].Result)
-	assert.Equal(t, 1, se.UptimePerService[up.ID]["box01-web"].TotalChecks)
-
-	_, lostChecks := lastRoundChecks(t, pg, lost.ID)
-	assert.Empty(t, lostChecks, "a lost result is not stored as a check")
-	assert.Zero(t, se.UptimePerService[lost.ID]["box01-web"].TotalChecks, "nor counted in uptime")
-	assert.Zero(t, se.SlaPerService[lost.ID]["box01-web"], "nor in the SLA streak")
-}
-
-// When no result at all arrives, the runners or Redis are down: the round is
-// not scored, so an infrastructure outage costs no team points or SLAs.
-func TestRvb_NoResultsAtAllStoresNoRound(t *testing.T) {
-	se, redis, pg, _ := collectSetup(t, 2, "web")
-	collectRunner(t, redis, func(Task, func(checks.Result)) {})
-
-	require.NoError(t, se.rvb())
-
 	round, err := pg.DB.GetLastRound()
 	require.NoError(t, err)
-	assert.Zero(t, round.ID)
+	assert.Zero(t, round.ID, "no round is stored")
+	assert.Zero(t, se.UptimePerService[up.ID]["box01-web"].TotalChecks, "the reporting team is not scored")
 	assert.Empty(t, se.SlaPerService)
 }
 
-// A result pushed shortly before the deadline is collected. BLPOP's timeout
-// is whole seconds, which used to end collection up to a second early.
-func TestRvb_CollectsResultPushedJustBeforeDeadline(t *testing.T) {
-	se, redis, pg, teams := collectSetup(t, 1, "fast", "slow")
+// A result pushed shortly before the deadline is collected, and so is the
+// timeout result a runner pushes at the deadline for a check still running.
+// BLPOP's timeout is whole seconds, which used to end collection up to a
+// second early and discard the round.
+func TestRvb_CollectsResultsUpToDeadline(t *testing.T) {
+	se, redis, pg, teams := collectSetup(t, 1, "fast", "slow", "hung")
 
 	collectRunner(t, redis, func(task Task, push func(checks.Result)) {
-		if task.ServiceName == "box01-slow" {
+		switch task.ServiceName {
+		case "box01-slow":
 			time.Sleep(time.Until(task.Deadline.Add(-400 * time.Millisecond)))
+		case "box01-hung":
+			time.Sleep(time.Until(task.Deadline))
+			r := passed(task)
+			r.Status, r.Points, r.Error = false, 0, "timeout"
+			push(r)
+			return
 		}
 		push(passed(task))
 	})
@@ -154,8 +144,13 @@ func TestRvb_CollectsResultPushedJustBeforeDeadline(t *testing.T) {
 	require.NoError(t, se.rvb())
 
 	_, mine := lastRoundChecks(t, pg, teams[0].ID)
-	require.Len(t, mine, 2)
+	require.Len(t, mine, 3)
 	for _, c := range mine {
+		if c.ServiceName == "box01-hung" {
+			assert.False(t, c.Result)
+			assert.Equal(t, "timeout", c.Error)
+			continue
+		}
 		assert.True(t, c.Result, "%s result arrived before the deadline", c.ServiceName)
 	}
 }

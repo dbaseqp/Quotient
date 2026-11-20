@@ -762,7 +762,7 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 		return nil, err
 	}
 
-	// expected holds the key of every enqueued task. A result is accepted only
+	// expected holds the key of every task of the round. A result is accepted only
 	// for a key still in it, so a duplicate or stray result (e.g. from a check
 	// the previous engine process started under the same round ID) can neither
 	// be counted twice nor crowd out another team's result.
@@ -855,9 +855,10 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 				slog.Error("failed to marshal service task", "error", err)
 				continue
 			}
+			// A task whose RPUSH failed can never report, so its key stays
+			// expected and the round is discarded at the deadline.
 			if err := se.RedisClient.RPush(ctx, "tasks", payload).Err(); err != nil {
 				slog.Error("failed to enqueue service task", "team", team.ID, "service", r.GetName(), "error", err)
-				continue
 			}
 			expected[resultKey{team.ID, r.GetName()}] = struct{}{}
 		}
@@ -917,15 +918,13 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 	}
 
 	if len(expected) > 0 {
-		// A check the runner gave up on still reports a timeout result, so a
-		// missing one means a runner or Redis lost it. That says nothing about
-		// the team's service: leave it unscored (no points, no uptime or SLA
-		// change) rather than discard the round or count it as down.
+		// If one team can't be scored, no team is: discard the whole round.
 		missing := make([]string, 0, len(expected))
 		for key := range expected {
 			missing = append(missing, fmt.Sprintf("team %d %s", key.teamID, key.service))
 		}
-		slog.Warn("Checks without a result by the round deadline are left unscored", "missing", missing, "collected", len(results), "round", roundID, "preflight", preflight)
+		slog.Warn("Checks without a result by the round deadline, discarding round", "missing", missing, "collected", len(results), "round", roundID, "preflight", preflight)
+		return []checks.Result{}, nil
 	}
 
 	return results, nil

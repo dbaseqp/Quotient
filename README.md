@@ -271,7 +271,7 @@ Attempts = 1                # Tries before a check fails (default: 1)
 AttemptDelay = 0            # Seconds to wait before retrying a failed attempt (default: 0)
 ```
 
-Every attempt, plus the waits between them, must fit in the shortest round: `Attempts * Timeout + (Attempts - 1) * AttemptDelay` must be less than `Delay - Jitter`. A check still running at the round deadline is reported failed with a `timeout` error. A check whose result never arrives (a runner crashed or Redis lost it) is left unscored for that round, with no points and no effect on uptime or SLAs, and the rest of the round is scored as usual; if no result arrives at all, the round is not stored.
+Every attempt, plus the waits between them, must fit in the shortest round: `Attempts * Timeout + (Attempts - 1) * AttemptDelay` must be less than `Delay - Jitter`. A check still running at the round deadline is reported failed with a `timeout` error. If any check's result never arrives (a runner crashed or Redis lost it), the whole round is discarded for every team: if one team can't be scored, no team is.
 
 A round waits for a missing result until its deadline, so it ends after the next round was due. The next round then starts 5 seconds after the previous round's `round_finish` rather than at once, which gives Divisor time to rotate the runners' source addresses. Otherwise the rotation would cut off the new round's first checks, and they would time out against services that are up.
 
