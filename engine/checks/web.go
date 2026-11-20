@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -30,6 +30,20 @@ type urlData struct {
 	Diff        int    `toml:",omitempty"`
 	Regex       string `toml:",omitempty"`
 	CompareFile string `toml:",omitempty"` // TODO implement
+}
+
+// webAccept is the Accept header a browser sends for a top-level navigation.
+const webAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+
+var webAcceptLanguages = []string{
+	"en-US,en;q=0.9",
+	"en-GB,en;q=0.9,en-US;q=0.8",
+	"en-US,en;q=0.8",
+	"en,en-US;q=0.9",
+}
+
+func randomAcceptLanguage() string {
+	return webAcceptLanguages[rand.IntN(len(webAcceptLanguages))] // #nosec G404 -- non-crypto selection of header value
 }
 
 // parseProxy substitutes the team identifier for "_", then validates the URL. Errors must not echo the
@@ -56,7 +70,7 @@ func parseProxy(raw, identifier string) (*url.URL, error) {
 
 func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		u := c.Url[rand.Intn(len(c.Url))] // #nosec G404 -- non-crypto selection of URL to test
+		u := c.Url[rand.IntN(len(c.Url))] // #nosec G404 -- non-crypto selection of URL to test
 
 		// random user agent
 		ua := uarand.GetRandom()
@@ -103,6 +117,8 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		}
 
 		req.Header.Set("User-Agent", ua)
+		req.Header.Set("Accept", webAccept)
+		req.Header.Set("Accept-Language", randomAcceptLanguage())
 
 		// Store request info for timeout debugging
 		checkResult.Debug = fmt.Sprintf("Attempting GET %s", requestURL)
