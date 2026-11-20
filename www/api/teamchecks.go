@@ -51,6 +51,9 @@ func (a *API) GetTeamChecks(w http.ResponseWriter, r *http.Request) {
 
 // UpdateTeamChecks updates per-team service check states
 func (a *API) UpdateTeamChecks(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
 	type update struct {
 		TeamID      uint   `json:"team_id"`
 		ServiceName string `json:"service_name"`
