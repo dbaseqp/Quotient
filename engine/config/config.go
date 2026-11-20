@@ -122,6 +122,8 @@ type MiscConfig struct {
 
 	StartPaused bool
 
+	TeamCount int
+
 	// Round settings
 	Delay  int
 	Jitter int

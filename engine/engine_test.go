@@ -508,6 +508,7 @@ func TestEnsureCredentialsSeeded_HotReload(t *testing.T) {
 	se.Config.Current().CredlistSettings.Credlist = append(se.Config.Current().CredlistSettings.Credlist,
 		config.Credlist{CredlistName: "Windows", CredlistPath: "reload_win.credlist"},
 	)
+	se.Config.Current().MiscSettings.TeamCount = 2
 	se.Config.Current().Team = append(se.Config.Current().Team, config.Team{Name: "ReloadTeam3", Pw: "pw3"})
 
 	require.NoError(t, pg.DB.AddTeams(se.Config.Current()))
@@ -516,6 +517,8 @@ func TestEnsureCredentialsSeeded_HotReload(t *testing.T) {
 	teams = teamsByName()
 	team3 := teams["ReloadTeam3"]
 	require.NotZero(t, team3.ID)
+	require.NotZero(t, teams["team01"].ID)
+	require.NotZero(t, teams["team02"].ID)
 
 	// Team 1 keeps its PCR-rotated password for alice, gets charlie, and drops removed bob
 	assert.Equal(t, map[string]string{
