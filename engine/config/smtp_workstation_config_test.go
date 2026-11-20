@@ -10,7 +10,7 @@ import (
 )
 
 // The runner only has the check definition the engine serialises, so the
-// event's workstation-name templates and salt must survive that trip.
+// event's workstation-name templates and seed must survive that trip.
 func TestWorkstationNamesReachTheSMTPRunner(t *testing.T) {
 	conf := attemptTestConfig(120, 10, 30, 1, 0, checks.Service{})
 	conf.Box[0].Smtp = []*checks.Smtp{{Service: conf.Box[0].Tcp[0].Service}}

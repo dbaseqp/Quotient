@@ -18,7 +18,8 @@ func TestWorkstationNameTemplatesValidated(t *testing.T) {
 }
 
 // workstationSeeds loads a config with the given WorkstationSeed and returns the pool seed that
-// each check sending a client name (SMB, SMTP) carries to its runner.
+// each check sending a client name (SMB, SMTP) carries to its runner. Each must be the seed the
+// config resolved.
 func workstationSeeds(t *testing.T, seed string) []string {
 	t.Helper()
 	conf := attemptTestConfig(120, 10, 30, 1, 0, checks.Service{})
@@ -35,6 +36,7 @@ func workstationSeeds(t *testing.T, seed string) []string {
 		var fields map[string]any
 		require.NoError(t, json.Unmarshal(data, &fields))
 		if s, ok := fields["WorkstationSeed"].(string); ok {
+			assert.Equal(t, conf.MiscSettings.WorkstationSeed, s, "config and checks agree on the seed")
 			seeds = append(seeds, s)
 		}
 	}
@@ -53,7 +55,7 @@ func TestWorkstationSeedReachesTheRunners(t *testing.T) {
 	random := workstationSeeds(t, "")
 	for _, s := range random {
 		assert.NotEqual(t, "Test Event", s, "the event name is public: it must not seed the pools")
-		assert.Len(t, s, 64, "no seed configured: a random one")
+		assert.Regexp(t, `^[A-Z2-7]{26}$`, s, "no seed configured: a random one from crypto/rand.Text")
 	}
 	assert.Equal(t, random, workstationSeeds(t, ""), "the random seed is stable within the process")
 }

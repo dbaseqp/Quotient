@@ -1,32 +1,32 @@
 package checks
 
 import (
-	crand "crypto/rand"
-	"encoding/hex"
-	"hash/fnv"
-	"log/slog"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/binary"
 	"math/rand/v2"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // workstationNameAlphabet is the character set of the random suffix Windows gives new computers (DESKTOP-XXXXXXX).
 const workstationNameAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-func fnv64a(s string) uint64 {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(s))
-	return h.Sum64()
+// seededUint64 is the first 8 bytes, big-endian, of HMAC-SHA256(seed, msg).
+func seededUint64(seed, msg string) uint64 {
+	mac := hmac.New(sha256.New, []byte(seed))
+	_, _ = mac.Write([]byte(msg))
+	return binary.BigEndian.Uint64(mac.Sum(nil))
 }
 
 // workstationPool is a team's fixed set of 4-6 workstation names for the whole event: up to
 // size-2 names from the event's workstation-name templates (MiscSettings.WorkstationNames, "_"
 // replaced by the team identifier), the rest Windows-style DESKTOP-XXXXXXX names. It depends only
-// on seed (the event's secret WorkstationSeed), the team and the templates, so every runner
-// builds the same pool and a team cannot compute it without the seed.
+// on seed (the event's WorkstationSeed), the team and the templates, so every runner builds the
+// same pool. Every value comes from HMAC-SHA256 keyed by the seed: names observed for some teams
+// reveal nothing about other teams' pools to anyone without the seed.
 func workstationPool(seed, team string, templates []string) []string {
-	h := fnv64a(seed + "/" + team)
+	h := seededUint64(seed, team)
 	size := 4 + int(h%3)
 	n := min(len(templates), size-2)
 	pool := make([]string, 0, size)
@@ -34,7 +34,7 @@ func workstationPool(seed, team string, templates []string) []string {
 		pool = append(pool, strings.ReplaceAll(templates[((h>>8)+uint64(i))%uint64(len(templates))], "_", team))
 	}
 	for i := range size - n {
-		x := fnv64a(seed + "/" + team + "/desktop/" + strconv.Itoa(i))
+		x := seededUint64(seed, team+"|desktop|"+strconv.Itoa(i))
 		var b [7]byte
 		for j := range b {
 			b[j] = workstationNameAlphabet[x%uint64(len(workstationNameAlphabet))]
@@ -45,19 +45,10 @@ func workstationPool(seed, team string, templates []string) []string {
 	return pool
 }
 
-// processWorkstationSeed seeds the pools when MiscSettings.WorkstationSeed is empty. It lasts for
-// the process, so config reloads keep the pools, but a restart gives every team new names.
-var processWorkstationSeed = sync.OnceValue(func() string {
-	var b [32]byte
-	_, _ = crand.Read(b[:]) // never fails: crypto/rand.Read aborts the program instead
-	slog.Warn("MiscSettings.WorkstationSeed is not set: the teams' workstation names change on every engine restart")
-	return hex.EncodeToString(b[:])
-})
-
 // workstationNaming holds the event-wide inputs of the workstation-name pool, for checks that
 // send a client host name. The config sets them; they reach the runner in the check's JSON.
 type workstationNaming struct {
-	WorkstationSeed  string   `toml:"-"` // Secret seed of each team's workstation-name pool
+	WorkstationSeed  string   `toml:"-"` // Seed of each team's workstation-name pool
 	WorkstationNames []string `toml:"-"` // MiscSettings.WorkstationNames templates
 }
 
@@ -68,11 +59,8 @@ func (w *workstationNaming) workstation(team string) string {
 }
 
 // SetWorkstationNaming gives the check the event-wide inputs of the workstation-name pool: the
-// configured seed (the per-process random seed when it is empty) and the name templates.
+// seed the config resolved and the name templates.
 func (w *workstationNaming) SetWorkstationNaming(seed string, templates []string) {
-	if seed == "" {
-		seed = processWorkstationSeed()
-	}
 	w.WorkstationSeed = seed
 	w.WorkstationNames = templates
 }
