@@ -762,7 +762,6 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 		return nil, err
 	}
 
-	runners := 0
 	ctx, cancel := context.WithTimeout(context.Background(), time.Until(se.NextRoundStartTime))
 	defer cancel()
 
@@ -787,6 +786,7 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 		}
 	}
 
+	var payloads []any
 	for _, team := range teams {
 		if !team.Active {
 			continue
@@ -795,9 +795,8 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 			if !r.Runnable() {
 				continue
 			}
-			// A failed read says nothing about whether the team's check should run. Skipping it would
-			// store the round without that check (a Postgres restart at round start dropped 23 of 64
-			// checks this way), so give up on the round and let the loop retry it under the same ID.
+			// A failed read must fail the round (the loop retries the same ID); skipping the check would
+			// store the round without it.
 			enabled, err := se.DB.IsTeamServiceEnabled(team.ID, r.GetName())
 			if err != nil {
 				return nil, fmt.Errorf("check service state for team %d %s: %w", team.ID, r.GetName(), err)
@@ -852,10 +851,14 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 				slog.Error("failed to marshal service task", "error", err)
 				continue
 			}
-			se.RedisClient.RPush(ctx, "tasks", payload)
-			runners++
+			payloads = append(payloads, payload)
 		}
 	}
+	// Queue the round only once every read succeeded, so a failed read leaves nothing for the runners.
+	if len(payloads) > 0 {
+		se.RedisClient.RPush(ctx, "tasks", payloads...)
+	}
+	runners := len(payloads)
 	slog.Info("Enqueued checks", "count", runners)
 
 	results := make([]checks.Result, 0, runners)

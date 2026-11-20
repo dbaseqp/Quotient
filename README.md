@@ -273,7 +273,7 @@ AttemptDelay = 0            # Seconds to wait before retrying a failed attempt (
 
 Every attempt, plus the waits between them, must fit in the shortest round: `Attempts * Timeout + (Attempts - 1) * AttemptDelay` must be less than `Delay - Jitter`.
 
-If the database cannot be read while a round enqueues its checks (for example, Postgres restarting at the start of the round), the round is not run. It is retried under the same round ID at the next round time, so the round is never stored with some checks silently missing.
+If the database cannot be read while a round enqueues its checks (for example, Postgres restarting at the start of the round), none of the round's checks are queued. The round is retried under the same round ID at the next round time, so it is never stored with some checks missing.
 
 A round waits for a missing result until its deadline, so it ends after the next round was due. The next round then starts 5 seconds after the previous round's `round_finish` rather than at once, which gives Divisor time to rotate the runners' source addresses. Otherwise the rotation would cut off the new round's first checks, and they would time out against services that are up.
 
