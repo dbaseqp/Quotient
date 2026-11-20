@@ -4,6 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dbaseqp/Quotient/engine/config"
@@ -114,4 +117,88 @@ func TestLogoutMethodRestriction(t *testing.T) {
 		// MaxAge -1 tells the browser to delete the cookie immediately.
 		assert.Equal(t, -1, found.MaxAge, "cookie must have MaxAge=-1 to force deletion")
 	})
+}
+
+func loginCookie(t *testing.T, a *API, user, pw string) *http.Cookie {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	body := `{"username":"` + user + `","password":"` + pw + `"}`
+	a.Login(rec, httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body)))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == COOKIENAME {
+			return c
+		}
+	}
+	t.Fatal("Login set no session cookie")
+	return nil
+}
+
+func authenticateWith(a *API, cookie *http.Cookie) (Identity, bool) {
+	req := httptest.NewRequest(http.MethodGet, "/api/engine", nil)
+	req.AddCookie(cookie)
+	return a.Authenticate(httptest.NewRecorder(), req)
+}
+
+// Rotating a leaked local password must end the sessions issued under it.
+func TestPasswordChangeInvalidatesLocalSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "event.conf")
+	writeConfig := func(adminPw string) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(path, []byte(`[RequiredSettings]
+EventName = "Session Test"
+EventType = "rvb"
+DBConnectURL = "postgres://x:x@localhost:5432/x"
+BindAddress = "127.0.0.1"
+
+[[admin]]
+name = "admin"
+pw = "`+adminPw+`"
+
+[[admin]]
+name = "other"
+pw = "other-password"
+`), 0o600))
+	}
+	writeConfig("leaked-password")
+	live := &config.Live{}
+	require.NoError(t, live.Reload(path))
+	a := NewAPI(live, nil)
+	stolen := loginCookie(t, a, "admin", "leaked-password")
+	untouched := loginCookie(t, a, "other", "other-password")
+
+	id, ok := authenticateWith(a, stolen)
+	require.True(t, ok, "control: a fresh cookie authenticates")
+	require.Equal(t, []string{"admin"}, id.Roles)
+
+	writeConfig("new-password")
+	require.NoError(t, live.Reload(path)) // what the config watcher calls
+
+	id, ok = authenticateWith(a, stolen)
+	assert.False(t, ok, "cookie issued before the password change still authenticates as %q with roles %v", id.Username, id.Roles)
+
+	_, ok = authenticateWith(a, untouched)
+	assert.True(t, ok, "another account's session must survive the change")
+
+	_, ok = authenticateWith(a, loginCookie(t, a, "admin", "new-password"))
+	assert.True(t, ok, "a cookie issued under the new password authenticates")
+}
+
+// A local session cookie without a credential is rejected and cleared.
+func TestLocalSessionWithoutCredentialRejected(t *testing.T) {
+	a := NewAPI(config.NewLive(&config.ConfigSettings{Admin: []config.Admin{{Name: "admin", Pw: "pw"}}}), nil)
+	value, err := CookieEncoder.Encode(COOKIENAME, map[string]any{"username": "admin", "authSource": "local"})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/engine", nil)
+	req.AddCookie(&http.Cookie{Name: COOKIENAME, Value: value})
+	rec := httptest.NewRecorder()
+	_, ok := a.Authenticate(rec, req)
+	assert.False(t, ok)
+
+	var cleared bool
+	for _, c := range rec.Result().Cookies() {
+		cleared = cleared || (c.Name == COOKIENAME && c.MaxAge < 0)
+	}
+	assert.True(t, cleared, "the stale cookie is cleared")
 }

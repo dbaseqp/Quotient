@@ -2,6 +2,8 @@ package api
 
 import (
 	"bufio"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -10,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -168,13 +171,10 @@ func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bo
 		return Identity{}, false
 	}
 
-	// Extract auth source (default to "local" for backward compatibility)
-	authSource := "local"
-	if source, ok := value["authSource"].(string); ok {
-		authSource = source
-	}
+	authSource, _ := value["authSource"].(string)
+	credential, _ := value["credential"].(string)
 
-	id, err := a.resolveIdentity(username, authSource)
+	id, err := a.resolveIdentity(username, authSource, credential)
 	if errors.Is(err, errIdentityUnavailable) {
 		// The session may well be valid; keep the cookie so it works again
 		// once the store recovers.
@@ -211,25 +211,9 @@ func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bo
 
 func (a *API) auth(username string, password string) (map[string]any, error) {
 	conf := a.conf.Current()
-	for _, admin := range conf.Admin {
-		if username == admin.Name && password == admin.Pw {
-			return map[string]any{"username": username, "authSource": "local"}, nil
-		}
-	}
-	for _, team := range conf.Team {
-		if username == team.Name && password == team.Pw {
-			return map[string]any{"username": username, "authSource": "local"}, nil
-		}
-	}
-	for _, red := range conf.Red {
-		if username == red.Name && password == red.Pw {
-			return map[string]any{"username": username, "authSource": "local"}, nil
-		}
-	}
-	for _, inject := range conf.Inject {
-		if username == inject.Name && password == inject.Pw {
-			return map[string]any{"username": username, "authSource": "local"}, nil
-		}
+	accounts := localAccounts(conf, username)
+	if slices.ContainsFunc(accounts, func(acc localAccount) bool { return acc.pw == password }) {
+		return map[string]any{"username": username, "authSource": "local", "credential": localCredential(username, accounts)}, nil
 	}
 
 	// auth from other sources
@@ -246,4 +230,16 @@ func (a *API) auth(username string, password string) (map[string]any, error) {
 	}
 
 	return nil, errors.New("no auth source matched credentials")
+}
+
+// localCredential HMACs username's configured role/password entries with the
+// cookie hash key, so the cookie never carries the password or a plain hash of
+// it.
+func localCredential(username string, accounts []localAccount) string {
+	mac := hmac.New(sha256.New, hashKey)
+	_, _ = fmt.Fprintf(mac, "local-session\x00%d:%s", len(username), username)
+	for _, acc := range accounts {
+		_, _ = fmt.Fprintf(mac, "\x00%s\x00%d:%s", acc.role, len(acc.pw), acc.pw)
+	}
+	return base64.RawStdEncoding.EncodeToString(mac.Sum(nil)[:16])
 }

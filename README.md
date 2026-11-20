@@ -334,6 +334,8 @@ name = "inject01"
 pw = "password"
 ```
 
+A local session is tied to the account's password: changing a user's `pw` in `event.conf` ends every session that user opened with the old password, and they must log in again. Setting the old password back brings those sessions back. To end every session at once for good, including LDAP and OIDC ones, delete `config/COOKIEKEY` and restart Quotient; a new key is generated on startup.
+
 #### Environment Configuration
 
 The IP address of the target box should be the IP the scoring engine will use. To templatize the IP address, use an underscore `_` in place of the part of the IP address that will be unique per team. This is the "Identifier" that you must specify through the Admin UI per team. The scoring engine will replace the underscore with the "Identifier" to create the unique target address for each team. If the target should use a DNS name, you can specify that by setting `ip` field to the DNS name (which will be used for all checks under the box) or using the `target` field at the individual check level. Template the DNS name with an underscore `_` in place of the part of the DNS name that will be unique per team.
