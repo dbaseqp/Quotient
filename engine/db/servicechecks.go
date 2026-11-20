@@ -194,13 +194,8 @@ func (d *DB) loadUptimes(table string) (map[uint]map[string]Uptime, error) {
 	return uptimes, rows.Err()
 }
 
-func (d *DB) LoadUptimes(uptimePerService *map[uint]map[string]Uptime) error {
-	uptimes, err := d.loadUptimes("service_check_schemas")
-	if err != nil {
-		return err
-	}
-	*uptimePerService = uptimes
-	return nil
+func (d *DB) LoadUptimes() (map[uint]map[string]Uptime, error) {
+	return d.loadUptimes("service_check_schemas")
 }
 
 type ServiceScoreData struct {
@@ -308,34 +303,37 @@ func (d *DB) GetServiceScores() ([]ServiceScoreData, error) {
 	return results, nil
 }
 
-func (d *DB) LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) error {
-	rows, err := d.db.Table("service_check_schemas").Select("team_id, service_name, result").Rows()
+// LoadSLAs replays the stored results in round order to rebuild each team's
+// current fail streak per service.
+func (d *DB) LoadSLAs(slaThreshold int) (map[uint]map[string]int, error) {
+	rows, err := d.db.Table("service_check_schemas").Select("team_id, service_name, result").Order("round_id").Rows()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// nolint:errcheck
 	defer rows.Close()
 
+	slas := make(map[uint]map[string]int)
 	for rows.Next() {
 		var teamID uint
 		var serviceName string
 		var result bool
 
 		if err := rows.Scan(&teamID, &serviceName, &result); err != nil {
-			return err
+			return nil, err
 		}
 
-		if (*slaPerService)[teamID] == nil {
-			(*slaPerService)[teamID] = make(map[string]int)
+		if slas[teamID] == nil {
+			slas[teamID] = make(map[string]int)
 		}
 
 		if result {
-			(*slaPerService)[teamID][serviceName] = 0
+			slas[teamID][serviceName] = 0
 		} else {
-			(*slaPerService)[teamID][serviceName] = ((*slaPerService)[teamID][serviceName] + 1) % slaThreshold
+			slas[teamID][serviceName] = (slas[teamID][serviceName] + 1) % slaThreshold
 		}
 	}
-	return nil
+	return slas, rows.Err()
 }
 
 // CheckResult is one team's result for one service in one round.

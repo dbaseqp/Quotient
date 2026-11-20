@@ -118,20 +118,11 @@ func NewEngine(configPath string) *ScoringEngine {
 }
 
 func (se *ScoringEngine) Start() {
-	if t, err := se.DB.GetLastRound(); err != nil {
-		slog.Error("failed to get last round", "error", err)
-	} else {
-		se.CurrentRound = uint(t.ID) + 1
-	}
-
-	se.uptimeMu.Lock()
-	if err := se.DB.LoadUptimes(&se.UptimePerService); err != nil {
-		slog.Error("failed to load uptimes", "error", err)
-	}
-	se.uptimeMu.Unlock()
-
-	if err := se.DB.LoadSLAs(&se.SlaPerService, se.Config.Current().MiscSettings.SlaThreshold); err != nil {
-		slog.Error("failed to load SLAs", "error", err)
+	// Scoring with a stale CurrentRound or empty streaks would collide with
+	// stored rounds or forget SLAs, so wait for the database instead.
+	for err := se.loadRoundState(); err != nil; err = se.loadRoundState() {
+		slog.Error("failed to load round state, retrying", "error", err, "retry_in", loadRetryDelay)
+		time.Sleep(loadRetryDelay)
 	}
 
 	// load credentials
@@ -212,6 +203,32 @@ func (se *ScoringEngine) Start() {
 // rotates runner source addresses on round_finish (about 1 s per address it probes, NUM_IPS of them),
 // so this only delays the round after one that ran to its deadline.
 const roundFinishSettle = 5 * time.Second
+
+const loadRetryDelay = 2 * time.Second
+
+// loadRoundState rebuilds the round counter, uptimes and SLA streaks from the
+// stored rounds, replacing what is in memory only if every read succeeded.
+func (se *ScoringEngine) loadRoundState() error {
+	last, err := se.DB.GetLastRound()
+	if err != nil {
+		return fmt.Errorf("get last round: %w", err)
+	}
+	uptimes, err := se.DB.LoadUptimes()
+	if err != nil {
+		return fmt.Errorf("load uptimes: %w", err)
+	}
+	slas, err := se.DB.LoadSLAs(se.Config.Current().MiscSettings.SlaThreshold)
+	if err != nil {
+		return fmt.Errorf("load SLAs: %w", err)
+	}
+
+	se.CurrentRound = last.ID + 1
+	se.uptimeMu.Lock()
+	se.UptimePerService = uptimes
+	se.SlaPerService = slas
+	se.uptimeMu.Unlock()
+	return nil
+}
 
 func (se *ScoringEngine) waitForReset() {
 	// wait for a signal to reset the engine
