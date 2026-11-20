@@ -133,14 +133,16 @@ func (a *API) resolveIdentity(username, authSource, credential string) (Identity
 		}
 
 	case "local":
-		roles := a.localRoles(username)
-		if len(roles) == 0 {
+		accounts := localAccounts(a.conf.Current(), username)
+		if len(accounts) == 0 {
 			return Identity{}, errors.New("local user has no roles")
 		}
-		if !hmac.Equal([]byte(credential), []byte(localCredential(a.conf.Current(), username))) {
-			return Identity{}, errors.New("local session predates a password change - please login again")
+		if !hmac.Equal([]byte(credential), []byte(localCredential(username, accounts))) {
+			return Identity{}, errors.New("local session credential no longer matches the config - please login again")
 		}
-		id.Roles = roles
+		for _, acc := range accounts {
+			id.Roles = append(id.Roles, acc.role)
+		}
 		// A local team account's username is the team name.
 		teamFor = teamNamed(username)
 
@@ -274,30 +276,35 @@ func (a *API) mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.
 	return nil
 }
 
-func (a *API) localRoles(username string) []string {
-	conf := a.conf.Current()
-	roles := make([]string, 0)
-	for _, admin := range conf.Admin {
-		if username == admin.Name {
-			roles = append(roles, "admin")
+// localAccount is one config entry for a local username: the role it grants
+// and the password it accepts.
+type localAccount struct {
+	role, pw string
+}
+
+// localAccounts lists the entries the config snapshot conf has for username,
+// in admin, red, team, inject order. Login, the session fingerprint and the
+// roles all derive from this one list.
+func localAccounts(conf *config.ConfigSettings, username string) []localAccount {
+	var accounts []localAccount
+	add := func(role string, u config.User) {
+		if u.Name == username {
+			accounts = append(accounts, localAccount{role: role, pw: u.Pw})
 		}
 	}
-	for _, red := range conf.Red {
-		if username == red.Name {
-			roles = append(roles, "red")
-		}
+	for _, u := range conf.Admin {
+		add("admin", config.User(u))
 	}
-	for _, team := range conf.Team {
-		if username == team.Name {
-			roles = append(roles, "team")
-		}
+	for _, u := range conf.Red {
+		add("red", config.User(u))
 	}
-	for _, inject := range conf.Inject {
-		if username == inject.Name {
-			roles = append(roles, "inject")
-		}
+	for _, u := range conf.Team {
+		add("team", config.User(u))
 	}
-	return roles
+	for _, u := range conf.Inject {
+		add("inject", config.User(u))
+	}
+	return accounts
 }
 
 // ldapRoles reads the roles of an LDAP account from its group memberships.

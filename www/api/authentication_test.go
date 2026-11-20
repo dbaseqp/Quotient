@@ -119,7 +119,6 @@ func TestLogoutMethodRestriction(t *testing.T) {
 	})
 }
 
-// loginCookie returns the session cookie Login sets for user/pw.
 func loginCookie(t *testing.T, a *API, user, pw string) *http.Cookie {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -135,7 +134,6 @@ func loginCookie(t *testing.T, a *API, user, pw string) *http.Cookie {
 	return nil
 }
 
-// authenticateWith runs Authenticate on a request carrying cookie.
 func authenticateWith(a *API, cookie *http.Cookie) (Identity, bool) {
 	req := httptest.NewRequest(http.MethodGet, "/api/engine", nil)
 	req.AddCookie(cookie)
@@ -186,8 +184,7 @@ pw = "other-password"
 	assert.True(t, ok, "a cookie issued under the new password authenticates")
 }
 
-// A local session cookie issued without a credential fingerprint (before the
-// fingerprint existed) is rejected, forcing one fresh login.
+// A local session cookie without a credential is rejected and cleared.
 func TestLocalSessionWithoutCredentialRejected(t *testing.T) {
 	a := NewAPI(config.NewLive(&config.ConfigSettings{Admin: []config.Admin{{Name: "admin", Pw: "pw"}}}), nil)
 	value, err := CookieEncoder.Encode(COOKIENAME, map[string]any{"username": "admin", "authSource": "local"})
