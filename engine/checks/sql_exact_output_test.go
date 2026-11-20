@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,9 +41,8 @@ func (r *fixedRowRows) Next(dest []driver.Value) error {
 
 func init() { sql.Register("fixedrow", fixedRowDriver{}) }
 
-// An exact-match Output containing regexp metacharacters loads (Verify compiles
-// it only with UseRegex) and must be compared literally at run time instead of
-// panicking in MustCompile, which kills the runner process.
+// Verify compiles Output only with UseRegex, so Run must compare an exact-match
+// Output literally, not MustCompile it.
 func TestSqlExactOutputWithRegexMetacharacters(t *testing.T) {
 	c := &Sql{
 		Service: Service{Name: "box01-sql", Display: "sql", Target: "192.0.2.1", Port: 3306, Timeout: 5, Attempts: 1,
@@ -56,10 +54,6 @@ func TestSqlExactOutputWithRegexMetacharacters(t *testing.T) {
 
 	results := make(chan Result, 1)
 	c.Run(1, "01", 1, results)
-	select {
-	case r := <-results:
-		assert.True(t, r.Status, "error=%q debug=%q", r.Error, r.Debug)
-	case <-time.After(10 * time.Second):
-		t.Fatal("no result from SQL check")
-	}
+	r := <-results
+	assert.True(t, r.Status, "error=%q debug=%q", r.Error, r.Debug)
 }
