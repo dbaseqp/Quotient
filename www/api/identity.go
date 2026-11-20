@@ -97,6 +97,11 @@ func requireOwnTeam(w http.ResponseWriter, r *http.Request, teamID uint, bypassR
 	return false
 }
 
+// errIdentityUnavailable marks a resolveIdentity failure caused by a backing
+// store that could not be read, not by the session itself. Authenticate keeps
+// the session cookie for these, so the user is not logged out by an outage.
+var errIdentityUnavailable = errors.New("identity temporarily unavailable")
+
 // resolveIdentity turns an authenticated username and auth source into roles
 // and a team.
 func (a *API) resolveIdentity(username string, authSource string) (Identity, error) {
@@ -108,7 +113,10 @@ func (a *API) resolveIdentity(username string, authSource string) (Identity, err
 
 	switch authSource {
 	case "oidc":
-		userInfo, exists := a.GetOIDCUserInfo(username)
+		userInfo, exists, err := a.GetOIDCUserInfo(username)
+		if err != nil {
+			return Identity{}, fmt.Errorf("%w: %w", errIdentityUnavailable, err)
+		}
 		if !exists {
 			return Identity{}, errors.New("OIDC session expired - please login again")
 		}
@@ -201,7 +209,7 @@ func teamOrdinal(name string) (uint64, bool) {
 // by the same rule that grants the team role in mapGroupsToRoles.
 func (a *API) isTeamGroup(group string) bool {
 	one := []string{group}
-	return slices.ContainsFunc(a.conf.OIDCSettings.OIDCTeamGroups, func(pattern string) bool {
+	return slices.ContainsFunc(a.conf.Current().OIDCSettings.OIDCTeamGroups, func(pattern string) bool {
 		return matchesGroup(one, pattern)
 	})
 }
@@ -248,7 +256,7 @@ func (a *API) mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.
 		return &matched[0]
 	case 0:
 		slog.Warn("no team matched any of the user's groups",
-			"groups", userGroups, "team_groups", a.conf.OIDCSettings.OIDCTeamGroups)
+			"groups", userGroups, "team_groups", a.conf.Current().OIDCSettings.OIDCTeamGroups)
 	default:
 		names := make([]string, 0, len(matched))
 		for _, t := range matched {
@@ -262,23 +270,24 @@ func (a *API) mapOIDCUserToTeam(teams []db.TeamSchema, userGroups []string) *db.
 }
 
 func (a *API) localRoles(username string) []string {
+	conf := a.conf.Current()
 	roles := make([]string, 0)
-	for _, admin := range a.conf.Admin {
+	for _, admin := range conf.Admin {
 		if username == admin.Name {
 			roles = append(roles, "admin")
 		}
 	}
-	for _, red := range a.conf.Red {
+	for _, red := range conf.Red {
 		if username == red.Name {
 			roles = append(roles, "red")
 		}
 	}
-	for _, team := range a.conf.Team {
+	for _, team := range conf.Team {
 		if username == team.Name {
 			roles = append(roles, "team")
 		}
 	}
-	for _, inject := range a.conf.Inject {
+	for _, inject := range conf.Inject {
 		if username == inject.Name {
 			roles = append(roles, "inject")
 		}
@@ -288,11 +297,12 @@ func (a *API) localRoles(username string) []string {
 
 // ldapRoles reads the roles of an LDAP account from its group memberships.
 func (a *API) ldapRoles(username string) ([]string, error) {
-	if a.conf.LdapSettings == (config.LdapAuthConfig{}) {
+	conf := a.conf.Current()
+	if conf.LdapSettings == (config.LdapAuthConfig{}) {
 		return nil, errors.New("LDAP session but LDAP is not configured")
 	}
 
-	groups, err := ldapdir.Groups(a.conf.LdapSettings, username)
+	groups, err := ldapdir.Groups(conf.LdapSettings, username)
 	if err != nil {
 		return nil, err
 	}
@@ -306,18 +316,19 @@ func (a *API) ldapRoles(username string) ([]string, error) {
 
 // ldapGroupRoles maps LDAP group DNs to the roles they grant.
 func (a *API) ldapGroupRoles(groups []string) []string {
+	conf := a.conf.Current()
 	roles := make([]string, 0)
 	for _, group := range groups {
-		if group == a.conf.LdapSettings.LdapAdminGroupDn {
+		if group == conf.LdapSettings.LdapAdminGroupDn {
 			roles = append(roles, "admin")
 		}
-		if group == a.conf.LdapSettings.LdapRedGroupDn {
+		if group == conf.LdapSettings.LdapRedGroupDn {
 			roles = append(roles, "red")
 		}
-		if group == a.conf.LdapSettings.LdapTeamGroupDn {
+		if group == conf.LdapSettings.LdapTeamGroupDn {
 			roles = append(roles, "team")
 		}
-		if group == a.conf.LdapSettings.LdapInjectGroupDn {
+		if group == conf.LdapSettings.LdapInjectGroupDn {
 			roles = append(roles, "inject")
 		}
 	}

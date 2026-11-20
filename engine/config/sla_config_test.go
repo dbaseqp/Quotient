@@ -55,3 +55,23 @@ func TestSlaPenaltyNegativeIsRejected(t *testing.T) {
 	}
 	require.Error(t, checkConfig(conf))
 }
+
+// The legacy graph flag used to share an else-if chain with the SlaPenalty
+// checks, so setting it let a negative penalty (an SLA bonus) through.
+func TestSlaPenaltyNegativeIsRejectedWithLegacyGraphFlag(t *testing.T) {
+	penalty := -5
+	conf := &ConfigSettings{
+		RequiredSettings: RequiredConfig{
+			EventName:    "Test",
+			EventType:    "rvb",
+			DBConnectURL: "postgres://test:test@localhost:5432/test",
+			BindAddress:  "0.0.0.0:8080",
+		},
+		MiscSettings: MiscConfig{SlaPenalty: &penalty},
+		UISettings:   UIConfig{AllowNonAnonymizedGraphsForBlueTeam: true},
+	}
+	err := checkConfig(conf)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "SlaPenalty must not be negative")
+	assert.True(t, conf.UISettings.AllowNonAnonymizedGraphs, "legacy flag still maps to the new one")
+}
