@@ -49,18 +49,16 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		u := c.Url[rand.IntN(len(c.Url))] // #nosec G404 -- non-crypto selection of URL to test
 
-		// random user agent
 		ua := uarand.GetRandom()
 
 		tr := &http.Transport{
 			MaxIdleConns:      1,
-			IdleConnTimeout:   time.Duration(c.Timeout) * time.Second, // address this
+			IdleConnTimeout:   time.Duration(c.Timeout) * time.Second,
 			DisableKeepAlives: true,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, // #nosec G402 -- competition services may use self-signed certs
 			},
 		}
-		// Set client timeout to slightly less than check timeout to get better error messages
 		clientTimeout := time.Duration(c.Timeout) * time.Second
 		client := &http.Client{
 			Transport: tr,
@@ -87,7 +85,6 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		req.Header.Set("Accept", webAccept)
 		req.Header.Set("Accept-Language", randomAcceptLanguage())
 
-		// Store request info for timeout debugging
 		checkResult.Debug = fmt.Sprintf("Attempting GET %s", requestURL)
 
 		resp, err := client.Do(req) // #nosec G704 -- URL is validated above; target comes from admin-controlled event.conf
