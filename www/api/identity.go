@@ -97,6 +97,11 @@ func requireOwnTeam(w http.ResponseWriter, r *http.Request, teamID uint, bypassR
 	return false
 }
 
+// errIdentityUnavailable marks a resolveIdentity failure caused by a backing
+// store that could not be read, not by the session itself. Authenticate keeps
+// the session cookie for these, so the user is not logged out by an outage.
+var errIdentityUnavailable = errors.New("identity temporarily unavailable")
+
 // resolveIdentity turns an authenticated username and auth source into roles
 // and a team.
 func (a *API) resolveIdentity(username string, authSource string) (Identity, error) {
@@ -108,7 +113,10 @@ func (a *API) resolveIdentity(username string, authSource string) (Identity, err
 
 	switch authSource {
 	case "oidc":
-		userInfo, exists := a.GetOIDCUserInfo(username)
+		userInfo, exists, err := a.GetOIDCUserInfo(username)
+		if err != nil {
+			return Identity{}, fmt.Errorf("%w: %w", errIdentityUnavailable, err)
+		}
 		if !exists {
 			return Identity{}, errors.New("OIDC session expired - please login again")
 		}
