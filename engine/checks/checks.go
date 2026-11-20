@@ -203,7 +203,7 @@ func (service *Service) Run(teamID uint, teamIdentifier string, roundID uint, re
 	response := make(chan Result, 1)
 
 	// A check library that panics on a malformed reply from a team's server
-	// must fail that check, not kill the runner and every task it holds.
+	// must fail that check with the panic as its Debug.
 	// checkResult is passed by value: Run writes it on timeout while the
 	// definition may still be running.
 	go func(initial Result) {
