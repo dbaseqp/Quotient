@@ -1,8 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -32,12 +40,82 @@ func TestWaitForRetryStopsOnCancel(t *testing.T) {
 	assert.False(t, waitForRetry(ctx, time.Second, time.Now().Add(time.Minute)))
 }
 
-// stalledCheck never answers, like a check still running when its round ends.
-type stalledCheck struct{ checks.Service }
+// TestMain lets the test binary stand in for the runner binary, which handleTask re-executes as "runner check" to
+// run each check attempt.
+func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "check" {
+		main()
+	}
+	os.Exit(m.Run())
+}
 
-func (c *stalledCheck) Run(uint, string, uint, chan checks.Result) {}
+// serveTeam stands in for a team's service: it accepts connections on a loopback port, hands each to handle and
+// counts them.
+func serveTeam(t *testing.T, handle func(net.Conn)) (int, *atomic.Int32) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+	conns := &atomic.Int32{}
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conns.Add(1)
+			go func() {
+				defer func() { _ = c.Close() }()
+				_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+				handle(c)
+			}()
+		}
+	}()
+	return ln.Addr().(*net.TCPAddr).Port, conns
+}
 
-func (c *stalledCheck) Verify(string, string, int, int, int, int) error { return nil }
+// checkTask builds the task the engine would enqueue for check.
+func checkTask(t *testing.T, check checks.Runner, attempts int, deadline time.Time) *engine.Task {
+	t.Helper()
+	data, err := json.Marshal(check)
+	require.NoError(t, err)
+	return &engine.Task{
+		TeamID: 1, TeamIdentifier: "01", ServiceType: check.GetType(), ServiceName: check.GetName(), RoundID: 1,
+		Attempts: attempts, Points: check.GetPoints(), Deadline: deadline, CheckData: data,
+		Credentials: []engine.Credential{{Username: "u", Password: "p", Credlist: "l"}},
+	}
+}
+
+// popResult returns the result handleTask pushed to Redis.
+func popResult(t *testing.T, rdb *testutil.RedisContainer) checks.Result {
+	t.Helper()
+	raw, err := rdb.Client.LPop(context.Background(), "results").Result()
+	require.NoError(t, err)
+	var result checks.Result
+	require.NoError(t, json.Unmarshal([]byte(raw), &result))
+	return result
+}
+
+func TestHandleTaskRunsCheck(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	rdb, _ := testutil.StartContainers(t)
+	ctx := context.Background()
+	require.NoError(t, rdb.Client.Del(ctx, "results").Err())
+
+	port, _ := serveTeam(t, func(net.Conn) {})
+	check := &checks.Tcp{Service: checks.Service{Port: port}}
+	require.NoError(t, check.Verify("box01", "127.0.0.1", 5, 10, 0, 0))
+	handleTask(ctx, rdb.Client, checkTask(t, check, 1, time.Now().Add(10*time.Second)))
+
+	result := popResult(t, rdb)
+	assert.True(t, result.Status, "error=%q debug=%q", result.Error, result.Debug)
+	assert.Equal(t, "127.0.0.1", result.Target)
+	assert.Equal(t, 5, result.Points)
+	assert.Equal(t, "box01-tcp", result.ServiceName)
+}
 
 func TestHandleTaskKeepsPointsWhenRoundEndsFirst(t *testing.T) {
 	if testing.Short() {
@@ -48,17 +126,119 @@ func TestHandleTaskKeepsPointsWhenRoundEndsFirst(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, rdb.Client.Del(ctx, "results").Err())
 
-	task := &engine.Task{
-		TeamID: 1, ServiceType: "Stalled", ServiceName: "box-stalled", RoundID: 1,
-		Attempts: 1, Deadline: time.Now().Add(100 * time.Millisecond),
-	}
-	handleTask(ctx, rdb.Client, &stalledCheck{checks.Service{Points: 7}}, task)
+	// An SMB server that never answers the NEGOTIATE keeps the check running past the round deadline.
+	port, _ := serveTeam(t, func(c net.Conn) { _, _ = io.Copy(io.Discard, c) })
+	check := &checks.Smb{Service: checks.Service{Port: port}}
+	require.NoError(t, check.Verify("box01", "127.0.0.1", 7, 30, 0, 0))
+	handleTask(ctx, rdb.Client, checkTask(t, check, 1, time.Now().Add(300*time.Millisecond)))
 
-	raw, err := rdb.Client.LPop(ctx, "results").Result()
-	require.NoError(t, err)
-	var result checks.Result
-	require.NoError(t, json.Unmarshal([]byte(raw), &result))
+	result := popResult(t, rdb)
 	assert.False(t, result.Status)
 	assert.Equal(t, "timeout", result.Error)
 	assert.Equal(t, 7, result.Points, "a failed check still counts toward the service's possible points")
+}
+
+// A custom check's script can outlive the check's Timeout, after the child has reported the timeout and exited. The
+// attempt must still stop the script and remove its output file, or a team that stalls its service fills the runner's
+// /tmp and leaves processes behind every round.
+func TestHandleTaskCleansUpAfterTimedOutCustomCheck(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	rdb, _ := testutil.StartContainers(t)
+	ctx := context.Background()
+	require.NoError(t, rdb.Client.Del(ctx, "results").Err())
+
+	// The script records its output file and a background process the check's own timeout does not kill.
+	dir := t.TempDir()
+	check := &checks.Custom{Command: fmt.Sprintf("readlink /proc/self/fd/2 > %[1]s/out; sleep 30 & echo $! > %[1]s/pid; wait", dir)}
+	require.NoError(t, check.Verify("box01", "127.0.0.1", 5, 1, 0, 0))
+	handleTask(ctx, rdb.Client, checkTask(t, check, 1, time.Now().Add(10*time.Second)))
+
+	result := popResult(t, rdb)
+	assert.False(t, result.Status)
+	out, err := os.ReadFile(filepath.Join(dir, "out"))
+	require.NoError(t, err)
+	assert.NoFileExists(t, strings.TrimSpace(string(out)), "the check's output file is removed")
+	pid, err := os.ReadFile(filepath.Join(dir, "pid"))
+	require.NoError(t, err)
+	assert.Eventually(t, func() bool {
+		stat, err := os.ReadFile("/proc/" + strings.TrimSpace(string(pid)) + "/stat")
+		return err != nil || strings.Contains(string(stat), ") Z ")
+	}, 5*time.Second, 50*time.Millisecond, "the script's processes are killed")
+}
+
+// A team's server can crash a check library inside a goroutine the library starts itself, where no recover in
+// Quotient can catch the panic. That must fail only the team's check, not kill the runner with every task on it.
+func TestHandleTaskSurvivesCrashingCheck(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	rdb, _ := testutil.StartContainers(t)
+	ctx := context.Background()
+
+	tests := []struct {
+		name   string
+		handle func(net.Conn)
+		check  func(port int) checks.Runner
+	}{
+		{
+			// hirochachacha/go-smb2 v1.1.0 slices a received frame as an SMB2 header in its receiver goroutine.
+			name: "Smb",
+			handle: func(c net.Conn) {
+				buf := make([]byte, 4096)
+				if _, err := c.Read(buf); err != nil {
+					return
+				}
+				_, _ = c.Write([]byte{0, 0, 0, 1, 0xfe}) // a 1-byte frame in reply to NEGOTIATE
+				_, _ = c.Read(buf)
+			},
+			check: func(port int) checks.Runner { return &checks.Smb{Service: checks.Service{Port: port}} },
+		},
+		{
+			// emersion/go-imap v1.2.1 indexes the sequence number of an untagged EXPUNGE in its reader goroutine.
+			name: "Imap",
+			handle: func(c net.Conn) {
+				r := bufio.NewReader(c)
+				_, _ = fmt.Fprint(c, "* OK IMAP4rev1 ready\r\n")
+				for {
+					line, err := r.ReadString('\n')
+					if err != nil {
+						return
+					}
+					f := strings.Fields(line)
+					switch {
+					case len(f) < 2:
+					case strings.EqualFold(f[1], "LOGIN"):
+						_, _ = fmt.Fprintf(c, "* EXPUNGE\r\n%s OK LOGIN completed\r\n", f[0])
+					default:
+						_, _ = fmt.Fprintf(c, "%s OK done\r\n", f[0])
+					}
+				}
+			},
+			check: func(port int) checks.Runner {
+				return &checks.Imap{Service: checks.Service{Port: port, CredLists: []string{"l"}}}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NoError(t, rdb.Client.Del(ctx, "results").Err())
+			port, conns := serveTeam(t, tt.handle)
+			check := tt.check(port)
+			require.NoError(t, check.Verify("box01", "127.0.0.1", 10, 5, 0, 0))
+			handleTask(ctx, rdb.Client, checkTask(t, check, 2, time.Now().Add(20*time.Second)))
+
+			result := popResult(t, rdb)
+			assert.False(t, result.Status)
+			assert.Equal(t, "check crashed", result.Error)
+			assert.Contains(t, result.Debug, "panic: ")
+			assert.Equal(t, 10, result.Points)
+			assert.Equal(t, uint(1), result.TeamID)
+			assert.Equal(t, "box01-"+strings.ToLower(tt.name), result.ServiceName)
+			assert.Equal(t, int32(2), conns.Load(), "a crashed attempt is still retried")
+		})
+	}
 }
