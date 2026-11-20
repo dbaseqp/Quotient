@@ -18,7 +18,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/md4" // #nosec G501 -- NTLM's NT hash is MD4
+	"golang.org/x/crypto/md4" //nolint:staticcheck // #nosec G501 -- NTLM's NT hash is MD4
 )
 
 // Loopback servers for the network checks (dns, tcp, rdp, ldap, smb). Each one records what the
@@ -30,8 +30,18 @@ type runnable interface {
 
 func runNetCheck(t *testing.T, c runnable) Result {
 	t.Helper()
+	return awaitResult(t, startNetCheck(c))
+}
+
+// startNetCheck runs c in the background, for tests that play the server from the test goroutine.
+func startNetCheck(c runnable) <-chan Result {
 	ch := make(chan Result, 1)
-	c.Run(1, "01", 1, ch)
+	go c.Run(1, "01", 1, ch)
+	return ch
+}
+
+func awaitResult(t *testing.T, ch <-chan Result) Result {
+	t.Helper()
 	select {
 	case r := <-ch:
 		return r
@@ -124,6 +134,41 @@ func newDnsCheck(host string, port int, kind, domain string, answers ...string) 
 	}
 }
 
+// listenDNS opens a bare UDP socket for tests that read and answer the DNS packets themselves,
+// one at a time and in arrival order.
+func listenDNS(t *testing.T) (net.PacketConn, string, int) {
+	t.Helper()
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = pc.Close() })
+	host, port := hostPort(t, pc.LocalAddr().String())
+	return pc, host, port
+}
+
+// readDNS reads the next packet on pc as a DNS message.
+func readDNS(t *testing.T, pc net.PacketConn) (*dns.Msg, net.Addr) {
+	t.Helper()
+	buf := make([]byte, dns.MaxMsgSize)
+	require.NoError(t, pc.SetReadDeadline(time.Now().Add(3*time.Second)))
+	n, from, err := pc.ReadFrom(buf)
+	require.NoError(t, err)
+	m := new(dns.Msg)
+	require.NoError(t, m.Unpack(buf[:n]))
+	return m, from
+}
+
+func writeDNS(t *testing.T, pc net.PacketConn, m *dns.Msg, to net.Addr) {
+	t.Helper()
+	b, err := m.Pack()
+	require.NoError(t, err)
+	_, err = pc.WriteTo(b, to)
+	require.NoError(t, err)
+}
+
+func dnsA(name, ip string) *dns.A {
+	return &dns.A{Hdr: dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: net.ParseIP(ip)}
+}
+
 func TestDnsRun_Loopback(t *testing.T) {
 	f := &fakeDNS{answers: map[string]string{"www.team01.acme.local.": "192.0.2.10"}}
 	host, port := startDNS(t, f)
@@ -151,6 +196,13 @@ func TestDnsRun_Loopback(t *testing.T) {
 		assert.False(t, r.Status)
 		assert.Equal(t, "no records received", r.Error)
 	})
+	t.Run("one-second timeout", func(t *testing.T) {
+		// Timeout-1 leaves the client no timeout: the resolver's 2 s default applies.
+		c := newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.10")
+		c.Timeout = 1
+		r := runNetCheck(t, c)
+		assert.True(t, r.Status, r.Error+" "+r.Debug)
+	})
 	t.Run("no response", func(t *testing.T) {
 		// The query and its retry each wait Timeout-1 s, so the service timeout fires first.
 		quiet := &fakeDNS{silent: true}
@@ -160,6 +212,40 @@ func TestDnsRun_Loopback(t *testing.T) {
 		assert.Equal(t, "check timeout exceeded", r.Error)
 		assert.NotEmpty(t, quiet.snapshot())
 	})
+}
+
+// A team's server may answer the AAAA question first, and badly; only the A reply decides.
+func TestDnsRun_SkipsRepliesToOtherQuestions(t *testing.T) {
+	pc, host, port := listenDNS(t)
+	results := startNetCheck(newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.10"))
+
+	byType := map[uint16]*dns.Msg{}
+	var client net.Addr
+	for range 2 {
+		var q *dns.Msg
+		q, client = readDNS(t, pc)
+		require.Len(t, q.Question, 1)
+		byType[q.Question[0].Qtype] = q
+	}
+	a, aaaa := byType[dns.TypeA], byType[dns.TypeAAAA]
+	require.NotNil(t, a)
+	require.NotNil(t, aaaa)
+	assert.NotEqual(t, a.Id, aaaa.Id, "each question has its own ID")
+
+	// A truncated reply to the AAAA question.
+	_, err := pc.WriteTo([]byte{byte(aaaa.Id >> 8), byte(aaaa.Id), 0x81}, client)
+	require.NoError(t, err)
+	// A reply carrying the A question's ID but the AAAA question, with a wrong address.
+	wrong := new(dns.Msg).SetReply(aaaa)
+	wrong.Id = a.Id
+	wrong.Answer = append(wrong.Answer, dnsA(a.Question[0].Name, "192.0.2.66"))
+	writeDNS(t, pc, wrong, client)
+	right := new(dns.Msg).SetReply(a)
+	right.Answer = append(right.Answer, dnsA(a.Question[0].Name, "192.0.2.10"))
+	writeDNS(t, pc, right, client)
+
+	r := awaitResult(t, results)
+	assert.True(t, r.Status, r.Error+" "+r.Debug)
 }
 
 // ---------------------------------------------------------------- tcp / rdp
@@ -184,7 +270,7 @@ func startTCPSink(t *testing.T, wait time.Duration) (string, int, <-chan tcpFlow
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				start := time.Now()
 				_ = c.SetReadDeadline(start.Add(wait))
 				n, err := io.Copy(io.Discard, c)
@@ -281,7 +367,7 @@ type fakeLDAP struct {
 }
 
 func (f *fakeLDAP) serve(c net.Conn) {
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
 	var ops []string
 	end := "fin"
@@ -323,24 +409,13 @@ func (f *fakeLDAP) serve(c net.Conn) {
 	f.mu.Unlock()
 }
 
+// last returns the most recent connection's record; callers wait for it with waitFor first.
 func (f *fakeLDAP) last(t *testing.T) string {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		f.mu.Lock()
-		n := len(f.ops)
-		var s string
-		if n > 0 {
-			s = f.ops[n-1]
-		}
-		f.mu.Unlock()
-		if n > 0 {
-			return s
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("no ldap connection recorded")
-	return ""
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	require.NotEmpty(t, f.ops, "no ldap connection recorded")
+	return f.ops[len(f.ops)-1]
 }
 
 func startLDAP(t *testing.T, f *fakeLDAP) (string, int) {
@@ -547,7 +622,7 @@ func spnegoResp(state asn1.Enumerated, token []byte) []byte {
 var smbCommandNames = map[uint16]string{0: "NEGOTIATE", 1: "SESSION_SETUP", 2: "LOGOFF", 3: "TREE_CONNECT", 4: "TREE_DISCONNECT", 5: "CREATE", 6: "CLOSE", 8: "READ", 16: "QUERY_INFO"}
 
 func (f *fakeSMB) serve(c net.Conn) {
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
 	var s smbSession
 	defer func() {
@@ -701,24 +776,13 @@ func (f *fakeSMB) serve(c net.Conn) {
 	}
 }
 
+// last returns the most recent session's record; callers wait for it with waitFor first.
 func (f *fakeSMB) last(t *testing.T) smbSession {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		f.mu.Lock()
-		n := len(f.sessions)
-		var s smbSession
-		if n > 0 {
-			s = f.sessions[n-1]
-		}
-		f.mu.Unlock()
-		if n > 0 {
-			return s
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("no smb connection recorded")
-	return smbSession{}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	require.NotEmpty(t, f.sessions, "no smb connection recorded")
+	return f.sessions[len(f.sessions)-1]
 }
 
 func startSMB(t *testing.T, f *fakeSMB) (string, int) {

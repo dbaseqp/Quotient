@@ -42,7 +42,8 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			}
 		}
 
-		// The socket announces the window scale of the Windows workstation NTLM names.
+		// The socket asks for the window scale of Windows, the OS the workstation name claims
+		// (clientOS.windowClamp says when the host allows it).
 		conn, err := clientWindows.dialer(time.Duration(c.Timeout)*time.Second).Dial("tcp", c.Target+":"+strconv.Itoa(c.Port))
 		if err != nil {
 			checkResult.Error = "smb connection failed"
@@ -61,7 +62,6 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				User:        username,
 				Password:    password,
 				Workstation: c.workstation(teamIdentifier),
-				TargetSPN:   "cifs/" + c.Target,
 			},
 		}
 
@@ -167,9 +167,9 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
-// uncShare returns the tree-connect path \\target\share. go-smb2 would otherwise build it from the
-// connection's remote address and send \\target:445\share, which no Windows or Samba client does.
-// A share that already contains a path separator is passed through unchanged, as before.
+// uncShare returns the tree-connect path \\target\share. For a bare share name go-smb2 uses the
+// connection's remote address, ip:port (\\10.0.0.5:445\share), which no Windows or Samba client
+// sends. A share that already contains a path separator is passed through unchanged.
 func uncShare(target, share string) string {
 	if strings.ContainsAny(share, `\/`) {
 		return share

@@ -126,6 +126,11 @@ type MiscConfig struct {
 	// to run on (SMTP EHLO, SMB workstation) mixes them with Windows-style
 	// DESKTOP-XXXXXXX names. Empty: Windows-style names only.
 	WorkstationNames []string
+	// WorkstationSeed is a secret, constant for the event, that seeds each
+	// team's workstation-name pool. Teams that learn it can compute their
+	// pools. Empty: a random seed per engine process, so the names change
+	// on every restart.
+	WorkstationSeed string
 
 	StartPaused bool
 
@@ -532,7 +537,7 @@ func checkConfig(conf *ConfigSettings) error {
 					setter.SetAttemptDefaults(conf.MiscSettings.Attempts, conf.MiscSettings.AttemptDelay)
 				}
 				if setter, ok := check.(interface{ SetWorkstationNaming(string, []string) }); ok {
-					setter.SetWorkstationNaming(conf.RequiredSettings.EventName, conf.MiscSettings.WorkstationNames)
+					setter.SetWorkstationNaming(conf.MiscSettings.WorkstationSeed, conf.MiscSettings.WorkstationNames)
 				}
 				if err := check.Verify(
 					conf.Box[i].Name,

@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -40,9 +41,12 @@ func (c Ldap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			return
 		}
 		// Unbind before closing, as ldapsearch and other LDAP clients do; Unbind also closes.
+		// ErrConnUnbound means the server already closed the connection: nothing to report.
 		defer func() {
 			if err := lconn.Unbind(); err != nil {
-				slog.Error("failed to unbind ldap connection", "error", err)
+				if !errors.Is(err, ldap.ErrConnUnbound) {
+					slog.Error("failed to unbind ldap connection", "error", err)
+				}
 				_ = lconn.Close()
 			}
 		}()

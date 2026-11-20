@@ -42,13 +42,25 @@ func TestDnsRun_StubQueryPair(t *testing.T) {
 	assert.Equal(t, q[0].Name, q[1].Name)
 	assert.Equal(t, q[0].Peer, q[1].Peer, "both questions go out on one socket, like getaddrinfo")
 
-	mx := &fakeDNS{answers: map[string]string{}}
-	mh, mp := startDNS(t, mx)
-	_ = runNetCheck(t, newDnsCheck(mh, mp, "MX", "acme.local", "192.0.2.10"))
-	waitFor(t, func() bool { return len(mx.snapshot()) >= 1 })
-	time.Sleep(100 * time.Millisecond)
-	require.Len(t, mx.snapshot(), 1)
-	assert.Equal(t, dns.TypeMX, mx.snapshot()[0].Qtype)
+	// An MX lookup sends only its own question. The check has read its reply by the time it
+	// returns, so anything else it sent is already queued ahead of a marker sent afterwards.
+	pc, mh, mp := listenDNS(t)
+	results := startNetCheck(newDnsCheck(mh, mp, "MX", "acme.local", "192.0.2.10"))
+	mq, client := readDNS(t, pc)
+	require.Len(t, mq.Question, 1)
+	assert.Equal(t, dns.TypeMX, mq.Question[0].Qtype)
+	writeDNS(t, pc, new(dns.Msg).SetReply(mq), client)
+	_ = awaitResult(t, results)
+
+	marker, err := net.Dial("udp", pc.LocalAddr().String())
+	require.NoError(t, err)
+	defer func() { _ = marker.Close() }()
+	b, err := new(dns.Msg).SetQuestion("marker.", dns.TypeTXT).Pack()
+	require.NoError(t, err)
+	_, err = marker.Write(b)
+	require.NoError(t, err)
+	next, _ := readDNS(t, pc)
+	assert.Equal(t, "marker.", next.Question[0].Name, "no question after the MX one")
 }
 
 func assertClosedPromptly(t *testing.T, flows <-chan tcpFlow) {
@@ -108,7 +120,7 @@ func TestSmbRun_ClientIdentity(t *testing.T) {
 
 	assert.Equal(t, []string{`\\127.0.0.1\share`}, s.TreePaths, "no :port in the tree-connect path")
 	assert.Contains(t, workstationPool("", "01", nil), s.Workstation, "one of team 01's workstation names")
-	assert.Equal(t, "cifs/127.0.0.1", fromU16le(s.AvPairs[9]), "MsvAvTargetName")
+	assert.NotContains(t, s.AvPairs, uint16(9), "no MsvAvTargetName: the check names no SPN")
 	assert.Equal(t, "tester", s.User)
 
 	t.Run("unc share passes through", func(t *testing.T) {
@@ -126,7 +138,7 @@ func TestPingRun_PayloadSize(t *testing.T) {
 		}
 		require.NoError(t, err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	c := &Ping{Service: Service{Name: "test-ping", Target: "127.0.0.1", Timeout: 10}, Count: 2}
 	r := runNetCheck(t, c)
