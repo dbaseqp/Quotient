@@ -40,8 +40,8 @@ type Service struct {
 	Port            int              `toml:",omitzero"` // omitzero because custom checks might not specify port, and shouldn't be assigned 0
 	Points          int              `toml:",omitempty"`
 	Timeout         int              `toml:",omitempty"`
-	SlaPenalty      int              `toml:",omitempty"` // rejected by Configure: SLA rules are event-wide (MiscSettings)
-	SlaThreshold    int              `toml:",omitempty"` // rejected by Configure, like SlaPenalty
+	SlaPenalty      int              `toml:",omitempty"`
+	SlaThreshold    int              `toml:",omitempty"`
 	LaunchTime      time.Time        `toml:",omitempty"`
 	StopTime        time.Time        `toml:",omitempty"`
 	Disabled        bool             `toml:",omitempty"`
@@ -161,10 +161,11 @@ func (service *Service) Configure(ip string, points int, timeout int, slapenalty
 	if service.Timeout == 0 {
 		service.Timeout = timeout
 	}
-	// The engine applies MiscSettings' SLA rules to every check; a per-check
-	// value would be silently ignored, so refuse it.
-	if service.SlaPenalty != 0 || service.SlaThreshold != 0 {
-		return errors.New("SlaThreshold and SlaPenalty apply to the whole event: set them in [MiscSettings], not on a check")
+	if service.SlaPenalty == 0 {
+		service.SlaPenalty = slapenalty
+	}
+	if service.SlaThreshold == 0 {
+		service.SlaThreshold = slathreshold
 	}
 	if service.Attempts == 0 {
 		service.Attempts = 1
