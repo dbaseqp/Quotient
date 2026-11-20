@@ -16,6 +16,7 @@ func TestWorkstationNamesReachTheSMTPRunner(t *testing.T) {
 	conf.Box[0].Smtp = []*checks.Smtp{{Service: conf.Box[0].Tcp[0].Service}}
 	conf.Box[0].Tcp = nil
 	conf.MiscSettings.WorkstationNames = []string{"WS_-01", "LAB_-PC"}
+	conf.MiscSettings.WorkstationSeed = "s3cret"
 	require.NoError(t, checkConfig(conf))
 
 	data, err := json.Marshal(conf.Box[0].Runners[0])
@@ -23,5 +24,5 @@ func TestWorkstationNamesReachTheSMTPRunner(t *testing.T) {
 	var onRunner checks.Smtp
 	require.NoError(t, json.Unmarshal(data, &onRunner))
 	assert.Equal(t, []string{"WS_-01", "LAB_-PC"}, onRunner.WorkstationNames)
-	assert.Equal(t, "Test Event", onRunner.WorkstationSalt)
+	assert.Equal(t, "s3cret", onRunner.WorkstationSeed)
 }

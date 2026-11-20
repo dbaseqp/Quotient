@@ -29,7 +29,7 @@ func TestWorkstationPool(t *testing.T) {
 	}
 	assert.Len(t, sizes, 3, "pool sizes 4, 5 and 6 all occur")
 	assert.NotEqual(t, workstationPool("Inv3", "01", nil), workstationPool("Inv3", "02", nil), "teams get their own names")
-	assert.NotEqual(t, workstationPool("Inv3", "01", nil), workstationPool("Inv4", "01", nil), "events get their own names")
+	assert.NotEqual(t, workstationPool("Inv3", "01", nil), workstationPool("Inv4", "01", nil), "seeds give their own names")
 
 	tpl := []string{"WS_-A", "LAB_PC", "T_-FRONTDESK", "T_-HR"}
 	pool := workstationPool("Inv3", "07", tpl)
@@ -65,6 +65,17 @@ func TestWorkstationPicksFromPoolEachAttempt(t *testing.T) {
 		picked[n] = true
 	}
 	assert.Len(t, picked, len(pool), "every pool name gets used")
+}
+
+func TestWorkstationSeed(t *testing.T) {
+	var a, b workstationNaming
+	a.SetWorkstationNaming("s3cret", nil)
+	assert.Equal(t, "s3cret", a.WorkstationSeed, "a configured seed is used as is")
+
+	a.SetWorkstationNaming("", nil)
+	b.SetWorkstationNaming("", nil)
+	assert.Regexp(t, `^[0-9a-f]{64}$`, a.WorkstationSeed, "no seed configured: 32 random bytes")
+	assert.Equal(t, a.WorkstationSeed, b.WorkstationSeed, "the random seed lasts for the process")
 }
 
 var (
