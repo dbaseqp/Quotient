@@ -92,29 +92,54 @@ func TestRvb_SLAWriteFailureKeepsPenalty(t *testing.T) {
 	assert.Equal(t, uint(2), round.ID)
 }
 
-// LoadSLAs rebuilds streaks at startup; it must replay rows in round order,
-// not in whatever physical order Postgres returns them.
-func TestLoadSLAsReplaysInRoundOrder(t *testing.T) {
+// A round ID that is already stored (a commit whose reply was lost, or a
+// counter that failed to load at startup) is not retried forever: the failed
+// write reloads the counter from the database and the next round follows it.
+func TestRvb_StoredRoundIDReloadsCounter(t *testing.T) {
+	se, pg, team := roundWriteEngine(t, 3)
+
+	require.NoError(t, se.rvb())
+	se.CurrentRound = 1
+	require.Error(t, se.rvb())
+	assert.Equal(t, uint(2), se.CurrentRound)
+	assert.Equal(t, 1, se.UptimePerService[team.ID]["box01-web"].TotalChecks, "the rejected round is not counted")
+
+	require.NoError(t, se.rvb())
+	round, err := pg.DB.GetLastRound()
+	require.NoError(t, err)
+	assert.Equal(t, uint(2), round.ID)
+}
+
+// LoadSLAs rebuilds streaks at startup from the failures after each service's
+// last pass or stored violation, whatever the threshold or the physical row
+// order.
+func TestLoadSLAsCountsFailuresSinceLastReset(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 	_, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
-	team := pg.CreateTestTeam(t, "SLA Order Team", "01")
+	team := pg.CreateTestTeam(t, "SLA Streak Team", "01")
 
 	for _, rc := range []struct {
-		id uint
-		ok bool
+		id  uint
+		web bool
 	}{{1, true}, {2, false}, {3, false}} {
-		_, err := pg.DB.CreateRound(db.RoundSchema{ID: rc.id, StartTime: time.Now(), Checks: []db.ServiceCheckSchema{
-			{TeamID: team.ID, ServiceName: "box01-web", Points: 10, Result: rc.ok},
-		}})
+		round := db.RoundSchema{ID: rc.id, StartTime: time.Now(), Checks: []db.ServiceCheckSchema{
+			{TeamID: team.ID, ServiceName: "box01-web", Points: 10, Result: rc.web},
+			{TeamID: team.ID, ServiceName: "box01-dns", Points: 10, Result: false},
+		}}
+		if rc.id == 2 {
+			round.SLAs = []db.SLASchema{{TeamID: team.ID, RoundID: 2, ServiceName: "box01-dns", Penalty: 5}}
+		}
+		_, err := pg.DB.CreateRound(round)
 		require.NoError(t, err)
 	}
 	// Updating an old row moves its tuple to the end of the heap.
 	pg.Exec(t, "UPDATE service_check_schemas SET debug = debug WHERE round_id = 1")
 
-	sla := map[uint]map[string]int{}
-	require.NoError(t, pg.DB.LoadSLAs(&sla, 3))
+	sla, err := pg.DB.LoadSLAs()
+	require.NoError(t, err)
 	assert.Equal(t, 2, sla[team.ID]["box01-web"], "rounds pass, fail, fail leave a streak of 2")
+	assert.Equal(t, 1, sla[team.ID]["box01-dns"], "the violation in round 2 resets the streak")
 }

@@ -31,10 +31,22 @@ func (check *ServiceCheckSchema) BeforeCreate(tx *gorm.DB) (err error) {
 	return nil
 }
 
+// CreateRound stores a round, its checks and its SLA violations in one
+// transaction. The SLAs are inserted directly: gorm would upsert them as an
+// association with an ON CONFLICT clause that Postgres rejects for a table
+// without a key.
 func (d *DB) CreateRound(round RoundSchema) (RoundSchema, error) {
-	result := d.db.Table("round_schemas").Create(&round)
-	if result.Error != nil {
-		return RoundSchema{}, result.Error
+	err := d.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("round_schemas").Omit("SLAs").Create(&round).Error; err != nil {
+			return err
+		}
+		if len(round.SLAs) == 0 {
+			return nil
+		}
+		return tx.Table("sla_schemas").Create(&round.SLAs).Error
+	})
+	if err != nil {
+		return RoundSchema{}, err
 	}
 	return round, nil
 }
