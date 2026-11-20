@@ -65,11 +65,25 @@ type Result struct {
 	Preflight   bool   `json:"preflight,omitempty"`
 
 	// Added for runner visualization
-	RunnerID   string `json:"runner_id,omitempty"`
-	StartTime  string `json:"start_time,omitempty"`
-	EndTime    string `json:"end_time,omitempty"`
-	StatusText string `json:"status_text,omitempty"` // "running", "success", or "failed"
+	RunnerID   string     `json:"runner_id,omitempty"`
+	StartTime  string     `json:"start_time,omitempty"`
+	EndTime    string     `json:"end_time,omitempty"`
+	StatusText TaskStatus `json:"status_text,omitempty"`
 }
+
+// TaskStatus is a task's state as the runner reports it in its task key. The
+// admin runners page matches these strings too.
+type TaskStatus string
+
+const (
+	StatusScheduled TaskStatus = "scheduled" // waiting for its spread start
+	StatusRunning   TaskStatus = "running"
+	StatusSuccess   TaskStatus = "success"
+	StatusFailed    TaskStatus = "failed"
+)
+
+// TaskStatuses lists every TaskStatus.
+var TaskStatuses = []TaskStatus{StatusScheduled, StatusRunning, StatusSuccess, StatusFailed}
 
 func (service *Service) GetType() string {
 	return service.ServiceType
@@ -104,6 +118,13 @@ func (service *Service) SetAttemptDefaults(attempts int, attemptDelay int) {
 	if service.AttemptDelay == 0 {
 		service.AttemptDelay = attemptDelay
 	}
+}
+
+// WorstCaseSeconds is the longest a task of attempts tries can take: every
+// attempt running until Run cuts it off at timeout, plus attemptDelay between
+// attempts.
+func WorstCaseSeconds(timeout, attempts, attemptDelay int) int {
+	return attempts*timeout + (attempts-1)*attemptDelay
 }
 
 func (service *Service) GetCredlists() []string {
