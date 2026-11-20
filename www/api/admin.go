@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -196,10 +198,11 @@ func (a *API) ExportScores(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var data []TeamScore
+	data := make([]TeamScore, 0, len(teamScores))
 	for _, score := range teamScores {
 		data = append(data, *score)
 	}
+	slices.SortFunc(data, func(x, y TeamScore) int { return cmp.Compare(x.TeamID, y.TeamID) })
 
 	WriteJSON(w, http.StatusOK, data)
 }
