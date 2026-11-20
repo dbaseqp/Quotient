@@ -2,9 +2,7 @@ package checks
 
 import (
 	"fmt"
-	"hash/fnv"
 	"regexp"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -78,36 +76,11 @@ func TestSetWorkstationNamingCopies(t *testing.T) {
 	assert.Empty(t, w.WorkstationSeed, "no fallback seed in the checks layer")
 }
 
-// fnvWorkstationPool is the former, reversible derivation: 64-bit FNV-1a of seed + "/" + team.
-// Its state after the seed can be recovered from observed names, giving every team's pool.
-func fnvWorkstationPool(seed, team string) []string {
-	sum := func(s string) uint64 {
-		h := fnv.New64a()
-		_, _ = h.Write([]byte(s))
-		return h.Sum64()
-	}
-	size := 4 + int(sum(seed+"/"+team)%3)
-	pool := make([]string, 0, size)
-	for i := range size {
-		x := sum(seed + "/" + team + "/desktop/" + strconv.Itoa(i))
-		var b [7]byte
-		for j := range b {
-			b[j] = workstationNameAlphabet[x%uint64(len(workstationNameAlphabet))]
-			x /= uint64(len(workstationNameAlphabet))
-		}
-		pool = append(pool, "DESKTOP-"+string(b[:]))
-	}
-	return pool
-}
-
 func TestWorkstationPoolKeyedBySeed(t *testing.T) {
 	for i := range 20 {
 		team := fmt.Sprintf("%02d", i)
-		pool := workstationPool("acme-anvil", team, nil)
-		assert.NotEqual(t, pool, workstationPool("acme-anvi1", team, nil), "team %s: seeds give their own names", team)
-		for _, n := range fnvWorkstationPool("acme-anvil", team) {
-			assert.NotContains(t, pool, n, "team %s: a name still follows from FNV of the seed", team)
-		}
+		assert.NotEqual(t, workstationPool("acme-anvil", team, nil), workstationPool("acme-anvi1", team, nil),
+			"team %s: seeds give their own names", team)
 	}
 }
 

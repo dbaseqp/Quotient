@@ -29,23 +29,27 @@ func waitFor(t *testing.T, cond func() bool) {
 }
 
 func TestDnsRun_StubQueryPair(t *testing.T) {
-	f := &fakeDNS{answers: map[string]string{"www.team01.acme.local.": "192.0.2.10"}}
-	host, port := startDNS(t, f)
-
-	r := runNetCheck(t, newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.10"))
+	pc, host, port := listenDNS(t)
+	results := startNetCheck(newDnsCheck(host, port, "A", "www.team_.acme.local", "192.0.2.10"))
+	a, client := readDNS(t, pc)
+	aaaa, client2 := readDNS(t, pc)
+	require.Len(t, a.Question, 1)
+	require.Len(t, aaaa.Question, 1)
+	assert.Equal(t, dns.TypeA, a.Question[0].Qtype, "the A question goes first")
+	assert.Equal(t, dns.TypeAAAA, aaaa.Question[0].Qtype)
+	assert.Equal(t, a.Question[0].Name, aaaa.Question[0].Name)
+	assert.Equal(t, client.String(), client2.String(), "both questions go out on one socket, like getaddrinfo")
+	reply := new(dns.Msg).SetReply(a)
+	reply.Answer = append(reply.Answer, dnsA(a.Question[0].Name, "192.0.2.10"))
+	writeDNS(t, pc, reply, client)
+	writeDNS(t, pc, new(dns.Msg).SetReply(aaaa), client)
+	r := awaitResult(t, results)
 	require.True(t, r.Status, r.Error+" "+r.Debug)
-	waitFor(t, func() bool { return len(f.snapshot()) >= 2 })
-	q := f.snapshot()
-	require.Len(t, q, 2)
-	// The server handles packets concurrently, so its log order is not the send order.
-	assert.ElementsMatch(t, []uint16{dns.TypeA, dns.TypeAAAA}, []uint16{q[0].Qtype, q[1].Qtype})
-	assert.Equal(t, q[0].Name, q[1].Name)
-	assert.Equal(t, q[0].Peer, q[1].Peer, "both questions go out on one socket, like getaddrinfo")
 
 	// An MX lookup sends only its own question. The check has read its reply by the time it
 	// returns, so anything else it sent is already queued ahead of a marker sent afterwards.
 	pc, mh, mp := listenDNS(t)
-	results := startNetCheck(newDnsCheck(mh, mp, "MX", "acme.local", "192.0.2.10"))
+	results = startNetCheck(newDnsCheck(mh, mp, "MX", "acme.local", "192.0.2.10"))
 	mq, client := readDNS(t, pc)
 	require.Len(t, mq.Question, 1)
 	assert.Equal(t, dns.TypeMX, mq.Question[0].Qtype)
