@@ -200,6 +200,13 @@ func parseCompetitionTime(which, value string, location *time.Location) (time.Ti
 	if parsed.Format("2006-01-02 15:04") != value {
 		return time.Time{}, fmt.Errorf("competition %s time %q does not exist in timezone %q", which, value, location)
 	}
+	// In a DST fall-back hour the same wall-clock time happens twice; refuse to
+	// guess which instant was meant.
+	for _, other := range []time.Time{parsed.Add(-time.Hour), parsed.Add(time.Hour)} {
+		if other.Format("2006-01-02 15:04") == value {
+			return time.Time{}, fmt.Errorf("competition %s time %q is ambiguous in timezone %q (DST change); pick a time outside the repeated hour", which, value, location)
+		}
+	}
 	return parsed, nil
 }
 
@@ -380,6 +387,9 @@ func checkConfig(conf *ConfigSettings) error {
 	}
 
 	// validate times and scoring info
+	if conf.MiscSettings.Jitter < 0 {
+		errResult = errors.Join(errResult, errors.New("jitter must not be negative"))
+	}
 	if conf.MiscSettings.Jitter >= conf.MiscSettings.Delay {
 		errResult = errors.Join(errResult, errors.New("jitter must be smaller than delay"))
 	}
@@ -413,7 +423,9 @@ func checkConfig(conf *ConfigSettings) error {
 
 	if conf.UISettings.AllowNonAnonymizedGraphsForBlueTeam {
 		conf.UISettings.AllowNonAnonymizedGraphs = true
-	} else if *conf.MiscSettings.SlaPenalty < 0 {
+	}
+
+	if *conf.MiscSettings.SlaPenalty < 0 {
 		errResult = errors.Join(errResult, errors.New("SlaPenalty must not be negative"))
 	} else if *conf.MiscSettings.SlaPenalty == 0 {
 		slog.Warn("SlaPenalty = 0: SLAs are counted but deduct no points")
