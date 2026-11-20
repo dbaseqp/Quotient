@@ -6,6 +6,8 @@ import (
 	"math"
 	"slices"
 
+	"github.com/dbaseqp/Quotient/engine/config"
+
 	"gorm.io/gorm"
 )
 
@@ -308,8 +310,10 @@ func (d *DB) GetServiceScores() ([]ServiceScoreData, error) {
 	return results, nil
 }
 
-func (d *DB) LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) error {
-	rows, err := d.db.Table("service_check_schemas").Select("team_id, service_name, result").Rows()
+// LoadSLAs rebuilds each team's per-service failures since its last SLA from
+// the stored results; slaRules returns the rule a service is scored with.
+func (d *DB) LoadSLAs(slaPerService *map[uint]map[string]int, slaRules func(serviceName string) config.SlaRule) error {
+	rows, err := d.db.Table("service_check_schemas").Select("team_id, service_name, result").Order("round_id").Rows()
 	if err != nil {
 		return err
 	}
@@ -329,11 +333,7 @@ func (d *DB) LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) 
 			(*slaPerService)[teamID] = make(map[string]int)
 		}
 
-		if result {
-			(*slaPerService)[teamID][serviceName] = 0
-		} else {
-			(*slaPerService)[teamID][serviceName] = ((*slaPerService)[teamID][serviceName] + 1) % slaThreshold
-		}
+		(*slaPerService)[teamID][serviceName], _ = slaRules(serviceName).Advance((*slaPerService)[teamID][serviceName], result)
 	}
 	return nil
 }

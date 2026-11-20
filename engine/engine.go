@@ -130,7 +130,7 @@ func (se *ScoringEngine) Start() {
 	}
 	se.uptimeMu.Unlock()
 
-	if err := se.DB.LoadSLAs(&se.SlaPerService, se.Config.Current().MiscSettings.SlaThreshold); err != nil {
+	if err := se.DB.LoadSLAs(&se.SlaPerService, se.Config.Current().SlaRules()); err != nil {
 		slog.Error("failed to load SLAs", "error", err)
 	}
 
@@ -962,6 +962,7 @@ func (se *ScoringEngine) processCollectedResults(conf *config.ConfigSettings, re
 		return
 	}
 
+	slaRules := conf.SlaRules()
 	se.uptimeMu.Lock()
 	for _, result := range results {
 		// Update uptime and SLA maps
@@ -984,21 +985,18 @@ func (se *ScoringEngine) processCollectedResults(conf *config.ConfigSettings, re
 		if _, ok := se.SlaPerService[result.TeamID][result.ServiceName]; !ok {
 			se.SlaPerService[result.TeamID][result.ServiceName] = 0
 		}
-		if result.Status {
-			se.SlaPerService[result.TeamID][result.ServiceName] = 0
-		} else {
-			se.SlaPerService[result.TeamID][result.ServiceName]++
-			if se.SlaPerService[result.TeamID][result.ServiceName] >= conf.MiscSettings.SlaThreshold {
-				sla := db.SLASchema{
-					TeamID:      result.TeamID,
-					ServiceName: result.ServiceName,
-					RoundID:     uint(se.CurrentRound),
-					Penalty:     *conf.MiscSettings.SlaPenalty,
-				}
-				if _, err := se.DB.CreateSLA(sla); err != nil {
-					slog.Error("failed to create SLA", "team", result.TeamID, "service", result.ServiceName, "error", err)
-				}
-				se.SlaPerService[result.TeamID][result.ServiceName] = 0
+		rule := slaRules(result.ServiceName)
+		next, violated := rule.Advance(se.SlaPerService[result.TeamID][result.ServiceName], result.Status)
+		se.SlaPerService[result.TeamID][result.ServiceName] = next
+		if violated {
+			sla := db.SLASchema{
+				TeamID:      result.TeamID,
+				ServiceName: result.ServiceName,
+				RoundID:     uint(se.CurrentRound),
+				Penalty:     rule.Penalty,
+			}
+			if _, err := se.DB.CreateSLA(sla); err != nil {
+				slog.Error("failed to create SLA", "team", result.TeamID, "service", result.ServiceName, "error", err)
 			}
 		}
 	}

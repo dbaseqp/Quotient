@@ -28,6 +28,8 @@ type Runner interface {
 	GetAttemptDelay() int
 	GetTimeout() int
 	GetPoints() int
+	GetSlaThreshold() int
+	GetSlaPenalty() (penalty int, set bool)
 	GetCredlists() []string
 	SetTaskCredentials(creds []TaskCredential)
 }
@@ -40,8 +42,8 @@ type Service struct {
 	Port            int              `toml:",omitzero"` // omitzero because custom checks might not specify port, and shouldn't be assigned 0
 	Points          int              `toml:",omitempty"`
 	Timeout         int              `toml:",omitempty"`
-	SlaPenalty      int              `toml:",omitempty"`
-	SlaThreshold    int              `toml:",omitempty"`
+	SlaPenalty      *int             `toml:",omitempty"` // overrides MiscSettings.SlaPenalty; a pointer so an explicit 0 differs from unset
+	SlaThreshold    int              `toml:",omitempty"` // overrides MiscSettings.SlaThreshold; 0 before Configure means inherit
 	LaunchTime      time.Time        `toml:",omitempty"`
 	StopTime        time.Time        `toml:",omitempty"`
 	Disabled        bool             `toml:",omitempty"`
@@ -93,6 +95,21 @@ func (service *Service) GetTimeout() int {
 
 func (service *Service) GetPoints() int {
 	return service.Points
+}
+
+// GetSlaThreshold returns the check's SLA threshold; 0 only before Configure
+// fills in the global.
+func (service *Service) GetSlaThreshold() int {
+	return service.SlaThreshold
+}
+
+// GetSlaPenalty returns the check's SLA penalty; set is false only before
+// Configure fills in the global.
+func (service *Service) GetSlaPenalty() (penalty int, set bool) {
+	if service.SlaPenalty == nil {
+		return 0, false
+	}
+	return *service.SlaPenalty, true
 }
 
 // SetAttemptDefaults fills Attempts and AttemptDelay from the event-wide
@@ -161,8 +178,8 @@ func (service *Service) Configure(ip string, points int, timeout int, slapenalty
 	if service.Timeout == 0 {
 		service.Timeout = timeout
 	}
-	if service.SlaPenalty == 0 {
-		service.SlaPenalty = slapenalty
+	if service.SlaPenalty == nil {
+		service.SlaPenalty = &slapenalty
 	}
 	if service.SlaThreshold == 0 {
 		service.SlaThreshold = slathreshold

@@ -532,6 +532,9 @@ func checkConfig(conf *ConfigSettings) error {
 				if err := checkAttemptBudget(check, conf.MiscSettings.Delay-conf.MiscSettings.Jitter); err != nil {
 					errResult = errors.Join(errResult, err)
 				}
+				if penalty, _ := check.GetSlaPenalty(); penalty < 0 || check.GetSlaThreshold() < 0 {
+					errResult = errors.Join(errResult, fmt.Errorf("%s: SlaThreshold and SlaPenalty must not be negative", check.GetName()))
+				}
 				if _, exists := runnerNames[check.GetName()]; exists {
 					errResult = errors.Join(errResult, fmt.Errorf("duplicate check name found: %s", check.GetName()))
 				} else {
@@ -598,4 +601,48 @@ func (conf *ConfigSettings) AllChecks() []checks.Runner {
 		out = append(out, box.Runners...)
 	}
 	return out
+}
+
+// SlaRule is the number of consecutive failures that cost a check an SLA, and
+// the points that SLA deducts.
+type SlaRule struct {
+	Threshold int
+	Penalty   int
+}
+
+// Advance returns a check's failures since its last SLA after one more result,
+// and whether that result costs an SLA.
+func (rule SlaRule) Advance(failures int, passed bool) (next int, violated bool) {
+	if passed {
+		return 0, false
+	}
+	failures++
+	if failures >= rule.Threshold {
+		return 0, true
+	}
+	return failures, false
+}
+
+// SlaRules returns each check's SLA rule: its own values where set,
+// MiscSettings' for unset values (a check that skipped Configure) and for
+// names not in conf (a removed check's stored results).
+func (conf *ConfigSettings) SlaRules() func(serviceName string) SlaRule {
+	global := SlaRule{Threshold: conf.MiscSettings.SlaThreshold, Penalty: *conf.MiscSettings.SlaPenalty}
+	rules := make(map[string]SlaRule)
+	for _, check := range conf.AllChecks() {
+		rule := global
+		if threshold := check.GetSlaThreshold(); threshold != 0 {
+			rule.Threshold = threshold
+		}
+		if penalty, set := check.GetSlaPenalty(); set {
+			rule.Penalty = penalty
+		}
+		rules[check.GetName()] = rule
+	}
+	return func(serviceName string) SlaRule {
+		if rule, ok := rules[serviceName]; ok {
+			return rule
+		}
+		return global
+	}
 }
