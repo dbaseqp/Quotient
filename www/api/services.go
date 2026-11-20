@@ -53,33 +53,12 @@ func (a *API) GetTeamSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summaries, err := a.eng.DB.GetTeamSummary(teamID)
+	s, err := a.eng.TeamSummary(teamID)
 	if err != nil {
 		slog.Error("Failed to get team summary", "teamID", teamID, "err", err)
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving team summary"})
 		return
 	}
-
-	type summary struct {
-		ServiceName  string           `json:"ServiceName"`
-		SlaCount     int              `json:"SlaCount"`
-		Last10Rounds []db.RoundSchema `json:"Last10Rounds"`
-		Uptime       float64          `json:"Uptime"`
-	}
-
-	a.eng.RLockUptime()
-	uptimeMap := a.eng.GetUptimePerService()
-	var s []summary
-	for _, v := range summaries {
-		uptime := uptimeMap[teamID][v["ServiceName"].(string)]
-		s = append(s, summary{
-			ServiceName:  v["ServiceName"].(string),
-			SlaCount:     v["SlaCount"].(int),
-			Last10Rounds: v["Last10Rounds"].([]db.RoundSchema),
-			Uptime:       float64(uptime.PassedChecks) / float64(uptime.TotalChecks),
-		})
-	}
-	a.eng.RUnlockUptime()
 
 	WriteJSON(w, http.StatusOK, s)
 }
@@ -103,7 +82,7 @@ func (a *API) GetServiceAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	service, err := a.eng.DB.GetServiceAllChecksByTeam(teamID, serviceID)
+	service, err := a.eng.ServiceAllChecksByTeam(teamID, serviceID)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Error retrieving service data"})
 		return
@@ -111,7 +90,7 @@ func (a *API) GetServiceAll(w http.ResponseWriter, r *http.Request) {
 
 	// Remove debug and error fields for non-admins
 	// Red team never sees credentials, blue team only if ShowDebugToBlueTeam is enabled
-	if !slices.Contains(req_roles, "admin") && (slices.Contains(req_roles, "red") || !a.conf.MiscSettings.ShowDebugToBlueTeam) {
+	if !slices.Contains(req_roles, "admin") && (slices.Contains(req_roles, "red") || !a.conf.Current().MiscSettings.ShowDebugToBlueTeam) {
 		for i := range service {
 			service[i].Debug = ""
 			service[i].Error = ""

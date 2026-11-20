@@ -2,8 +2,10 @@ package checks
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
+	"slices"
 	"strings"
 	"time"
 )
@@ -12,6 +14,7 @@ import (
 type TaskCredential struct {
 	Username string
 	Password string
+	Credlist string
 }
 
 // checks for each service
@@ -24,6 +27,7 @@ type Runner interface {
 	GetAttempts() int
 	GetAttemptDelay() int
 	GetTimeout() int
+	GetPoints() int
 	GetCredlists() []string
 	SetTaskCredentials(creds []TaskCredential)
 }
@@ -87,6 +91,10 @@ func (service *Service) GetTimeout() int {
 	return service.Timeout
 }
 
+func (service *Service) GetPoints() int {
+	return service.Points
+}
+
 // SetAttemptDefaults fills Attempts and AttemptDelay from the event-wide
 // defaults when the service doesn't set them.
 func (service *Service) SetAttemptDefaults(attempts int, attemptDelay int) {
@@ -111,14 +119,35 @@ func (service *Service) SetTaskCredentials(creds []TaskCredential) {
 	service.TaskCredentials = creds
 }
 
-func (service *Service) getCreds(teamID uint) (string, string, error) {
-	if len(service.TaskCredentials) == 0 {
+// getCreds picks a random credential, leaving out rows from the credlists in exclude.
+func (service *Service) getCreds(teamID uint, exclude ...string) (string, string, error) {
+	pool := make([]TaskCredential, 0, len(service.TaskCredentials))
+	for _, cred := range service.TaskCredentials {
+		if !slices.Contains(exclude, cred.Credlist) {
+			pool = append(pool, cred)
+		}
+	}
+	if len(pool) == 0 {
 		return "", "", errors.New("no credentials available")
 	}
 
-	rng := rand.New(rand.NewSource(time.Now().UnixNano())) // #nosec G404 -- non-crypto RNG
-	randomIndex := rng.Intn(len(service.TaskCredentials))
-	return service.TaskCredentials[randomIndex].Username, service.TaskCredentials[randomIndex].Password, nil
+	picked := pool[rand.IntN(len(pool))] // #nosec G404 -- non-crypto selection of a credential
+	return picked.Username, picked.Password, nil
+}
+
+// getCredlistPassword returns the password of a random row of the named credlist.
+func (service *Service) getCredlistPassword(name string) (string, error) {
+	var rows []TaskCredential
+	for _, cred := range service.TaskCredentials {
+		if cred.Credlist == name {
+			rows = append(rows, cred)
+		}
+	}
+	if len(rows) == 0 {
+		return "", fmt.Errorf("no credentials available in credlist %q", name)
+	}
+
+	return rows[rand.IntN(len(rows))].Password, nil // #nosec G404 -- non-crypto selection of a credential
 }
 
 func (service *Service) Configure(ip string, points int, timeout int, slapenalty int, slathreshold int) error {
@@ -165,16 +194,33 @@ func (service *Service) Run(teamID uint, teamIdentifier string, roundID uint, re
 		TeamID:      teamID,
 		ServiceName: service.Name,
 		Target:      service.Target,
-		Points:      service.Points,
 		Status:      false,
 		ServiceType: service.ServiceType,
 		RoundID:     roundID,
 	}
 
 	slog.Debug("Running check", "teamID", teamID, "serviceName", service.Name, "target", service.Target)
-	response := make(chan Result)
+	response := make(chan Result, 1)
 
-	go definition(teamID, teamIdentifier, checkResult, response)
+	// A check library that panics on a malformed reply from a team's server
+	// must fail that check, not kill the runner and every task it holds.
+	// checkResult is passed by value: Run writes it on timeout while the
+	// definition may still be running.
+	go func(initial Result) {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("check panicked", "service", initial.ServiceName, "team", teamID, "panic", r)
+				failed := initial
+				failed.Error = "check crashed on the service's response"
+				failed.Debug = fmt.Sprint(r)
+				select {
+				case response <- failed:
+				default:
+				}
+			}
+		}()
+		definition(teamID, teamIdentifier, initial, response)
+	}(checkResult)
 
 	select {
 	// ok response

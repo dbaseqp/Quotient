@@ -29,12 +29,13 @@ const COOKIENAME = "quotient"
 
 // cookieSecure returns whether cookies should use the Secure flag (HTTPS only)
 func (a *API) cookieSecure() bool {
+	conf := a.conf.Current()
 	// If OIDC is enabled and using HTTPS callback, enforce secure cookies
-	if a.conf.OIDCSettings.OIDCEnabled && strings.HasPrefix(a.conf.OIDCSettings.OIDCRedirectURL, "https://") {
+	if conf.OIDCSettings.OIDCEnabled && strings.HasPrefix(conf.OIDCSettings.OIDCRedirectURL, "https://") {
 		return true
 	}
 	// Otherwise, use secure cookies only if SSL is configured
-	return a.conf.SslSettings != (config.SslConfig{})
+	return conf.SslSettings != (config.SslConfig{})
 }
 
 func init() {
@@ -132,7 +133,7 @@ func (a *API) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     COOKIENAME,
 		Value:    "",
-		MaxAge:   0,
+		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   a.cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
@@ -144,8 +145,8 @@ func (a *API) Logout(w http.ResponseWriter, r *http.Request) {
 
 // Authenticate resolves the caller from their session cookie. Reports false
 // when the request carries no usable session, or when the identity cannot be
-// resolved, in which case it also clears the cookie. Refreshes the cookie on
-// success.
+// resolved, in which case it also clears the cookie unless the failure was a
+// backing store outage. Refreshes the cookie on success.
 func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
 	token, err := r.Cookie(COOKIENAME)
 	if err != nil {
@@ -174,6 +175,12 @@ func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bo
 	}
 
 	id, err := a.resolveIdentity(username, authSource)
+	if errors.Is(err, errIdentityUnavailable) {
+		// The session may well be valid; keep the cookie so it works again
+		// once the store recovers.
+		slog.Error(err.Error())
+		return Identity{}, false
+	}
 	if err != nil {
 		slog.Error(err.Error())
 		http.SetCookie(w, &http.Cookie{
@@ -203,22 +210,23 @@ func (a *API) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bo
 }
 
 func (a *API) auth(username string, password string) (map[string]any, error) {
-	for _, admin := range a.conf.Admin {
+	conf := a.conf.Current()
+	for _, admin := range conf.Admin {
 		if username == admin.Name && password == admin.Pw {
 			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
-	for _, team := range a.conf.Team {
+	for _, team := range conf.Team {
 		if username == team.Name && password == team.Pw {
 			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
-	for _, red := range a.conf.Red {
+	for _, red := range conf.Red {
 		if username == red.Name && password == red.Pw {
 			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
 	}
-	for _, inject := range a.conf.Inject {
+	for _, inject := range conf.Inject {
 		if username == inject.Name && password == inject.Pw {
 			return map[string]any{"username": username, "authSource": "local"}, nil
 		}
@@ -226,8 +234,8 @@ func (a *API) auth(username string, password string) (map[string]any, error) {
 
 	// auth from other sources
 	// if ldap configs are present, try to auth against ldap
-	if a.conf.LdapSettings != (config.LdapAuthConfig{}) {
-		groups, err := ldapdir.Authenticate(a.conf.LdapSettings, username, password)
+	if conf.LdapSettings != (config.LdapAuthConfig{}) {
+		groups, err := ldapdir.Authenticate(conf.LdapSettings, username, password)
 		if err != nil {
 			return nil, err
 		}

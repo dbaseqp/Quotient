@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -23,7 +24,9 @@ import (
 )
 
 type ScoringEngine struct {
-	Config *config.ConfigSettings
+	// Config is shared with the web server. Take one Current() snapshot per
+	// unit of work: a hot reload swaps in a new snapshot at any time.
+	Config *config.Live
 	// credentialsMutex holds one lock per team. Seeding runs on the engine
 	// goroutine while the web server serves, so credentialsMu guards the map.
 	credentialsMutex      map[uint]*sync.Mutex
@@ -35,7 +38,10 @@ type ScoringEngine struct {
 	NextRoundStartTime    time.Time
 	CurrentRoundStartTime time.Time
 	RedisClient           *redis.Client
-	DB                    *db.DB
+
+	roundListenersMu sync.Mutex
+	roundListeners   map[chan struct{}]struct{}
+	DB               *db.DB
 
 	// Concurrency control for materialized view refresh
 	Refreshing atomic.Bool
@@ -46,13 +52,26 @@ type ScoringEngine struct {
 	pauseMu sync.Mutex
 	// resume is closed while the engine runs; while paused it is open and the round loop blocks on it.
 	resume chan struct{}
-}
+	// scheduleChanged is closed and replaced whenever the competition schedule changes.
+	scheduleChanged chan struct{}
+	// pausedAtEnd is the competition end the round loop paused itself at (nil
+	// for a manual pause); owned by the round loop, which alone decides overtime.
+	pausedAtEnd *time.Time
 
-func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
+	// roundFunc is called each round. Set by Start() from the event type, or
+	// overridden by NewTestEngine to inject faults without touching the DB.
+	roundFunc func() error
+}
+var errReset = errors.New("reset event received")
+
+
+func NewEngine(configPath string) *ScoringEngine {
 	// Ensure config is properly validated and runners are set up
-	if err := conf.SetConfig(configPath); err != nil {
+	live := &config.Live{}
+	if err := live.Reload(configPath); err != nil {
 		panic(fmt.Sprintf("Failed to validate initial config: %v", err))
 	}
+	conf := live.Current()
 
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
@@ -73,7 +92,7 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 	}
 
 	se := &ScoringEngine{
-		Config:           conf,
+		Config:           live,
 		credentialsMutex: make(map[uint]*sync.Mutex),
 		UptimePerService: make(map[uint]map[string]db.Uptime),
 		SlaPerService:    make(map[uint]map[string]int),
@@ -83,13 +102,14 @@ func NewEngine(conf *config.ConfigSettings, configPath string) *ScoringEngine {
 	}
 	se.resetPauseState()
 
-	if err := conf.WatchConfig(configPath, func() {
-		if err := se.DB.AddTeams(se.Config); err != nil {
+	if err := live.WatchConfig(configPath, func() {
+		if err := se.DB.AddTeams(se.Config.Current()); err != nil {
 			slog.Error("failed to add teams on config reload", "error", err)
 		}
 		if err := se.EnsureCredentialsSeeded(); err != nil {
 			slog.Error("failed to seed credentials on config reload", "error", err)
 		}
+		se.signalScheduleChanged()
 	}); err != nil {
 		slog.Error("Failed to start config watcher", "error", err)
 	}
@@ -110,7 +130,7 @@ func (se *ScoringEngine) Start() {
 	}
 	se.uptimeMu.Unlock()
 
-	if err := se.DB.LoadSLAs(&se.SlaPerService, se.Config.MiscSettings.SlaThreshold); err != nil {
+	if err := se.DB.LoadSLAs(&se.SlaPerService, se.Config.Current().MiscSettings.SlaThreshold); err != nil {
 		slog.Error("failed to load SLAs", "error", err)
 	}
 
@@ -121,6 +141,7 @@ func (se *ScoringEngine) Start() {
 	}
 
 	se.NextRoundStartTime = time.Time{}
+	se.pausedAtEnd = nil
 
 	stop := make(chan struct{})
 	loopDone := make(chan struct{})
@@ -130,47 +151,55 @@ func (se *ScoringEngine) Start() {
 		defer close(loopDone)
 		for {
 			slog.Info("Queueing up for round", "round", se.CurrentRound)
-			se.pauseMu.Lock()
-			resume := se.resume
-			se.pauseMu.Unlock()
-			select {
-			case <-stop:
+			schedule, ok := se.waitForRoundReady(stop)
+			if !ok {
 				return
-			case <-resume:
 			}
 			select {
 			case <-stop:
 				return
 			default:
 			}
-
+			if se.pauseAtCompetitionEnd(schedule) {
+				continue
+			}
+			conf := se.Config.Current()
 			se.CurrentRoundStartTime = time.Now()
-			se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second)
+			se.NextRoundStartTime = time.Now().Add(time.Duration(conf.MiscSettings.Delay) * time.Second)
 
-			var err error
-			switch se.Config.RequiredSettings.EventType {
+		var err error
+		if se.roundFunc != nil {
+			err = se.roundFunc()
+		} else {
+			switch conf.RequiredSettings.EventType {
 			case "koth":
 				err = se.koth()
 			case "rvb":
-				if se.preflightPending() {
+				if se.PreflightPending() {
 					err = se.preflight()
 				} else {
 					err = se.rvb()
 				}
 			default:
-				slog.Error("Unknown event type", "eventType", se.Config.RequiredSettings.EventType)
+				slog.Error("Unknown event type", "eventType", conf.RequiredSettings.EventType)
 			}
-			if err != nil {
-				slog.Error("Round error. If this is a reset, ignore...", "error", err)
+		}
+		if err != nil {
+			if errors.Is(err, errReset) {
+				slog.Info("Round loop exiting for reset")
 				return
 			}
+			slog.Error("Round error, retrying next round", "error", err)
+		}
+		// Divisor rotates the runners' source addresses when it sees round_finish. A round that ran to
+		// its deadline (a lost or late result) would otherwise start the next round at once, while the
+		// rotation removes the address the new round's first checks connect from, and those checks
+		// time out against services that are up.
+		if earliest := time.Now().Add(roundFinishSettle); se.NextRoundStartTime.Before(earliest) {
+			se.NextRoundStartTime = earliest
+		}
 
 			slog.Info(fmt.Sprintf("Next round will start in %s, sleeping...", time.Until(se.NextRoundStartTime).String()))
-			select {
-			case <-stop:
-				return
-			case <-time.After(time.Until(se.NextRoundStartTime)):
-			}
 		}
 	}()
 	se.waitForReset()
@@ -178,6 +207,11 @@ func (se *ScoringEngine) Start() {
 	<-loopDone
 	slog.Info("Restarting scoring...")
 }
+
+// roundFinishSettle is the least time between a round_finish and the next round's start. Divisor
+// rotates runner source addresses on round_finish (about 1 s per address it probes, NUM_IPS of them),
+// so this only delays the round after one that ran to its deadline.
+const roundFinishSettle = 5 * time.Second
 
 func (se *ScoringEngine) waitForReset() {
 	// wait for a signal to reset the engine
@@ -201,16 +235,94 @@ func (se *ScoringEngine) waitForReset() {
 	}
 }
 
-func (se *ScoringEngine) GetUptimePerService() map[uint]map[string]db.Uptime {
-	return se.UptimePerService
+func (se *ScoringEngine) SubscribeRounds() (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	se.roundListenersMu.Lock()
+	if se.roundListeners == nil {
+		se.roundListeners = make(map[chan struct{}]struct{})
+	}
+	se.roundListeners[ch] = struct{}{}
+	se.roundListenersMu.Unlock()
+
+	return ch, func() {
+		se.roundListenersMu.Lock()
+		delete(se.roundListeners, ch)
+		se.roundListenersMu.Unlock()
+	}
 }
 
-func (se *ScoringEngine) RLockUptime() {
+func (se *ScoringEngine) notifyRoundListeners() {
+	se.roundListenersMu.Lock()
+	defer se.roundListenersMu.Unlock()
+
+	for ch := range se.roundListeners {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (se *ScoringEngine) LastRound() (db.RoundSchema, bool, error) {
+	if se.PreflightPending() {
+		r, err := se.DB.GetLastPreflightRound()
+		return r, true, err
+	}
+	r, err := se.DB.GetLastRound()
+	return r, false, err
+}
+
+func (se *ScoringEngine) WithUptimes(fn func(map[uint]map[string]db.Uptime)) error {
+	if se.PreflightPending() {
+		u, err := se.DB.GetPreflightUptimes()
+		if err != nil {
+			return err
+		}
+		fn(u)
+		return nil
+	}
 	se.uptimeMu.RLock()
+	defer se.uptimeMu.RUnlock()
+	fn(se.UptimePerService)
+	return nil
 }
 
-func (se *ScoringEngine) RUnlockUptime() {
+func populateSummaryUptimes(summaries []db.ServiceSummary, uptimes map[string]db.Uptime) {
+	for i := range summaries {
+		if u := uptimes[summaries[i].ServiceName]; u.TotalChecks > 0 {
+			summaries[i].Uptime = float64(u.PassedChecks) / float64(u.TotalChecks)
+		}
+	}
+}
+
+func (se *ScoringEngine) TeamSummary(teamID uint) ([]db.ServiceSummary, error) {
+	if se.PreflightPending() {
+		summaries, err := se.DB.GetPreflightTeamSummary(teamID)
+		if err != nil || len(summaries) == 0 {
+			return summaries, err
+		}
+		uptimes, err := se.DB.GetPreflightUptimes()
+		if err != nil {
+			return nil, err
+		}
+		populateSummaryUptimes(summaries, uptimes[teamID])
+		return summaries, nil
+	}
+	summaries, err := se.DB.GetTeamSummary(teamID)
+	if err != nil || len(summaries) == 0 {
+		return summaries, err
+	}
+	se.uptimeMu.RLock()
+	populateSummaryUptimes(summaries, se.UptimePerService[teamID])
 	se.uptimeMu.RUnlock()
+	return summaries, nil
+}
+
+func (se *ScoringEngine) ServiceAllChecksByTeam(teamID uint, serviceID string) ([]db.ServiceCheckSchema, error) {
+	if se.PreflightPending() {
+		return se.DB.GetPreflightServiceAllChecksByTeam(teamID, serviceID)
+	}
+	return se.DB.GetServiceAllChecksByTeam(teamID, serviceID)
 }
 
 // GetActiveTasks returns all active and recently completed tasks
@@ -290,9 +402,10 @@ func (se *ScoringEngine) resetPauseState() {
 	se.pauseMu.Lock()
 	defer se.pauseMu.Unlock()
 	se.resume = make(chan struct{})
-	if !se.Config.MiscSettings.StartPaused {
+	if !se.Config.Current().MiscSettings.StartPaused {
 		close(se.resume)
 	}
+	se.scheduleChanged = make(chan struct{})
 }
 
 func (se *ScoringEngine) pausedLocked() bool {
@@ -312,9 +425,9 @@ func (se *ScoringEngine) SetPaused(pause bool) bool {
 	}
 	if pause {
 		se.resume = make(chan struct{})
-		return true
+	} else {
+		close(se.resume)
 	}
-	close(se.resume)
 	return true
 }
 
@@ -324,7 +437,199 @@ func (se *ScoringEngine) Paused() bool {
 	return se.pausedLocked()
 }
 
-// ResetScores resets the engine to the initial state and stops the engine
+// Schedule is the effective competition schedule — the runtime schedule set
+// through the API when there is one, else event.conf — and where the
+// competition stands against it.
+type Schedule struct {
+	Start, End *time.Time
+	// Source is "runtime", "config" or "none".
+	Source string
+	// Started is whether the competition is open to teams right now.
+	Started bool
+	// StartedAt is the first start, the anchor of imported injects; nil until then.
+	StartedAt *time.Time
+	// OvertimeEnd is the end an admin resumed scoring after; scoring continues
+	// past End while they are equal.
+	OvertimeEnd *time.Time
+}
+
+// scheduleRetryDelay is how soon the round loop re-reads the schedule after a
+// failed read or a failed scheduled start.
+const scheduleRetryDelay = 5 * time.Second
+
+// effectiveSchedule merges the persisted state with event.conf: a runtime
+// schedule (any saved start or end) replaces the configured one as a whole.
+func effectiveSchedule(state db.CompetitionStateSchema, conf config.InjectConfig) Schedule {
+	s := Schedule{Source: "none", Started: state.Started, StartedAt: state.StartedAt, OvertimeEnd: state.OvertimeEnd}
+	switch {
+	case state.RuntimeScheduled():
+		s.Start, s.End, s.Source = state.ScheduledStart, state.ScheduledEnd, "runtime"
+	case conf.Start != nil || conf.End != nil:
+		s.Start, s.End, s.Source = conf.Start, conf.End, "config"
+	}
+	return s
+}
+
+// nextScheduledStart reports the scheduled start the round loop still has to
+// perform. Nothing is pending once the competition has ever started or its
+// end has passed.
+func (s Schedule) nextScheduledStart() (start time.Time, pending bool) {
+	if s.StartedAt != nil || s.Start == nil {
+		return time.Time{}, false
+	}
+	if s.End != nil && !time.Now().Before(*s.End) {
+		return time.Time{}, false
+	}
+	return *s.Start, true
+}
+
+// ErrEndBeforeStart rejects a schedule whose end is not after its start.
+var ErrEndBeforeStart = errors.New("competition end time must be after start time")
+
+func (se *ScoringEngine) CompetitionSchedule() (Schedule, error) {
+	state, err := se.DB.GetCompetitionState()
+	if err != nil {
+		return Schedule{}, err
+	}
+	return effectiveSchedule(state, se.Config.Current().InjectSettings), nil
+}
+
+// SetCompetitionSchedule stores a runtime schedule that replaces event.conf's
+// as a whole; both nil clears it so event.conf applies again.
+func (se *ScoringEngine) SetCompetitionSchedule(start, end *time.Time) error {
+	if start != nil && end != nil && !end.After(*start) {
+		return ErrEndBeforeStart
+	}
+	next := effectiveSchedule(db.CompetitionStateSchema{ScheduledStart: start, ScheduledEnd: end}, se.Config.Current().InjectSettings)
+	noStart, err := se.DB.SetCompetitionSchedule(start, end, next.Start, next.End)
+	if err != nil {
+		return err
+	}
+	if noStart {
+		slog.Warn("competition schedule has no start; imported inject times keep their previous anchor")
+	}
+	se.signalScheduleChanged()
+	return nil
+}
+
+// SetCompetitionStarted opens or closes the competition to teams by hand.
+func (se *ScoringEngine) SetCompetitionStarted(started bool) error {
+	if err := se.DB.SetCompetitionStarted(started); err != nil {
+		return err
+	}
+	se.signalScheduleChanged()
+	return nil
+}
+
+// signalScheduleChanged wakes the round loop to re-read the schedule.
+func (se *ScoringEngine) signalScheduleChanged() {
+	se.pauseMu.Lock()
+	close(se.scheduleChanged)
+	se.scheduleChanged = make(chan struct{})
+	se.pauseMu.Unlock()
+}
+
+// startScheduledCompetition performs a due scheduled start if the competition
+// was never started, resuming scoring when it does. It reports false only when
+// the write failed.
+func (se *ScoringEngine) startScheduledCompetition(start time.Time) bool {
+	started, err := se.DB.StartCompetitionOnce(start)
+	if err != nil {
+		slog.Error("failed to start competition at scheduled start", "error", err)
+		return false
+	}
+	if started {
+		slog.Info("Competition start reached, starting competition", "start", start)
+		se.SetPaused(false)
+	}
+	return true
+}
+
+// waitForRoundReady blocks until the next round may start: the engine is not
+// paused, NextRoundStartTime has passed and the schedule was read in the same
+// pass. While waiting it performs a due scheduled competition start, whether
+// paused or between rounds. It returns that schedule, and false once stop is
+// closed.
+func (se *ScoringEngine) waitForRoundReady(stop <-chan struct{}) (Schedule, bool) {
+	for {
+		var resume <-chan struct{}
+		var roundDue <-chan time.Time
+		se.pauseMu.Lock()
+		if se.pausedLocked() {
+			resume = se.resume
+		} else {
+			roundDue = time.After(time.Until(se.NextRoundStartTime))
+		}
+		scheduleChanged := se.scheduleChanged
+		se.pauseMu.Unlock()
+
+		var startDue, retry <-chan time.Time
+		schedule, err := se.CompetitionSchedule()
+		if err != nil {
+			// Never start a round blind: wait for the retry instead of the round timer.
+			slog.Error("failed to read competition schedule; retrying", "error", err, "in", scheduleRetryDelay)
+			roundDue, retry = nil, time.After(scheduleRetryDelay)
+		} else if start, pending := schedule.nextScheduledStart(); pending {
+			if wait := time.Until(start); wait > 0 {
+				startDue = time.After(wait)
+			} else if se.startScheduledCompetition(start) {
+				continue
+			} else {
+				retry = time.After(scheduleRetryDelay)
+			}
+		}
+
+		select {
+		case <-stop:
+			return Schedule{}, false
+		case <-resume:
+		case <-roundDue:
+			// A pause issued during the inter-round sleep must hold before the
+			// next round; it does not wake this select.
+			if !se.Paused() {
+				return schedule, true
+			}
+		case <-scheduleChanged:
+		case <-startDue:
+		case <-retry:
+		}
+	}
+}
+
+// pauseAtCompetitionEnd pauses once the effective end has passed unless an
+// admin resumed after that end; a resume from its own end-pause is recorded
+// here as overtime (OvertimeEnd), which a score reset or a runtime schedule
+// write with a different end clears.
+func (se *ScoringEngine) pauseAtCompetitionEnd(s Schedule) bool {
+	if se.pausedAtEnd != nil && (s.End == nil || !se.pausedAtEnd.Equal(*s.End)) {
+		se.pausedAtEnd = nil
+	}
+	if s.End == nil || time.Now().Before(*s.End) {
+		return false
+	}
+	end := *s.End
+	if s.OvertimeEnd != nil && s.OvertimeEnd.Equal(end) {
+		return false
+	}
+	if se.pausedAtEnd != nil {
+		if err := se.DB.SetOvertimeEnd(&end); err != nil {
+			slog.Error("failed to save competition overtime; retrying next round", "error", err)
+			return false
+		}
+		se.pausedAtEnd = nil
+		return false
+	}
+	se.pauseMu.Lock()
+	defer se.pauseMu.Unlock()
+	if se.pausedLocked() {
+		return true
+	}
+	se.resume = make(chan struct{})
+	se.pausedAtEnd = &end
+	slog.Info("Competition end reached, pausing scoring", "end", end)
+	return true
+}
+
 func (se *ScoringEngine) ResetScores() error {
 	slog.Info("Resetting scores and clearing Redis queues")
 
@@ -352,16 +657,13 @@ func (se *ScoringEngine) ResetScores() error {
 	se.UptimePerService = make(map[uint]map[string]db.Uptime)
 	se.uptimeMu.Unlock()
 	se.SlaPerService = make(map[uint]map[string]int)
+	se.notifyRoundListeners()
 	slog.Info("Scores reset and Redis queues cleared successfully")
 
 	return nil
 }
 
-// perform a round of koth
 func (se *ScoringEngine) koth() error {
-	// enginePauseWg.Wait()
-
-	// do koth stuff
 	se.finishScoredRound()
 	return nil
 }
@@ -369,11 +671,12 @@ func (se *ScoringEngine) koth() error {
 // perform a round of rvb
 func (se *ScoringEngine) rvb() error {
 	slog.Info("Starting round", "round", se.CurrentRound)
-	results, err := se.runChecks(se.CurrentRound, false)
+	conf := se.Config.Current()
+	results, err := se.runChecks(conf, se.CurrentRound, false)
 	if err != nil {
 		return err
 	}
-	se.processCollectedResults(results)
+	se.processCollectedResults(conf, results)
 	se.finishScoredRound()
 	return nil
 }
@@ -381,13 +684,18 @@ func (se *ScoringEngine) rvb() error {
 func (se *ScoringEngine) finishScoredRound() {
 	slog.Info(fmt.Sprintf("Round %d complete", se.CurrentRound))
 	se.CurrentRound++
-	se.RedisClient.Publish(context.Background(), "events", "round_finish")
+	se.announceRoundFinish()
 }
 
-// preflightPending reads the DB rather than CurrentRound, which also advances
-// on rounds that stored nothing and is reseeded on restart. A DB read error
-// runs a preflight round, delaying scoring by one round.
-func (se *ScoringEngine) preflightPending() bool {
+// announceRoundFinish tells Divisor to rotate runner IPs and SSE clients to refresh.
+func (se *ScoringEngine) announceRoundFinish() {
+	se.RedisClient.Publish(context.Background(), "events", "round_finish")
+	se.notifyRoundListeners()
+}
+
+// PreflightPending reads the DB rather than CurrentRound (which advances on
+// empty rounds and resets on restart), returning true on DB read error.
+func (se *ScoringEngine) PreflightPending() bool {
 	if se.DB.GetCompetitionStarted() {
 		return false
 	}
@@ -408,7 +716,7 @@ func (se *ScoringEngine) preflight() error {
 	}
 	round := db.PreflightRoundSchema{ID: last + 1, StartTime: se.CurrentRoundStartTime}
 	slog.Info("Starting preflight round", "preflight_round", round.ID)
-	results, err := se.runChecks(round.ID, true)
+	results, err := se.runChecks(se.Config.Current(), round.ID, true)
 	if err != nil {
 		return err
 	}
@@ -429,15 +737,17 @@ func (se *ScoringEngine) preflight() error {
 		slog.Error("failed to save preflight round", "preflight_round", round.ID, "error", err)
 	}
 	slog.Info(fmt.Sprintf("Preflight round %d complete", round.ID))
+	se.announceRoundFinish()
 	return nil
 }
 
-func (se *ScoringEngine) runChecks(roundID uint, preflight bool) ([]checks.Result, error) {
+// runChecks enqueues the checks of conf, one config snapshot for the whole round.
+func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, preflight bool) ([]checks.Result, error) {
 	// reassign the next round start time with jitter
 	// double the jitter and subtract it to get a random number between -jitter and jitter
-	randomJitter := rand.Intn(2*se.Config.MiscSettings.Jitter) - se.Config.MiscSettings.Jitter // #nosec G404 -- non-crypto randomization for timing jitter
+	randomJitter := rand.Intn(2*conf.MiscSettings.Jitter) - conf.MiscSettings.Jitter // #nosec G404 -- non-crypto randomization for timing jitter
 	jitter := time.Duration(randomJitter) * time.Second
-	se.NextRoundStartTime = time.Now().Add(time.Duration(se.Config.MiscSettings.Delay) * time.Second).Add(jitter)
+	se.NextRoundStartTime = time.Now().Add(time.Duration(conf.MiscSettings.Delay) * time.Second).Add(jitter)
 
 	slog.Info(fmt.Sprintf("round should take %s", time.Until(se.NextRoundStartTime).String()))
 
@@ -457,13 +767,13 @@ func (se *ScoringEngine) runChecks(roundID uint, preflight bool) ([]checks.Resul
 	defer cancel()
 
 	slog.Debug("Starting service checks", "round", roundID, "preflight", preflight)
-	allRunners := se.Config.AllChecks()
+	allRunners := conf.AllChecks()
 	slog.Info("Service check configuration",
-		"boxes", len(se.Config.Box),
+		"boxes", len(conf.Box),
 		"runners", len(allRunners))
 
 	// Log details about each box's runners
-	for _, box := range se.Config.Box {
+	for _, box := range conf.Box {
 		slog.Debug("Box configuration", "name", box.Name, "runners", len(box.Runners))
 	}
 
@@ -525,6 +835,7 @@ func (se *ScoringEngine) runChecks(roundID uint, preflight bool) ([]checks.Resul
 						task.Credentials = append(task.Credentials, Credential{
 							Username: c.Username,
 							Password: c.Password,
+							Credlist: credlistName,
 						})
 					}
 				}
@@ -558,7 +869,7 @@ COLLECTION:
 			slog.Info("Received message", "message", msg.Payload)
 			if msg.Payload == "reset" {
 				slog.Info("Reset event received, quitting...")
-				return nil, fmt.Errorf("reset event received")
+				return nil, errReset
 			} else {
 				continue
 			}
@@ -615,7 +926,7 @@ func sanitizeDBString(s string) string {
 	return s
 }
 
-func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
+func (se *ScoringEngine) processCollectedResults(conf *config.ConfigSettings, results []checks.Result) {
 	if len(results) == 0 {
 		slog.Warn("No results collected for round", "round", se.CurrentRound)
 		return
@@ -677,12 +988,12 @@ func (se *ScoringEngine) processCollectedResults(results []checks.Result) {
 			se.SlaPerService[result.TeamID][result.ServiceName] = 0
 		} else {
 			se.SlaPerService[result.TeamID][result.ServiceName]++
-			if se.SlaPerService[result.TeamID][result.ServiceName] >= se.Config.MiscSettings.SlaThreshold {
+			if se.SlaPerService[result.TeamID][result.ServiceName] >= conf.MiscSettings.SlaThreshold {
 				sla := db.SLASchema{
 					TeamID:      result.TeamID,
 					ServiceName: result.ServiceName,
 					RoundID:     uint(se.CurrentRound),
-					Penalty:     *se.Config.MiscSettings.SlaPenalty,
+					Penalty:     *conf.MiscSettings.SlaPenalty,
 				}
 				if _, err := se.DB.CreateSLA(sla); err != nil {
 					slog.Error("failed to create SLA", "team", result.TeamID, "service", result.ServiceName, "error", err)
@@ -731,7 +1042,7 @@ func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.Po
 	}
 
 	se := &ScoringEngine{
-		Config:           conf,
+		Config:           config.NewLive(conf),
 		credentialsMutex: make(map[uint]*sync.Mutex),
 		UptimePerService: make(map[uint]map[string]db.Uptime),
 		SlaPerService:    make(map[uint]map[string]int),
