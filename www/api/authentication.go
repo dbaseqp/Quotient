@@ -105,25 +105,18 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// An address that has used up its failed attempts is refused before the credentials are checked, so
+	// further guesses cannot succeed until the window passes.
+	ip, _, splitErr := net.SplitHostPort(r.RemoteAddr)
+	if splitErr == nil && a.loginBlocked(ip, time.Now()) {
+		WriteJSON(w, http.StatusTooManyRequests, map[string]any{"error": "too many login attempts"})
+		return
+	}
+
 	auth, err := a.auth(form.Username, form.Password)
 	if err != nil {
-		ip, _, splitErr := net.SplitHostPort(r.RemoteAddr)
 		if splitErr == nil {
-			now := time.Now()
-			val, _ := a.loginLimiter.LoadOrStore(ip, &loginAttempts{windowStart: now})
-			la := val.(*loginAttempts)
-			la.mu.Lock()
-			if now.Sub(la.windowStart) > loginWindow {
-				la.count = 0
-				la.windowStart = now
-			}
-			la.count++
-			over := la.count > loginMaxAttempts
-			la.mu.Unlock()
-			if over {
-				WriteJSON(w, http.StatusTooManyRequests, map[string]any{"error": "too many login attempts"})
-				return
-			}
+			a.recordLoginFailure(ip, time.Now())
 		}
 		WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "Incorrect username/password"})
 		slog.Info("Failed logon", "username", form.Username)
