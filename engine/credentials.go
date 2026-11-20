@@ -30,8 +30,9 @@ func (se *ScoringEngine) EnsureCredentialsSeeded() error {
 	}
 
 	credlistsDir := config.CredlistsDir(se.configPath)
-	loaded := make([]credlistRecords, 0, len(se.Config.CredlistSettings.Credlist))
-	for _, configCredlist := range se.Config.CredlistSettings.Credlist {
+	credlists := se.Config.Current().CredlistSettings.Credlist
+	loaded := make([]credlistRecords, 0, len(credlists))
+	for _, configCredlist := range credlists {
 		credlistPath := configCredlist.CredlistPath
 
 		file, err := safeOpenInDir(credlistsDir, credlistPath)
@@ -111,7 +112,7 @@ func (se *ScoringEngine) teamCredentialLock(teamID uint) (*sync.Mutex, error) {
 }
 
 func (se *ScoringEngine) isValidCredlist(credlistName string) bool {
-	for _, c := range se.Config.CredlistSettings.Credlist {
+	for _, c := range se.Config.Current().CredlistSettings.Credlist {
 		if c.CredlistPath == credlistName {
 			return true
 		}
@@ -157,7 +158,7 @@ func (se *ScoringEngine) UpdateCredentials(teamID uint, credlistName string, use
 
 func (se *ScoringEngine) GetCredlists() (any, error) {
 	var credlists []any
-	for _, credlist := range se.Config.CredlistSettings.Credlist {
+	for _, credlist := range se.Config.Current().CredlistSettings.Credlist {
 		var a struct {
 			Name      string   `json:"name"`
 			Path      string   `json:"path"`

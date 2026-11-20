@@ -15,14 +15,15 @@ const (
 )
 
 func (a *API) checkGraphAccess(w http.ResponseWriter, r *http.Request) bool {
+	conf := a.conf.Current()
 	roles := CallerRoles(r.Context())
 	isAnon := len(roles) == 0
 	isAdmin := slices.Contains(roles, "admin")
-	if !a.conf.UISettings.EnablePublicGraphs && isAnon {
+	if !conf.UISettings.EnablePublicGraphs && isAnon {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "graphs are not publicly accessible"})
 		return false
 	}
-	if a.conf.UISettings.DisableGraphsForBlueTeam && !isAdmin && slices.Contains(roles, "team") {
+	if conf.UISettings.DisableGraphsForBlueTeam && !isAdmin && slices.Contains(roles, "team") {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "graphs are disabled for team users"})
 		return false
 	}
@@ -266,11 +267,12 @@ func (a *API) GetUptimeStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) shouldScrub(r *http.Request) bool {
+	conf := a.conf.Current()
 	if slices.Contains(CallerRoles(r.Context()), "admin") {
 		return false
 	}
 
-	if a.conf.UISettings.AllowNonAnonymizedGraphs || a.conf.UISettings.AllowNonAnonymizedGraphsForBlueTeam {
+	if conf.UISettings.AllowNonAnonymizedGraphs || conf.UISettings.AllowNonAnonymizedGraphsForBlueTeam {
 		return false
 	}
 	return true

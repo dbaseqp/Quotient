@@ -54,8 +54,9 @@ func isReloadEvent(event fsnotify.Event, cleanConfigPath, cleanCredlistsDir stri
 	return filepath.Dir(cleanEvent) == cleanCredlistsDir && !strings.HasPrefix(filepath.Base(cleanEvent), ".")
 }
 
-// WatchConfig watches for changes to the config file and credlists directory.
-func (conf *ConfigSettings) WatchConfig(path string, onReload func()) error {
+// WatchConfig watches for changes to the config file and credlists directory,
+// reloads the config into l and then calls onReload.
+func (l *Live) WatchConfig(path string, onReload func()) error {
 	watcher, err := setupWatcher(path)
 	if err != nil {
 		return err
@@ -100,7 +101,7 @@ func (conf *ConfigSettings) WatchConfig(path string, onReload func()) error {
 				}
 			case <-debounceCh:
 				debounceCh = nil
-				if err := conf.SetConfig(path); err != nil {
+				if err := l.Reload(path); err != nil {
 					slog.Error("failed to reload config", "error", err)
 					continue
 				}
