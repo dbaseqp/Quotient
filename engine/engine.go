@@ -802,70 +802,16 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 		if !team.Active {
 			continue
 		}
-	tasks:
 		for _, r := range allRunners {
-			if !r.Runnable() {
+			payload, err := se.buildTask(team, r, roundID, preflight)
+			if err == nil && payload == nil {
 				continue
 			}
-			enabled, err := se.DB.IsTeamServiceEnabled(team.ID, r.GetName())
-			if err == nil && !enabled {
-				continue
-			}
-			// From here the task is expected: one the engine fails to build or
-			// enqueue never reports, so the round is incomplete.
-			key := resultKey{team.ID, r.GetName()}
-			expected[key] = struct{}{}
+			// A task the engine fails to build or enqueue never reports, so the
+			// round is incomplete.
+			expected[resultKey{team.ID, r.GetName()}] = struct{}{}
 			if err != nil {
-				slog.Error("failed to check service state", "team", team.ID, "service", r.GetName(), "error", err)
-				continue
-			}
-			// serialize the entire check definition to JSON
-			data, err := json.Marshal(r)
-			if err != nil {
-				slog.Error("failed to marshal check definition", "error", err)
-				continue
-			}
-
-			task := Task{
-				TeamID:         team.ID,
-				TeamIdentifier: team.Identifier,
-				ServiceType:    r.GetType(),
-				ServiceName:    r.GetName(),
-				RoundID:        roundID,
-				Preflight:      preflight,
-				Deadline:       se.NextRoundStartTime,
-				Attempts:       r.GetAttempts(),
-				AttemptDelay:   r.GetAttemptDelay(),
-				CheckData:      data, // the entire specialized struct
-			}
-
-			// Populate credentials if check needs them
-			if credlists := r.GetCredlists(); len(credlists) > 0 {
-				for _, credlistName := range credlists {
-					creds, err := se.DB.GetTeamCredentials(team.ID, credlistName)
-					if err != nil {
-						slog.Error("failed to get credentials for task", "team", team.ID, "credlist", credlistName, "error", err)
-						continue tasks
-					}
-					for _, c := range creds {
-						task.Credentials = append(task.Credentials, Credential{
-							Username: c.Username,
-							Password: c.Password,
-							Credlist: credlistName,
-						})
-					}
-				}
-				// Skip task if check requires credentials but none were seeded
-				if len(task.Credentials) == 0 {
-					slog.Error("skipping check: requires credentials but none seeded", "service", r.GetName(), "team", team.ID)
-					delete(expected, key)
-					continue
-				}
-			}
-
-			payload, err := json.Marshal(task)
-			if err != nil {
-				slog.Error("failed to marshal service task", "error", err)
+				slog.Error("failed to build service task", "team", team.ID, "service", r.GetName(), "error", err)
 				continue
 			}
 			if err := se.RedisClient.RPush(ctx, "tasks", payload).Err(); err != nil {
@@ -935,6 +881,65 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 	}
 
 	return results, len(expected) == 0, nil
+}
+
+// buildTask returns the queue payload of r's task for team, or nil and no error
+// if the team does not run r this round.
+func (se *ScoringEngine) buildTask(team db.TeamSchema, r checks.Runner, roundID uint, preflight bool) ([]byte, error) {
+	if !r.Runnable() {
+		return nil, nil
+	}
+	enabled, err := se.DB.IsTeamServiceEnabled(team.ID, r.GetName())
+	if err != nil {
+		return nil, fmt.Errorf("check service state: %w", err)
+	}
+	if !enabled {
+		return nil, nil
+	}
+	// serialize the entire check definition to JSON
+	data, err := json.Marshal(r)
+	if err != nil {
+		return nil, fmt.Errorf("marshal check definition: %w", err)
+	}
+
+	task := Task{
+		TeamID:         team.ID,
+		TeamIdentifier: team.Identifier,
+		ServiceType:    r.GetType(),
+		ServiceName:    r.GetName(),
+		RoundID:        roundID,
+		Preflight:      preflight,
+		Deadline:       se.NextRoundStartTime,
+		Attempts:       r.GetAttempts(),
+		AttemptDelay:   r.GetAttemptDelay(),
+		CheckData:      data, // the entire specialized struct
+	}
+
+	if credlists := r.GetCredlists(); len(credlists) > 0 {
+		for _, credlistName := range credlists {
+			creds, err := se.DB.GetTeamCredentials(team.ID, credlistName)
+			if err != nil {
+				return nil, fmt.Errorf("get credlist %s: %w", credlistName, err)
+			}
+			for _, c := range creds {
+				task.Credentials = append(task.Credentials, Credential{
+					Username: c.Username,
+					Password: c.Password,
+					Credlist: credlistName,
+				})
+			}
+		}
+		if len(task.Credentials) == 0 {
+			slog.Error("skipping check: requires credentials but none seeded", "service", r.GetName(), "team", team.ID)
+			return nil, nil
+		}
+	}
+
+	payload, err := json.Marshal(task)
+	if err != nil {
+		return nil, fmt.Errorf("marshal service task: %w", err)
+	}
+	return payload, nil
 }
 
 // resultGracePeriod is how long past the task deadline the engine keeps
