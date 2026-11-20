@@ -24,7 +24,7 @@ func processRound(se *ScoringEngine, round uint, results ...checks.Result) {
 	for i := range results {
 		results[i].RoundID = round
 	}
-	se.processCollectedResults(results)
+	se.processCollectedResults(se.Config.Current(), results)
 }
 
 func exportTotal(t *testing.T, se *ScoringEngine, team uint) int {

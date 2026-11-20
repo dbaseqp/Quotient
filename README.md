@@ -271,6 +271,8 @@ Attempts = 1                # Tries before a check fails (default: 1)
 AttemptDelay = 0            # Seconds to wait before retrying a failed attempt (default: 0)
 ```
 
+`StartPaused` only decides how the engine boots before anyone has paused or resumed it. Once an admin pauses or resumes the engine, or the scheduled start resumes it, that state is saved and an engine restart keeps it. Reset Scores keeps it too, both in the running engine and across a restart.
+
 Every attempt, plus the waits between them, must fit in the shortest round: `Attempts * Timeout + (Attempts - 1) * AttemptDelay` must be less than `Delay - Jitter`.
 
 A round waits for a missing result until its deadline, so it ends after the next round was due. The next round then starts 5 seconds after the previous round's `round_finish` rather than at once, which gives Divisor time to rotate the runners' source addresses. Otherwise the rotation would cut off the new round's first checks, and they would time out against services that are up.

@@ -100,7 +100,9 @@ func NewEngine(configPath string) *ScoringEngine {
 		configPath:       configPath,
 		DB:               d,
 	}
-	se.resetPauseState()
+	if err := se.loadPauseState(); err != nil {
+		panic(fmt.Sprintf("Failed to read competition state: %v", err))
+	}
 
 	if err := live.WatchConfig(configPath, func() {
 		if err := se.DB.AddTeams(se.Config.Current()); err != nil {
@@ -398,14 +400,25 @@ func (se *ScoringEngine) GetActiveTasks() (map[string]any, error) {
 	return result, nil
 }
 
-func (se *ScoringEngine) resetPauseState() {
+// loadPauseState applies the recorded pause state, or StartPaused if none was
+// ever recorded, and creates the schedule-change channel.
+func (se *ScoringEngine) loadPauseState() error {
+	state, err := se.DB.GetCompetitionState()
+	if err != nil {
+		return err
+	}
+	paused := se.Config.Current().MiscSettings.StartPaused
+	if state.Paused != nil {
+		paused = *state.Paused
+	}
 	se.pauseMu.Lock()
 	defer se.pauseMu.Unlock()
 	se.resume = make(chan struct{})
-	if !se.Config.Current().MiscSettings.StartPaused {
+	if !paused {
 		close(se.resume)
 	}
 	se.scheduleChanged = make(chan struct{})
+	return nil
 }
 
 func (se *ScoringEngine) pausedLocked() bool {
@@ -417,18 +430,26 @@ func (se *ScoringEngine) pausedLocked() bool {
 	}
 }
 
-func (se *ScoringEngine) SetPaused(pause bool) bool {
+// ErrPauseUnchanged rejects a pause of a paused engine or a resume of a running one.
+var ErrPauseUnchanged = errors.New("engine is already in that pause state")
+
+// SetPaused pauses or resumes scoring and records it, so a restarted engine
+// keeps it. A failed write leaves the engine as it was.
+func (se *ScoringEngine) SetPaused(pause bool) error {
 	se.pauseMu.Lock()
 	defer se.pauseMu.Unlock()
 	if se.pausedLocked() == pause {
-		return false
+		return ErrPauseUnchanged
+	}
+	if err := se.DB.SetPaused(pause); err != nil {
+		return err
 	}
 	if pause {
 		se.resume = make(chan struct{})
 	} else {
 		close(se.resume)
 	}
-	return true
+	return nil
 }
 
 func (se *ScoringEngine) Paused() bool {
@@ -533,6 +554,10 @@ func (se *ScoringEngine) signalScheduleChanged() {
 // was never started, resuming scoring when it does. It reports false only when
 // the write failed.
 func (se *ScoringEngine) startScheduledCompetition(start time.Time) bool {
+	// Held across the write, which records the resume, so an admin pause
+	// cannot land between the write and the resume.
+	se.pauseMu.Lock()
+	defer se.pauseMu.Unlock()
 	started, err := se.DB.StartCompetitionOnce(start)
 	if err != nil {
 		slog.Error("failed to start competition at scheduled start", "error", err)
@@ -540,7 +565,9 @@ func (se *ScoringEngine) startScheduledCompetition(start time.Time) bool {
 	}
 	if started {
 		slog.Info("Competition start reached, starting competition", "start", start)
-		se.SetPaused(false)
+		if se.pausedLocked() {
+			close(se.resume)
+		}
 	}
 	return true
 }
@@ -1050,6 +1077,8 @@ func NewTestEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.Po
 		DB:               pg.DB,
 		CurrentRound:     1,
 	}
-	se.resetPauseState()
+	if err := se.loadPauseState(); err != nil {
+		t.Fatalf("failed to read competition state: %v", err)
+	}
 	return se
 }

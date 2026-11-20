@@ -39,8 +39,12 @@ func (a *API) PauseEngine(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Debug("pause engine requested", "setPauseTo", form.Pause)
-	if !a.eng.SetPaused(form.Pause) {
-		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid engine state transition"})
+	if err := a.eng.SetPaused(form.Pause); err != nil {
+		if errors.Is(err, engine.ErrPauseUnchanged) {
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid engine state transition"})
+			return
+		}
+		WriteInternalError(w, r, "Failed to save the engine pause state", err)
 		return
 	}
 
