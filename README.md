@@ -440,7 +440,9 @@ port = 53
 
 #### Web Check
 
-HTTP/HTTPS request with optional status code and content matching. The check sends browser-style `Accept` and `Accept-Language` headers along with a random `User-Agent`.
+HTTP/HTTPS request with optional status code and content matching. Each run claims a desktop OS (Windows, macOS or Linux) and sends what desktop Chrome on that OS sends for a typed-in URL: its User-Agent and client hints, its request headers (in Chrome's order over HTTP/1.1; over HTTP/2 the order is Go's), and a TLS ClientHello built from uTLS's Chrome 133 template with Chrome's ML-DSA signature algorithms added, which has the JA4 of Chrome 151 and offers HTTP/2. The keep-alive connection is reused for redirects and left open for 30–110 seconds afterwards. Its sockets announce the TCP window scale of the claimed OS where the host allows it (8 Windows, 7 Linux, 6 macOS), and macOS's 65535-byte SYN window where `net.core.rmem_max` is at least 2 MiB. The claimed Chrome release is `ChromeMajor` in `engine/checks/chrome.go`. Compressed responses (gzip, deflate, br, zstd) are decoded before matching; a page larger than 10 MiB after decoding fails the check.
+
+There is no switch back to Go's own HTTP client: a server that breaks for real Chrome (its headers, client hints or HTTP/2) fails the check, as it would fail a user.
 
 ```toml
 [[box.web]]
@@ -460,6 +462,7 @@ scheme = "https"  # "http" or "https"
 
 **Default port:** 80 (http) or 443 (https)
 **Default scheme:** http
+**Body limit:** the check reads at most the first 10 MiB of a page, so `regex` must match within that prefix.
 
 #### SSH Check
 

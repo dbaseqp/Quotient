@@ -1,7 +1,6 @@
 package checks
 
 import (
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -13,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/corpix/uarand"
 )
 
 type Web struct {
@@ -31,41 +28,17 @@ type urlData struct {
 	CompareFile string `toml:",omitempty"` // TODO implement
 }
 
-// webAccept is the Accept header a browser sends for a top-level navigation.
-const webAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-
-var webAcceptLanguages = []string{
-	"en-US,en;q=0.9",
-	"en-GB,en;q=0.9,en-US;q=0.8",
-	"en-US,en;q=0.8",
-	"en,en-US;q=0.9",
-}
-
-func randomAcceptLanguage() string {
-	return webAcceptLanguages[rand.IntN(len(webAcceptLanguages))] // #nosec G404 -- non-crypto selection of header value
-}
-
 func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		u := c.Url[rand.IntN(len(c.Url))] // #nosec G404 -- non-crypto selection of URL to test
 
-		// random user agent
-		ua := uarand.GetRandom()
-
-		tr := &http.Transport{
-			MaxIdleConns:      1,
-			IdleConnTimeout:   time.Duration(c.Timeout) * time.Second, // address this
-			DisableKeepAlives: true,
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, // #nosec G402 -- competition services may use self-signed certs
-			},
-		}
-		// Set client timeout to slightly less than check timeout to get better error messages
+		tr := newBrowserTransport(randomClientOS())
+		// Browsers keep idle connections for minutes (Firefox 115 s), so the
+		// server's keep-alive timeout usually ends them; closing right after
+		// the response is what scripts do.
+		defer time.AfterFunc(30*time.Second+rand.N(80*time.Second), tr.CloseIdleConnections) // #nosec G404 -- non-crypto timing jitter
 		clientTimeout := time.Duration(c.Timeout) * time.Second
-		client := &http.Client{
-			Transport: tr,
-			Timeout:   clientTimeout,
-		}
+		client := &http.Client{Transport: tr, Timeout: clientTimeout}
 
 		requestURL := fmt.Sprintf("%s://%s:%d%s", c.Scheme, c.Target, c.Port, u.Path)
 		parsedURL, err := url.Parse(requestURL)
@@ -83,10 +56,6 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
-		req.Header.Set("User-Agent", ua)
-		req.Header.Set("Accept", webAccept)
-		req.Header.Set("Accept-Language", randomAcceptLanguage())
-
 		// Store request info for timeout debugging
 		checkResult.Debug = fmt.Sprintf("Attempting GET %s", requestURL)
 
@@ -102,6 +71,12 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				slog.Error("failed to close http response body", "error", err)
+			}
+		}()
+
 		if u.Status != 0 && resp.StatusCode != u.Status {
 			checkResult.Error = "status returned by webserver was incorrect"
 			checkResult.Debug = "status was " + strconv.Itoa(resp.StatusCode) + " wanted " + strconv.Itoa(u.Status) + " for url " + u.Path
@@ -109,12 +84,7 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
-		defer func() {
-			if err := resp.Body.Close(); err != nil {
-				slog.Error("failed to close http response body", "error", err)
-			}
-		}()
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxWebBodyBytes))
 		if err != nil {
 			checkResult.Error = "error reading page content"
 			checkResult.Debug = "error was '" + err.Error() + "' for url " + u.Path
@@ -150,6 +120,10 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 
 	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
+
+// maxWebBodyBytes caps how much of a page, after its Content-Encoding is
+// undone, the web check reads; a Regex must match within this prefix.
+const maxWebBodyBytes = 10 << 20
 
 func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if c.ServiceType == "" {
