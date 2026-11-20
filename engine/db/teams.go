@@ -40,45 +40,40 @@ func (d *DB) GetTeams() ([]TeamSchema, error) {
 	return teams, nil
 }
 
-func (d *DB) GetTeamSummary(teamID uint) ([]map[string]any, error) {
-	serviceSummaries := []map[string]any{}
+type ServiceSummary struct {
+	ServiceName  string        `json:"ServiceName"`
+	SlaCount     int           `json:"SlaCount"`
+	Last10Rounds []RoundSchema `json:"Last10Rounds"`
+	Uptime       float64       `json:"Uptime"`
+}
+
+func (d *DB) GetTeamSummary(teamID uint) ([]ServiceSummary, error) {
+	var serviceSummaries []ServiceSummary
 	namePerService := []string{}
 
-	// get services names
 	if result := d.db.Table("service_check_schemas").Select("DISTINCT(service_name)").Where("team_id = ?", teamID).Find(&namePerService); result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return serviceSummaries, nil
-		} else {
-			return nil, result.Error
 		}
+		return nil, result.Error
 	}
 
-	// get sla counts per service for this team
 	for _, name := range namePerService {
-		summary := make(map[string]any)
-		summary["ServiceName"] = name
-
-		// get sla count for this service
 		var c int64
 		if result := d.db.Table("sla_schemas").Where("team_id = ? AND service_name = ?", teamID, name).Count(&c); result.Error != nil {
 			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 				continue
-			} else {
-				return nil, result.Error
 			}
+			return nil, result.Error
 		}
-		summary["SlaCount"] = int(c)
 
-		// get last 10 rounds for service
 		var last10Rounds []RoundSchema
 		if result := d.db.Table("round_schemas").Preload("Checks", "team_id = ? AND service_name = ?", teamID, name).Order("id desc").Limit(10).Find(&last10Rounds); result.Error != nil {
 			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 				return serviceSummaries, nil
-			} else {
-				return nil, result.Error
 			}
+			return nil, result.Error
 		}
-		// idk how to select on preload without primaryID
 		for i := range last10Rounds {
 			checks := last10Rounds[i].Checks
 			for j := range checks {
@@ -86,9 +81,12 @@ func (d *DB) GetTeamSummary(teamID uint) ([]map[string]any, error) {
 				checks[j].Error = ""
 			}
 		}
-		summary["Last10Rounds"] = last10Rounds
 
-		serviceSummaries = append(serviceSummaries, summary)
+		serviceSummaries = append(serviceSummaries, ServiceSummary{
+			ServiceName:  name,
+			SlaCount:     int(c),
+			Last10Rounds: last10Rounds,
+		})
 	}
 
 	return serviceSummaries, nil

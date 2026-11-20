@@ -75,10 +75,10 @@ func (c Dns) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 
 		// Loop through results and check for correct match
 		for _, answer := range in.Answer {
-			// Check if an answer is an A record and it matches the expected IP
+			// Check if an answer matches an expected value for its record type
 			for _, expectedAnswer := range record.Answer {
 				expectedAnswer = strings.ReplaceAll(expectedAnswer, "_", teamIdentifier)
-				if a, ok := answer.(*dns.A); ok && (a.A).String() == expectedAnswer {
+				if dnsAnswerMatches(answer, expectedAnswer) {
 					checkResult.Status = true
 					checkResult.Debug = fmt.Sprintf("record %s returned %s. acceptable answers were: %v", record.Domain, expectedAnswer, record.Answer)
 					response <- checkResult
@@ -94,6 +94,18 @@ func (c Dns) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 	}
 
 	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
+}
+
+// dnsAnswerMatches compares an A answer's address, or an MX answer's mail
+// exchanger (case-insensitively, as a fully qualified name), to expected.
+func dnsAnswerMatches(answer dns.RR, expected string) bool {
+	switch rr := answer.(type) {
+	case *dns.A:
+		return rr.A.String() == expected
+	case *dns.MX:
+		return strings.EqualFold(rr.Mx, dns.Fqdn(expected))
+	}
+	return false
 }
 
 func (c *Dns) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
@@ -114,6 +126,11 @@ func (c *Dns) Verify(box string, ip string, points int, timeout int, slapenalty 
 	}
 	if c.Name == "" {
 		c.Name = box + "-" + c.Display
+	}
+	for _, record := range c.Record {
+		if record.Kind != "A" && record.Kind != "MX" {
+			return fmt.Errorf("dns check %s: unsupported record kind %q (supported: A, MX)", c.Name, record.Kind)
+		}
 	}
 
 	return nil

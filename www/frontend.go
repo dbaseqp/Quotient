@@ -51,7 +51,7 @@ func (router *Router) pageData(r *http.Request, unique map[string]any) map[strin
 		data["roles"] = id.Roles
 	}
 	data["name"] = "QUOTIENT"
-	data["config"] = router.Config
+	data["config"] = router.Config.Current()
 	data["error"] = ""
 	data["path"] = r.URL.Path
 
@@ -187,6 +187,17 @@ func (router *Router) AdministrateAppearancePage(w http.ResponseWriter, r *http.
 
 func (router *Router) GraphPage(w http.ResponseWriter, r *http.Request) {
 	roles := api.CallerRoles(r.Context())
+	isAnon := len(roles) == 0
+	isAdmin := slices.Contains(roles, "admin")
+	conf := router.Config.Current()
+	if !conf.UISettings.EnablePublicGraphs && isAnon {
+		http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
+		return
+	}
+	if conf.UISettings.DisableGraphsForBlueTeam && !isAdmin && slices.Contains(roles, "team") {
+		http.Error(w, "graphs have been disabled for team users", http.StatusForbidden)
+		return
+	}
 
 	if !slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && !router.Engine.DB.GetCompetitionStarted() {
 		page := template.Must(template.Must(base.Clone()).ParseFiles("./static/templates/layouts/page.html", "./static/templates/pages/countdown.html"))

@@ -100,6 +100,8 @@ The configuration file is broken up into sections. Only the `RequiredSettings` s
 
 Cred lists need to be CSVs specified in the `./config/credlists` directory with a `.credlist` extension. When password change requests (PCRs) get processed, credlists will only be mutated by changing the password column of an existing user in the defined list. This means submitting a PCR with a user that does not exist will ignore that specific entry. Below is an example. See the below configuration examples to specify credlists for checks. You will have to map the files to a credlist name in a top-level config section for each credlist.
 
+Reset Scores does not undo PCRs: every team keeps the passwords it last submitted. If a dry run included PCRs and the team boxes are then restored to their original passwords, reset each team's PCRs as well (PCR page → Reset, `POST /api/pcrs/reset`). Otherwise the first real rounds fail every credentialed check.
+
 ```
 # example contents of a .credlist file
 joe,s3cret
@@ -223,7 +225,7 @@ resolves:
 
 Name the group after its team to make the assignment unambiguous.
 
-The OIDC username (`preferred_username`, then `email`, then `sub`) is never
+The OIDC username (`preferred_username`, then `email` if `email_verified`, then `sub`) is never
 used to pick a team.
 
 Local and LDAP accounts are named after their team. A local team account is a
@@ -271,7 +273,26 @@ AttemptDelay = 0            # Seconds to wait before retrying a failed attempt (
 
 Every attempt, plus the waits between them, must fit in the shortest round: `Attempts * Timeout + (Attempts - 1) * AttemptDelay` must be less than `Delay - Jitter`.
 
-In rvb events, rounds that run while the competition is not started and no scored round has been stored are **preflight rounds**. They run the same checks a scored round would (inactive teams, disabled team services and checks without seeded credentials are skipped alike), but their results are stored apart and never count toward points, uptime or SLAs. Leave `StartPaused = false` to have preflight rounds run as soon as the engine is up. `GET /api/engine/preflight` returns the latest preflight round, including one that collected no results, so you can confirm every team is green before handing over; it is admin-only because the stored error and debug text can contain credentials. Stopping a competition that has stored scored rounds does not bring preflight rounds back; `GET /api/engine/reset` while stopped (or stopping before the first scored round is stored) re-enters preflight, since the decision is made from the stored rounds. Injects keep their anchor: a reset does not forget when the competition first started. In custom checks the `ROUND` placeholder is the preflight round number during preflight and the scored round number afterwards, so both start at 1.
+A round waits for a missing result until its deadline, so it ends after the next round was due. The next round then starts 5 seconds after the previous round's `round_finish` rather than at once, which gives Divisor time to rotate the runners' source addresses. Otherwise the rotation would cut off the new round's first checks, and they would time out against services that are up.
+
+In rvb events, rounds that run while the competition is not started and no scored round has been stored are **preflight rounds**. They run the same checks a scored round would (inactive teams, disabled team services and checks without seeded credentials are skipped alike) and publish `round_finish` for Divisor, but their results are stored apart and never count toward scored points, uptime or SLAs. Leave `StartPaused = false` to have preflight rounds run as soon as the engine is up. While in preflight, `/graphs` (service status and uptime), `/services`, `/admin/engine`, and `/admin/runners` show preflight results to admins while non-admin access stays blocked; once the competition starts, those views show scored rounds. Stopping a competition that has stored scored rounds does not bring preflight rounds back; resetting scores stops the competition and drops scored and preflight rounds so the engine re-enters preflight. Injects keep their anchor: a reset does not forget when the competition first started. In custom checks the `ROUND` placeholder is the preflight round number during preflight and the scored round number afterwards, so both start at 1. A scheduled start (see *Competition Start and End*) opens the competition just like a manual *Start Competition*, so the first round after it is scored and no further preflight rounds run. A score reset keeps the recorded start, so it does not re-arm the scheduled start: after a reset the engine stays in preflight until an admin starts the competition.
+
+#### Competition Start and End
+
+`[InjectSettings]` holds the competition schedule used unless an admin sets one at runtime (below); both inject imports and the scoring engine read the effective schedule.
+
+```toml
+[InjectSettings]
+CompetitionStartTime = "2027-03-19 08:00"  # Starts the competition when reached; anchors imported inject schedules until then
+CompetitionEndTime = "2027-03-19 16:30"    # No round starts after this unless an admin resumes (overtime)
+CompetitionTimezone = "America/Los_Angeles"
+```
+
+**Start.** When the start time is reached the engine opens the competition as of that instant (so imported injects keep their planned times) and resumes scoring, whether it was paused or sleeping between rounds. This happens only if the competition has never been started — a manual *Start Competition* beforehand wins and a later *Stop* does not re-arm it — and not once the end time has passed.
+
+**End.** When the end time passes, the engine pauses itself before the next round. If an admin resumes after that pause, the round loop persists the resume as overtime (`overtime_end` in the competition state) before its next round, and the engine keeps running past the end — across restarts — while that end stays the effective end. A changed end pauses again at the new end (saving a runtime schedule with a different end forgets the overtime outright); the loop records a new one only after an admin resumes past the new end. A score reset forgets overtime too. A manual pause that merely spans the end is not overtime: the engine still pauses at the next round boundary.
+
+**Runtime schedule.** Admins can replace the schedule from `/admin/engine` (`POST /api/competition/schedule`, admin-only, JSON `start_time`/`end_time` in RFC 3339). A saved schedule replaces the `event.conf` one as a whole — a blank field means "no start" / "no end", not "keep the configured value" — and survives restarts; *Clear* forgets it so `event.conf` applies again. `GET /api/engine` reports the effective schedule and its `schedule_source` (`config`, `runtime` or `none`). Saving or clearing re-anchors imported injects to the new planned start while the competition has not started.
 
 #### UI Settings
 
@@ -420,7 +441,7 @@ port = 53
 
 #### Web Check
 
-HTTP/HTTPS request. Each URL needs a `status`, a `regex`, or both; a URL with neither is rejected at config load, so the server will not start with one.
+HTTP/HTTPS request. Each URL needs a `status`, a `regex`, or both; a URL with neither is rejected at config load, so the server will not start with one. The check sends browser-style `Accept` and `Accept-Language` headers along with a random `User-Agent`.
 
 ```toml
 [[box.web]]
@@ -641,7 +662,7 @@ credlists = ["users.credlist"]
 regex = "SUCCESS"          # Output regex for success (optional)
 ```
 
-**Placeholders:** ROUND, TARGET, TEAMIDENTIFIER, USERNAME, PASSWORD
+**Placeholders:** ROUND, TARGET, TEAMIDENTIFIER, USERNAME, PASSWORD, and `PASSWORD[credlist]` for the password from one named credlist (for example an API key a team can change on the credentials page). See [docs/custom-checks.md](docs/custom-checks.md).
 
 ## Contributing
 

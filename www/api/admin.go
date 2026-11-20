@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,8 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/dbaseqp/Quotient/engine"
 )
 
 var validIdentifierRegex = regexp.MustCompile(`^[0-9]{1,3}$`)
@@ -21,6 +25,9 @@ func isValidIdentifier(identifier string) bool {
 }
 
 func (a *API) PauseEngine(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
 	type Form struct {
 		Pause bool `json:"pause"`
 	}
@@ -41,6 +48,10 @@ func (a *API) PauseEngine(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) ResetScores(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
+
 	slog.Debug("reset scores requested")
 	if err := a.eng.ResetScores(); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to reset scores"})
@@ -51,6 +62,9 @@ func (a *API) ResetScores(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
 	type Form struct {
 		Started bool `json:"started"`
 	}
@@ -62,8 +76,65 @@ func (a *API) SetCompetitionStarted(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("competition started toggle requested", "started", form.Started)
-	if err := a.eng.DB.SetCompetitionStarted(form.Started); err != nil {
+	if err := a.eng.SetCompetitionStarted(form.Started); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update competition status"})
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, map[string]any{"status": "success"})
+}
+
+// parseScheduleInput parses an RFC 3339 time, truncated to the microsecond
+// Postgres stores, so the saved schedule compares equal to the input.
+func parseScheduleInput(raw string) (*time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil, err
+	}
+	parsed = parsed.Truncate(time.Microsecond)
+	return &parsed, nil
+}
+
+// SetCompetitionSchedule replaces the competition schedule at runtime; both
+// times blank clears it so event.conf applies again.
+func (a *API) SetCompetitionSchedule(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
+	type Form struct {
+		StartTime string `json:"start_time"`
+		EndTime   string `json:"end_time"`
+	}
+
+	var form Form
+	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
+		return
+	}
+
+	start, err := parseScheduleInput(form.StartTime)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "start_time must be RFC 3339"})
+		return
+	}
+	end, err := parseScheduleInput(form.EndTime)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "end_time must be RFC 3339"})
+		return
+	}
+
+	slog.Info("competition schedule change requested", "start", start, "end", end)
+	if err := a.eng.SetCompetitionSchedule(start, end); err != nil {
+		if errors.Is(err, engine.ErrEndBeforeStart) {
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "End time must be after start time"})
+			return
+		}
+		slog.Error("failed to update competition schedule", "error", err)
+		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to update competition schedule"})
 		return
 	}
 
@@ -74,6 +145,7 @@ func (a *API) ExportScores(w http.ResponseWriter, r *http.Request) {
 	type ServiceScore struct {
 		ServiceName   string `json:"service_name"`
 		Points        int    `json:"service_points"`
+		MaxPoints     int    `json:"max_points"`
 		SlaViolations int    `json:"sla_violations"`
 		SlaPenalty    int    `json:"sla_penalty"`
 	}
@@ -114,6 +186,7 @@ func (a *API) ExportScores(w http.ResponseWriter, r *http.Request) {
 			service := ServiceScore{
 				ServiceName:   sd.ServiceName,
 				Points:        sd.Points,
+				MaxPoints:     sd.MaxPoints,
 				SlaViolations: sd.Violations,
 				SlaPenalty:    sd.TotalPenalty,
 			}
@@ -125,10 +198,11 @@ func (a *API) ExportScores(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var data []TeamScore
+	data := make([]TeamScore, 0, len(teamScores))
 	for _, score := range teamScores {
 		data = append(data, *score)
 	}
+	slices.SortFunc(data, func(x, y TeamScore) int { return cmp.Compare(x.TeamID, y.TeamID) })
 
 	WriteJSON(w, http.StatusOK, data)
 }
@@ -149,53 +223,35 @@ func (a *API) GetActiveTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
-	lastRound, err := a.eng.DB.GetLastRound()
+	lastRound, preflight, err := a.eng.LastRound()
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve engine status"})
 		return
 	}
 
+	schedule, err := a.eng.CompetitionSchedule()
+	if err != nil {
+		slog.Warn("failed to resolve competition schedule", "error", err)
+	}
+
 	WriteJSON(w, http.StatusOK, map[string]any{
-		"last_round":          lastRound,
-		"current_round_time":  a.eng.CurrentRoundStartTime,
-		"next_round_time":     a.eng.NextRoundStartTime,
-		"running":             !a.eng.Paused(),
-		"competition_started": a.eng.DB.GetCompetitionStarted(),
+		"last_round":           lastRound,
+		"current_round_time":   a.eng.CurrentRoundStartTime,
+		"next_round_time":      a.eng.NextRoundStartTime,
+		"running":              !a.eng.Paused(),
+		"competition_started":  schedule.Started,
+		"scheduled_start_time": schedule.Start,
+		"scheduled_end_time":   schedule.End,
+		"schedule_source":      schedule.Source,
+		"preflight":            preflight,
+		"competition_timezone": a.conf.Current().InjectSettings.CompetitionTimezone,
 	})
 }
 
-func (a *API) GetPreflight(w http.ResponseWriter, r *http.Request) {
-	round, err := a.eng.DB.GetLatestPreflightRound()
-	if err != nil {
-		slog.Error("failed to get preflight round", "error", err)
-		WriteJSON(w, http.StatusInternalServerError, map[string]any{"error": "Failed to retrieve preflight round"})
+func (a *API) UpdateTeams(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
 		return
 	}
-
-	type check struct {
-		TeamID      uint   `json:"team_id"`
-		TeamName    string `json:"team_name"`
-		ServiceName string `json:"service_name"`
-		ServiceType string `json:"service_type"`
-		Result      bool   `json:"result"`
-		Error       string `json:"error"`
-		Debug       string `json:"debug"`
-	}
-	resp := struct {
-		Round     uint       `json:"round"`
-		StartTime *time.Time `json:"start_time"`
-		Checks    []check    `json:"checks"`
-	}{Round: round.ID, Checks: make([]check, 0, len(round.Checks))}
-	if round.ID != 0 {
-		resp.StartTime = &round.StartTime
-	}
-	for _, row := range round.Checks {
-		resp.Checks = append(resp.Checks, check{row.TeamID, row.Team.Name, row.ServiceName, row.ServiceType, row.Result, row.Error, row.Debug})
-	}
-	WriteJSON(w, http.StatusOK, resp)
-}
-
-func (a *API) UpdateTeams(w http.ResponseWriter, r *http.Request) {
 	type Form struct {
 		Teams []struct {
 			TeamID     uint   `json:"id"`
@@ -341,18 +397,19 @@ func readImportedHelpers(baseDir, scriptPath, scriptContent string) []scriptHelp
 }
 
 func (a *API) GetCustomChecks(w http.ResponseWriter, r *http.Request) {
+	conf := a.conf.Current()
 	serviceFilter := r.URL.Query().Get("service")
 	baseDir := resolveChecksRoot()
 	checks := make([]customCheckInfo, 0)
 
-	credLabelsByPath := make(map[string]string, len(a.conf.CredlistSettings.Credlist))
-	for _, cl := range a.conf.CredlistSettings.Credlist {
+	credLabelsByPath := make(map[string]string, len(conf.CredlistSettings.Credlist))
+	for _, cl := range conf.CredlistSettings.Credlist {
 		if cl.CredlistPath != "" && cl.CredlistName != "" && cl.CredlistName != cl.CredlistPath {
 			credLabelsByPath[cl.CredlistPath] = cl.CredlistName + " (" + cl.CredlistPath + ")"
 		}
 	}
 
-	for _, box := range a.conf.Box {
+	for _, box := range conf.Box {
 		for _, c := range box.Custom {
 			if serviceFilter != "" && c.Name != serviceFilter {
 				continue
