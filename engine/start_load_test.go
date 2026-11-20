@@ -12,7 +12,7 @@ import (
 )
 
 // A database error while Start reads the stored rounds must delay scoring, not
-// start it from round 0, whose writes would all collide with stored rounds.
+// restart it at round 0, whose writes collide with stored rounds.
 func TestStart_WaitsForRoundStateAfterLoadError(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -28,14 +28,7 @@ func TestStart_WaitsForRoundStateAfterLoadError(t *testing.T) {
 	se.CurrentRound = 0 // a freshly started process
 
 	pg.Exec(t, "ALTER TABLE round_schemas RENAME TO round_schemas_away")
-	restored := make(chan struct{})
-	t.Cleanup(func() {
-		select {
-		case <-restored:
-		default:
-			pg.Exec(t, "ALTER TABLE round_schemas_away RENAME TO round_schemas")
-		}
-	})
+	t.Cleanup(func() { pg.Exec(t, "ALTER TABLE IF EXISTS round_schemas_away RENAME TO round_schemas") })
 
 	firstRound := make(chan uint, 1)
 	se.roundFunc = func() error {
@@ -47,7 +40,6 @@ func TestStart_WaitsForRoundStateAfterLoadError(t *testing.T) {
 
 	time.Sleep(time.Second) // Start is retrying against the missing table
 	pg.Exec(t, "ALTER TABLE round_schemas_away RENAME TO round_schemas")
-	close(restored)
 
 	select {
 	case round := <-firstRound:
@@ -62,4 +54,28 @@ func TestStart_WaitsForRoundStateAfterLoadError(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Start did not return after reset")
 	}
+}
+
+// SLA streaks are replayed in round order, whatever order the rows were stored in.
+func TestLoadRoundState_ReplaysStreaksInRoundOrder(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	redis, pg := testutil.StartContainers(t)
+	require.NoError(t, pg.DB.ResetScores())
+	team, err := pg.DB.CreateTeam(db.TeamSchema{Name: "StartLoadStreakTeam", Active: true, Identifier: "sls1"})
+	require.NoError(t, err)
+
+	// Round 2 is stored first, so a scan in storage order sees the fail before the pass.
+	for _, round := range []db.RoundSchema{
+		{ID: 2, StartTime: time.Now(), Checks: []db.ServiceCheckSchema{{TeamID: team.ID, RoundID: 2, ServiceName: "web", Result: false}}},
+		{ID: 1, StartTime: time.Now(), Checks: []db.ServiceCheckSchema{{TeamID: team.ID, RoundID: 1, ServiceName: "web", Result: true}}},
+	} {
+		_, err := pg.DB.CreateRound(round)
+		require.NoError(t, err)
+	}
+
+	se := NewTestEngine(t, redis, pg, 3)
+	require.NoError(t, se.loadRoundState())
+	assert.Equal(t, 1, se.SlaPerService[team.ID]["web"], "round 2 failed after round 1 passed")
 }

@@ -120,11 +120,7 @@ func NewEngine(configPath string) *ScoringEngine {
 func (se *ScoringEngine) Start() {
 	// Scoring with a stale CurrentRound or empty streaks would collide with
 	// stored rounds or forget SLAs, so wait for the database instead.
-	for {
-		err := se.loadRoundState()
-		if err == nil {
-			break
-		}
+	for err := se.loadRoundState(); err != nil; err = se.loadRoundState() {
 		slog.Error("failed to load round state, retrying", "error", err, "retry_in", loadRetryDelay)
 		time.Sleep(loadRetryDelay)
 	}
@@ -208,7 +204,6 @@ func (se *ScoringEngine) Start() {
 // so this only delays the round after one that ran to its deadline.
 const roundFinishSettle = 5 * time.Second
 
-// loadRetryDelay is how long Start waits before retrying a failed state load.
 const loadRetryDelay = 2 * time.Second
 
 // loadRoundState rebuilds the round counter, uptimes and SLA streaks from the
@@ -218,12 +213,12 @@ func (se *ScoringEngine) loadRoundState() error {
 	if err != nil {
 		return fmt.Errorf("get last round: %w", err)
 	}
-	uptimes := make(map[uint]map[string]db.Uptime)
-	if err := se.DB.LoadUptimes(&uptimes); err != nil {
+	uptimes, err := se.DB.LoadUptimes()
+	if err != nil {
 		return fmt.Errorf("load uptimes: %w", err)
 	}
-	slas := make(map[uint]map[string]int)
-	if err := se.DB.LoadSLAs(&slas, se.Config.Current().MiscSettings.SlaThreshold); err != nil {
+	slas, err := se.DB.LoadSLAs(se.Config.Current().MiscSettings.SlaThreshold)
+	if err != nil {
 		return fmt.Errorf("load SLAs: %w", err)
 	}
 
