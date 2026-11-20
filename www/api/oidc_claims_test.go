@@ -11,13 +11,13 @@ import (
 // "resource_access.roles" must read the roles of this deployment's client, not
 // the realm roles: a realm role named like an admin group must not grant admin.
 func TestOIDCResourceAccessClaimReadsClientRoles(t *testing.T) {
-	a := &API{conf: &config.ConfigSettings{OIDCSettings: config.OIDCAuthConfig{
+	a := &API{conf: config.NewLive(&config.ConfigSettings{OIDCSettings: config.OIDCAuthConfig{
 		OIDCEnabled:     true,
 		OIDCClientID:    "quotient",
 		OIDCGroupClaim:  "resource_access.roles",
 		OIDCAdminGroups: []string{"quotient-admin"},
 		OIDCTeamGroups:  []string{"team*"},
-	}}}
+	}})}
 
 	var claims IDTokenClaims
 	claims.PreferredUsername = "blue1"
