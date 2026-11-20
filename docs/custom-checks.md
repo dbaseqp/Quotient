@@ -173,7 +173,7 @@ from curl_cffi import requests
 r = requests.get(f"https://{address}/", impersonate="chrome151", timeout=10)
 ```
 
-curl_cffi's Chrome targets trail Chrome's releases, so the release such a check claims is older than the one the web check and `browser_curl` claim. Keep the target's own `User-Agent`: one with a newer version would no longer match the handshake.
+curl_cffi's Chrome targets trail Chrome's releases, so the release such a check claims is older than `checks.ChromeMajor`, which `browser_curl` claims. Keep the target's own `User-Agent`: one with a newer version would no longer match the handshake.
 
 ### Database Check
 
