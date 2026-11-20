@@ -14,7 +14,7 @@ import (
 func bootEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.PostgresContainer, startPaused bool) *ScoringEngine {
 	t.Helper()
 	se := NewTestEngine(t, redis, pg, 3)
-	se.Config.MiscSettings.StartPaused = startPaused
+	se.Config.Current().MiscSettings.StartPaused = startPaused
 	require.NoError(t, se.loadPauseState())
 	return se
 }

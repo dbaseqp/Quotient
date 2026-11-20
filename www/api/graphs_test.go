@@ -12,12 +12,12 @@ import (
 
 func withGraphFlags(t *testing.T, publicGraphs bool, disableForBlue bool) *API {
 	t.Helper()
-	return &API{conf: &config.ConfigSettings{
+	return &API{conf: config.NewLive(&config.ConfigSettings{
 		UISettings: config.UIConfig{
 			EnablePublicGraphs:       publicGraphs,
 			DisableGraphsForBlueTeam: disableForBlue,
 		},
-	}}
+	})}
 }
 
 var graphHandlers = []struct {
