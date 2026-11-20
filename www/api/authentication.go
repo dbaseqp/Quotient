@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -91,19 +92,32 @@ func (a *API) Login(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 
-	var form Form
+	r.Body = http.MaxBytesReader(w, r.Body, loginBodyLimit)
 
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&form)
-	if err != nil {
-		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
-		slog.Error(err.Error())
+	var form Form
+	if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			WriteJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "request body too large"})
+		} else {
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid request body"})
+		}
 		return
 	}
 
-	// check credentials
+	// An address that has used up its failed attempts is refused before the credentials are checked, so
+	// further guesses cannot succeed until the window passes.
+	ip, _, splitErr := net.SplitHostPort(r.RemoteAddr)
+	if splitErr == nil && a.loginBlocked(ip, time.Now()) {
+		WriteJSON(w, http.StatusTooManyRequests, map[string]any{"error": "too many login attempts"})
+		return
+	}
+
 	auth, err := a.auth(form.Username, form.Password)
 	if err != nil {
+		if splitErr == nil {
+			a.recordLoginFailure(ip, time.Now())
+		}
 		WriteJSON(w, http.StatusUnauthorized, map[string]any{"error": "Incorrect username/password"})
 		slog.Info("Failed logon", "username", form.Username)
 		return

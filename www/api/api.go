@@ -10,17 +10,54 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/dbaseqp/Quotient/engine"
 	"github.com/dbaseqp/Quotient/engine/config"
 )
 
+type loginAttempts struct {
+	mu          sync.Mutex
+	count       int
+	windowStart time.Time
+}
+
+const loginMaxAttempts = 10
+const loginWindow = time.Minute
+const loginBodyLimit = 4 << 10 // 4 KiB, well above any real credential pair
+
+// loginBlocked reports whether ip has used up its failed login attempts in the current window.
+func (a *API) loginBlocked(ip string, now time.Time) bool {
+	val, ok := a.loginLimiter.Load(ip)
+	if !ok {
+		return false
+	}
+	la := val.(*loginAttempts)
+	la.mu.Lock()
+	defer la.mu.Unlock()
+	return now.Sub(la.windowStart) <= loginWindow && la.count >= loginMaxAttempts
+}
+
+// recordLoginFailure counts a failed login for ip, starting a new window once the last one has passed.
+func (a *API) recordLoginFailure(ip string, now time.Time) {
+	val, _ := a.loginLimiter.LoadOrStore(ip, &loginAttempts{windowStart: now})
+	la := val.(*loginAttempts)
+	la.mu.Lock()
+	defer la.mu.Unlock()
+	if now.Sub(la.windowStart) > loginWindow {
+		la.count = 0
+		la.windowStart = now
+	}
+	la.count++
+}
+
 type API struct {
-	conf *config.Live
-	eng  *engine.ScoringEngine
-	oidc *oidcState
+	conf         *config.Live
+	eng          *engine.ScoringEngine
+	oidc         *oidcState
+	loginLimiter sync.Map // IP string -> *loginAttempts
 }
 
 func NewAPI(c *config.Live, e *engine.ScoringEngine) *API {
