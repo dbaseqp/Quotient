@@ -100,6 +100,8 @@ The configuration file is broken up into sections. Only the `RequiredSettings` s
 
 Cred lists need to be CSVs specified in the `./config/credlists` directory with a `.credlist` extension. When password change requests (PCRs) get processed, credlists will only be mutated by changing the password column of an existing user in the defined list. This means submitting a PCR with a user that does not exist will ignore that specific entry. Below is an example. See the below configuration examples to specify credlists for checks. You will have to map the files to a credlist name in a top-level config section for each credlist.
 
+Reset Scores does not undo PCRs: every team keeps the passwords it last submitted. If a dry run included PCRs and the team boxes are then restored to their original passwords, reset each team's PCRs as well (PCR page → Reset, `POST /api/pcrs/reset`). Otherwise the first real rounds fail every credentialed check.
+
 ```
 # example contents of a .credlist file
 joe,s3cret
