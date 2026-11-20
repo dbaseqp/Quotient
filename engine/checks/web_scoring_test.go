@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -143,38 +142,45 @@ func TestWebCheckConnectionRefused(t *testing.T) {
 }
 
 // TestWebCheckScoresPagePrefix: the check reads the first maxWebBodyBytes of
-// a page and matches the regex within them, and a small br or zstd body that
-// decodes to 64 MiB is not decoded in full.
+// a page and matches the regex within them. The br and zstd bodies never end,
+// so a check that decoded past the prefix would time out.
 func TestWebCheckScoresPagePrefix(t *testing.T) {
-	const decoded = 64 << 20
 	// prefix fills the limit; "TAIL" comes right after it.
 	prefix := append(bytes.Repeat([]byte{'a'}, maxWebBodyBytes), "TAIL"...)
-	bomb := func(buf *bytes.Buffer, w io.WriteCloser) []byte {
-		_, err := w.Write(prefix)
-		require.NoError(t, err)
-		zeros := make([]byte, 1<<20)
-		for range (decoded - len(prefix)) / len(zeros) {
-			_, err := w.Write(zeros)
+	encoders := map[string]func(io.Writer) io.WriteCloser{
+		"br": func(w io.Writer) io.WriteCloser { return brotli.NewWriterLevel(w, brotli.BestSpeed) },
+		"zstd": func(w io.Writer) io.WriteCloser {
+			// One goroutine: the encoder writes only inside Write, never after
+			// the handler has returned.
+			zw, err := zstd.NewWriter(w, zstd.WithEncoderConcurrency(1))
 			require.NoError(t, err)
-		}
-		require.NoError(t, w.Close())
-		return buf.Bytes()
+			return zw
+		},
+		"identity": nil,
 	}
-	var brBuf, zstdBuf bytes.Buffer
-	zw, err := zstd.NewWriter(&zstdBuf)
-	require.NoError(t, err)
-	bodies := map[string][]byte{
-		"br":       bomb(&brBuf, brotli.NewWriterLevel(&brBuf, brotli.BestSpeed)),
-		"zstd":     bomb(&zstdBuf, zw),
-		"identity": prefix,
-	}
-	for coding, body := range bodies {
+	for coding, newEncoder := range encoders {
 		t.Run(coding, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Encoding", coding)
-				_, _ = w.Write(body)
+				if newEncoder == nil {
+					_, _ = w.Write(prefix)
+					return
+				}
+				enc := newEncoder(w)
+				if _, err := enc.Write(prefix); err != nil {
+					return
+				}
+				zeros := make([]byte, 1<<20)
+				for r.Context().Err() == nil {
+					if _, err := enc.Write(zeros); err != nil {
+						return
+					}
+				}
 			}))
-			defer srv.Close()
+			defer func() {
+				srv.CloseClientConnections()
+				srv.Close()
+			}()
 			run := func(regex string) Result {
 				c := Web{
 					Service: Service{Target: "127.0.0.1", Port: srv.Listener.Addr().(*net.TCPAddr).Port, Timeout: 5},
@@ -192,15 +198,8 @@ func TestWebCheckScoresPagePrefix(t *testing.T) {
 				return Result{}
 			}
 
-			var before, after runtime.MemStats
-			runtime.ReadMemStats(&before)
 			r := run("^aaaa")
-			runtime.ReadMemStats(&after)
 			assert.True(t, r.Status, "the prefix matches: %s %s", r.Error, r.Debug)
-			if coding != "identity" {
-				assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(decoded*3/4), "bytes allocated while decoding")
-			}
-
 			r = run("TAIL")
 			assert.False(t, r.Status)
 			assert.Equal(t, "didn't find regex on page", r.Error, "past the prefix: %s", r.Debug)
