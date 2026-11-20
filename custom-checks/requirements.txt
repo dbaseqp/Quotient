@@ -14,3 +14,4 @@ pexpect
 argparse
 beautifulsoup4
 vncdotool
+curl_cffi==0.17.0

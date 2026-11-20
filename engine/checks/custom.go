@@ -101,6 +101,7 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", formedCommand) // #nosec G204 -- custom checks intentionally run user-defined commands
+		cmd.Env = append(os.Environ(), ChromeEnv()...)
 
 		// Use os.Root to safely handle temp file operations
 		tmpRoot, err := os.OpenRoot("/tmp")
@@ -225,4 +226,16 @@ func (c *Custom) Verify(box string, ip string, points int, timeout int, slapenal
 	}
 
 	return nil
+}
+
+// ChromeEnv is the environment of every custom check: the desktop Chrome that
+// browser-curl.sh claims, ChromeMajor on Linux, because curl's packets come
+// from the runner's Linux network stack and another OS would contradict them.
+func ChromeEnv() []string {
+	return []string{
+		"QUOTIENT_CHROME_USER_AGENT=" + ChromeUserAgent(chromeLinux.uaOS),
+		"QUOTIENT_CHROME_PLATFORM=" + chromeLinux.platform,
+		"QUOTIENT_CHROME_SEC_CH_UA=" + ChromeSecCHUA(ChromeMajor),
+		"QUOTIENT_CHROME_LANGUAGE=" + chromeAcceptLanguage,
+	}
 }
