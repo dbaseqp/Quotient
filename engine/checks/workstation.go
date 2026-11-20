@@ -20,14 +20,13 @@ func fnv64a(s string) uint64 {
 // size-2 names from the event's workstation-name templates (MiscSettings.WorkstationNames, "_"
 // replaced by the team identifier), the rest Windows-style DESKTOP-XXXXXXX names. It depends only
 // on salt (the event name), the team and the templates, so every runner builds the same pool.
-// The event checks' mailclient.py builds the same pool with the same algorithm.
 func workstationPool(salt, team string, templates []string) []string {
 	h := fnv64a(salt + "/" + team)
 	size := 4 + int(h%3)
 	n := min(len(templates), size-2)
 	pool := make([]string, 0, size)
 	for i := range n {
-		pool = append(pool, strings.ReplaceAll(templates[(int(h>>8)+i)%len(templates)], "_", team))
+		pool = append(pool, strings.ReplaceAll(templates[((h>>8)+uint64(i))%uint64(len(templates))], "_", team))
 	}
 	for i := range size - n {
 		x := fnv64a(salt + "/" + team + "/desktop/" + strconv.Itoa(i))
@@ -41,16 +40,21 @@ func workstationPool(salt, team string, templates []string) []string {
 	return pool
 }
 
-// workstation picks the name of the PC this check claims to run on this round: one of the team's
-// pool at random, as if different users' machines did the work. Protocols that carry a client
-// host name (SMTP EHLO, NTLM's Workstation field) send it.
-func (service *Service) workstation(team string) string {
-	pool := workstationPool(service.WorkstationSalt, team, service.WorkstationNames)
+// workstationNaming holds the event-wide inputs of the workstation-name pool, for checks that
+// send a client host name. The config sets them; they reach the runner in the check's JSON.
+type workstationNaming struct {
+	WorkstationSalt  string   `toml:"-"` // Event name: seeds each team's workstation-name pool
+	WorkstationNames []string `toml:"-"` // MiscSettings.WorkstationNames templates
+}
+
+// workstation picks one name from the team's pool at random, on every check attempt.
+func (w *workstationNaming) workstation(team string) string {
+	pool := workstationPool(w.WorkstationSalt, team, w.WorkstationNames)
 	return pool[rand.IntN(len(pool))] // #nosec G404 -- non-crypto choice of a client name
 }
 
 // SetWorkstationNaming gives the check the event-wide inputs of the workstation-name pool.
-func (service *Service) SetWorkstationNaming(salt string, templates []string) {
-	service.WorkstationSalt = salt
-	service.WorkstationNames = templates
+func (w *workstationNaming) SetWorkstationNaming(salt string, templates []string) {
+	w.WorkstationSalt = salt
+	w.WorkstationNames = templates
 }

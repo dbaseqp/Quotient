@@ -14,6 +14,7 @@ import (
 
 type Smb struct {
 	Service
+	workstationNaming
 	Domain string
 	Share  string
 	File   []smbFile

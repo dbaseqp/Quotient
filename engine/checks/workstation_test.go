@@ -48,14 +48,14 @@ func TestWorkstationPool(t *testing.T) {
 	assert.Equal(t, min(len(tpl), len(pool)-2), fromTpl, "templates fill the rest of the pool")
 }
 
-// TestWorkstationPoolGolden pins the algorithm that mailclient.py in the event checks shares.
+// TestWorkstationPoolGolden pins the pool algorithm's output.
 func TestWorkstationPoolGolden(t *testing.T) {
 	assert.Equal(t, goldenNoTemplates, workstationPool("acme-anvil", "01", nil))
 	assert.Equal(t, goldenTemplates, workstationPool("acme-anvil", "01", []string{"WS_-A", "LAB_PC"}))
 }
 
-func TestWorkstationPicksFromPoolEachRound(t *testing.T) {
-	s := &Service{}
+func TestWorkstationPicksFromPoolEachAttempt(t *testing.T) {
+	s := &workstationNaming{}
 	s.SetWorkstationNaming("Inv3", []string{"WS_-A"})
 	pool := workstationPool("Inv3", "03", []string{"WS_-A"})
 	picked := map[string]bool{}
