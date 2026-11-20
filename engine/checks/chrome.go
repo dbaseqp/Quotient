@@ -28,9 +28,6 @@ var (
 	chromeLinux   = chromeOS{"X11; Linux x86_64", `"Linux"`}
 )
 
-// chromeOSes are the desktop OSes a check run can claim.
-var chromeOSes = []chromeOS{chromeWindows, chromeMacOS, chromeLinux}
-
 // ChromeUserAgent is desktop Chrome's User-Agent for the given OS token, with
 // the minor version reduced to 0.0.0 as Chrome sends it.
 func ChromeUserAgent(uaOS string) string {

@@ -107,7 +107,7 @@ func TestChromeSecCHUAMatchesChrome(t *testing.T) {
 // values.
 func TestChromeOSesMatchChrome(t *testing.T) {
 	var got [][2]string
-	for _, o := range chromeOSes {
+	for _, o := range []chromeOS{chromeWindows, chromeMacOS, chromeLinux} {
 		got = append(got, [2]string{ChromeUserAgent(o.uaOS), o.platform})
 	}
 	assert.Equal(t, [][2]string{
