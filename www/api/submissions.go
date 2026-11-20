@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 )
 
 func (a *API) CreateSubmission(w http.ResponseWriter, r *http.Request) {
+	// Judge the submission by when it arrived, not when a large upload finished.
+	receivedAt := time.Now()
 	temp, err := strconv.ParseUint(r.PathValue("id"), 10, 32)
 	if err != nil {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid inject id"})
@@ -52,7 +55,7 @@ func (a *API) CreateSubmission(w http.ResponseWriter, r *http.Request) {
 	submission := db.SubmissionSchema{
 		TeamID:             teamID,
 		InjectID:           injectID,
-		SubmissionTime:     time.Now(),
+		SubmissionTime:     receivedAt,
 		SubmissionFileName: fileHeader.Filename,
 	}
 
@@ -62,13 +65,14 @@ func (a *API) CreateSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var inject db.InjectSchema
-	for _, i := range injects {
-		if i.ID == injectID {
-			inject = i
-			break
-		}
+	idx := slices.IndexFunc(injects, func(i db.InjectSchema) bool { return i.ID == injectID })
+	roles := CallerRoles(r.Context())
+	// An inject a team cannot see yet (GetInjects hides it) does not exist for it.
+	if idx < 0 || (!slices.Contains(roles, "admin") && !slices.Contains(roles, "inject") && receivedAt.Before(injects[idx].OpenTime)) {
+		WriteJSON(w, http.StatusNotFound, map[string]any{"error": "Inject not found"})
+		return
 	}
+	inject := injects[idx]
 
 	if submission.SubmissionTime.After(inject.CloseTime) {
 		WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Inject is closed"})

@@ -100,6 +100,8 @@ The configuration file is broken up into sections. Only the `RequiredSettings` s
 
 Cred lists need to be CSVs specified in the `./config/credlists` directory with a `.credlist` extension. When password change requests (PCRs) get processed, credlists will only be mutated by changing the password column of an existing user in the defined list. This means submitting a PCR with a user that does not exist will ignore that specific entry. Below is an example. See the below configuration examples to specify credlists for checks. You will have to map the files to a credlist name in a top-level config section for each credlist.
 
+Reset Scores does not undo PCRs: every team keeps the passwords it last submitted. If a dry run included PCRs and the team boxes are then restored to their original passwords, reset each team's PCRs as well (PCR page → Reset, `POST /api/pcrs/reset`). Otherwise the first real rounds fail every credentialed check.
+
 ```
 # example contents of a .credlist file
 joe,s3cret
@@ -223,7 +225,7 @@ resolves:
 
 Name the group after its team to make the assignment unambiguous.
 
-The OIDC username (`preferred_username`, then `email`, then `sub`) is never
+The OIDC username (`preferred_username`, then `email` if `email_verified`, then `sub`) is never
 used to pick a team.
 
 Local and LDAP accounts are named after their team. A local team account is a
@@ -270,6 +272,8 @@ AttemptDelay = 0            # Seconds to wait before retrying a failed attempt (
 ```
 
 Every attempt, plus the waits between them, must fit in the shortest round: `Attempts * Timeout + (Attempts - 1) * AttemptDelay` must be less than `Delay - Jitter`.
+
+A round waits for a missing result until its deadline, so it ends after the next round was due. The next round then starts 5 seconds after the previous round's `round_finish` rather than at once, which gives Divisor time to rotate the runners' source addresses. Otherwise the rotation would cut off the new round's first checks, and they would time out against services that are up.
 
 In rvb events, rounds that run while the competition is not started and no scored round has been stored are **preflight rounds**. They run the same checks a scored round would (inactive teams, disabled team services and checks without seeded credentials are skipped alike) and publish `round_finish` for Divisor, but their results are stored apart and never count toward scored points, uptime or SLAs. Leave `StartPaused = false` to have preflight rounds run as soon as the engine is up. While in preflight, `/graphs` (service status and uptime), `/services`, `/admin/engine`, and `/admin/runners` show preflight results to admins while non-admin access stays blocked; once the competition starts, those views show scored rounds. Stopping a competition that has stored scored rounds does not bring preflight rounds back; resetting scores stops the competition and drops scored and preflight rounds so the engine re-enters preflight. Injects keep their anchor: a reset does not forget when the competition first started. In custom checks the `ROUND` placeholder is the preflight round number during preflight and the scored round number afterwards, so both start at 1. A scheduled start (see *Competition Start and End*) opens the competition just like a manual *Start Competition*, so the first round after it is scored and no further preflight rounds run. A score reset keeps the recorded start, so it does not re-arm the scheduled start: after a reset the engine stays in preflight until an admin starts the competition.
 
@@ -434,7 +438,7 @@ port = 53
 
 #### Web Check
 
-HTTP/HTTPS request with optional status code and content matching.
+HTTP/HTTPS request with optional status code and content matching. The check sends browser-style `Accept` and `Accept-Language` headers along with a random `User-Agent`.
 
 ```toml
 [[box.web]]

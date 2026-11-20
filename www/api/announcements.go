@@ -27,7 +27,7 @@ func (a *API) GetAnnouncements(w http.ResponseWriter, r *http.Request) {
 	// if not admin filter out announcements that are not open yet
 	req_roles := CallerRoles(r.Context())
 	if !slices.Contains(req_roles, "admin") {
-		if slices.Contains(req_roles, "red") && !a.conf.UISettings.ShowAnnouncementsForRedTeam {
+		if slices.Contains(req_roles, "red") && !a.conf.Current().UISettings.ShowAnnouncementsForRedTeam {
 			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 			return
 		}
@@ -60,7 +60,7 @@ func (a *API) DownloadAnnouncementFile(w http.ResponseWriter, r *http.Request) {
 	// Refused before the lookup so the answer does not reveal which IDs exist.
 	req_roles := CallerRoles(r.Context())
 	isAdmin := slices.Contains(req_roles, "admin")
-	if !isAdmin && slices.Contains(req_roles, "red") && !a.conf.UISettings.ShowAnnouncementsForRedTeam {
+	if !isAdmin && slices.Contains(req_roles, "red") && !a.conf.Current().UISettings.ShowAnnouncementsForRedTeam {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "Forbidden"})
 		return
 	}
