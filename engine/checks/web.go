@@ -21,6 +21,7 @@ type Web struct {
 	Service
 	Url    []urlData
 	Scheme string
+	Proxy  string `toml:",omitempty"`
 }
 
 type urlData struct {
@@ -45,6 +46,28 @@ func randomAcceptLanguage() string {
 	return webAcceptLanguages[rand.IntN(len(webAcceptLanguages))] // #nosec G404 -- non-crypto selection of header value
 }
 
+// parseProxy substitutes the team identifier for "_", then validates the URL. Errors must not echo the
+// setting: Debug can reach blue team (www/api/services.go) and the setting is admin config.
+func parseProxy(raw, identifier string) (*url.URL, error) {
+	proxyURL, err := url.Parse(strings.ReplaceAll(raw, "_", identifier))
+	if err != nil {
+		return nil, errors.New("not a valid URL")
+	}
+	if proxyURL.Scheme != "socks5" && proxyURL.Scheme != "socks5h" {
+		return nil, errors.New("the scheme must be socks5 or socks5h")
+	}
+	if proxyURL.Hostname() == "" {
+		return nil, errors.New("no host")
+	}
+	if port, err := strconv.Atoi(proxyURL.Port()); err != nil || port < 1 || port > 65535 {
+		return nil, errors.New("no port, or a port outside 1-65535")
+	}
+	if proxyURL.User != nil {
+		return nil, errors.New("credentials are not supported")
+	}
+	return proxyURL, nil
+}
+
 func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		u := c.Url[rand.IntN(len(c.Url))] // #nosec G404 -- non-crypto selection of URL to test
@@ -59,6 +82,16 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, // #nosec G402 -- competition services may use self-signed certs
 			},
+		}
+		if c.Proxy != "" {
+			proxyURL, err := parseProxy(c.Proxy, teamIdentifier)
+			if err != nil {
+				checkResult.Error = "invalid proxy URL"
+				checkResult.Debug = err.Error()
+				response <- checkResult
+				return
+			}
+			tr.Proxy = http.ProxyURL(proxyURL)
 		}
 		// Set client timeout to slightly less than check timeout to get better error messages
 		clientTimeout := time.Duration(c.Timeout) * time.Second
@@ -187,6 +220,12 @@ func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty 
 		}
 		if u.Path == "" {
 			u.Path = "/"
+		}
+	}
+	if c.Proxy != "" {
+		// "1" stands in for the team identifier so a port that is only "_" is valid
+		if _, err := parseProxy(c.Proxy, "1"); err != nil {
+			return fmt.Errorf("web check %s: invalid proxy: %w", c.Name, err)
 		}
 	}
 
