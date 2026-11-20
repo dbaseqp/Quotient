@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/dbaseqp/Quotient/engine"
-	"github.com/dbaseqp/Quotient/engine/config"
 	"github.com/dbaseqp/Quotient/www"
 )
 
@@ -38,12 +37,10 @@ func main() {
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 
-	// Initialize empty config
-	conf := config.ConfigSettings{}
 	configPath := "./config/event.conf"
 
 	// Create engine which will validate and load the config
-	se := engine.NewEngine(&conf, configPath)
+	se := engine.NewEngine(configPath)
 
 	// start engine, restart if it stops
 	go func() {
@@ -53,6 +50,6 @@ func main() {
 	}()
 
 	// start web server
-	router := www.NewRouter(&conf, se)
+	router := www.NewRouter(se.Config, se)
 	router.Start()
 }

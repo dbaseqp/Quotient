@@ -23,12 +23,12 @@ func teamList(names ...string) []db.TeamSchema {
 
 func withOIDCConfig(t *testing.T, teamGroups []string) *API {
 	t.Helper()
-	return &API{conf: &config.ConfigSettings{
+	return &API{conf: config.NewLive(&config.ConfigSettings{
 		OIDCSettings: config.OIDCAuthConfig{
 			OIDCEnabled:    true,
 			OIDCTeamGroups: teamGroups,
 		},
-	}}
+	})}
 }
 
 func TestTeamOrdinal(t *testing.T) {
@@ -233,21 +233,21 @@ func TestCallerRoles(t *testing.T) {
 }
 
 func TestLdapGroupRoles(t *testing.T) {
-	a := &API{conf: &config.ConfigSettings{
+	a := &API{conf: config.NewLive(&config.ConfigSettings{
 		LdapSettings: config.LdapAuthConfig{
 			LdapAdminGroupDn:  "CN=Admins,DC=example,DC=com",
 			LdapRedGroupDn:    "CN=Red,DC=example,DC=com",
 			LdapTeamGroupDn:   "CN=Teams,DC=example,DC=com",
 			LdapInjectGroupDn: "CN=Injects,DC=example,DC=com",
 		},
-	}}
+	})}
 
 	assert.Equal(t, []string{"team"}, a.ldapGroupRoles([]string{"CN=Other,DC=example,DC=com", "CN=Teams,DC=example,DC=com"}))
 	assert.Equal(t, []string{"admin", "inject"}, a.ldapGroupRoles([]string{"CN=Admins,DC=example,DC=com", "CN=Injects,DC=example,DC=com"}))
 	assert.Empty(t, a.ldapGroupRoles([]string{"cn=teams,dc=example,dc=com"}), "group DNs must match exactly")
 	assert.Empty(t, a.ldapGroupRoles(nil))
 
-	a.conf.LdapSettings.LdapRedGroupDn = a.conf.LdapSettings.LdapAdminGroupDn
+	a.conf.Current().LdapSettings.LdapRedGroupDn = a.conf.Current().LdapSettings.LdapAdminGroupDn
 	assert.Equal(t, []string{"admin", "red"}, a.ldapGroupRoles([]string{"CN=Admins,DC=example,DC=com"}),
 		"one group may grant several roles")
 }

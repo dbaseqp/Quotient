@@ -90,7 +90,7 @@ func (a *API) GetServiceAll(w http.ResponseWriter, r *http.Request) {
 
 	// Remove debug and error fields for non-admins
 	// Red team never sees credentials, blue team only if ShowDebugToBlueTeam is enabled
-	if !slices.Contains(req_roles, "admin") && (slices.Contains(req_roles, "red") || !a.conf.MiscSettings.ShowDebugToBlueTeam) {
+	if !slices.Contains(req_roles, "admin") && (slices.Contains(req_roles, "red") || !a.conf.Current().MiscSettings.ShowDebugToBlueTeam) {
 		for i := range service {
 			service[i].Debug = ""
 			service[i].Error = ""

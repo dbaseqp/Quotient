@@ -284,7 +284,7 @@
                                     const id = pane.id.split("--")[1];
                                     const title = document.getElementById(`tab__title--${id}`);
                                     const description = document.getElementById(`pane__description--${id}`);
-                                    const opentime = document.getElementById(`tab__time--${id}`);
+                                    const opentime = document.getElementById(`pane__open--${id}`);
                                     const duetime = document.getElementById(`pane__due--${id}`);
                                     const closetime = document.getElementById(`pane__close--${id}`);
                                     const existingFiles = pane.querySelectorAll("a[href^='/injects/']");
@@ -292,16 +292,18 @@
 
                                     document.getElementById("edit-inject-title").value = title.textContent;
                                     document.getElementById("edit-inject-description").value = description.firstElementChild.firstElementChild.textContent;
-                                    const formatDateTimeLocal = (dateString) => {
-                                        const date = new Date(dateString);
+                                    // Pre-fill from the ISO instants in data-time; the
+                                    // localized display text has no year.
+                                    const formatDateTimeLocal = (isoString) => {
+                                        const date = new Date(isoString);
                                         const tzOffset = date.getTimezoneOffset() * 60000;
                                         const localISOTime = (new Date(date - tzOffset)).toISOString().slice(0, 16);
                                         return localISOTime;
                                     };
 
-                                    document.getElementById("edit-inject-opentime").value = formatDateTimeLocal(opentime.textContent);
-                                    document.getElementById("edit-inject-duetime").value = formatDateTimeLocal(duetime.textContent);
-                                    document.getElementById("edit-inject-closetime").value = formatDateTimeLocal(closetime.textContent);
+                                    document.getElementById("edit-inject-opentime").value = formatDateTimeLocal(opentime.dataset.time);
+                                    document.getElementById("edit-inject-duetime").value = formatDateTimeLocal(duetime.dataset.time);
+                                    document.getElementById("edit-inject-closetime").value = formatDateTimeLocal(closetime.dataset.time);
 
                                     existingFilesList.innerHTML = "";
 
@@ -807,9 +809,9 @@
                 descTemp.innerHTML += `
                 <h5>Inject Details <span id="pane__countdown--${inject.ID}" class="inject-countdown-detail"></span></h5>
                 <ul>
-                    <li><p><strong>Release Time:</strong> <span id="pane__open--${inject.ID}">${inject.OpenTime.toLocaleString(undefined, { timeZoneName: 'short' })}</span></p></li>
-                    <li><p><strong>Due Time:</strong> <span id="pane__due--${inject.ID}">${inject.DueTime.toLocaleString(undefined, { timeZoneName: 'short' })}</span></p></li>
-                    <li><p><strong>Close Time:</strong> <span id="pane__close--${inject.ID}">${inject.CloseTime.toLocaleString(undefined, { timeZoneName: 'short' })}</span></p></li>
+                    <li><p><strong>Release Time:</strong> <span id="pane__open--${inject.ID}" data-time="${inject.OpenTime.toISOString()}">${inject.OpenTime.toLocaleString(undefined, { timeZoneName: 'short' })}</span></p></li>
+                    <li><p><strong>Due Time:</strong> <span id="pane__due--${inject.ID}" data-time="${inject.DueTime.toISOString()}">${inject.DueTime.toLocaleString(undefined, { timeZoneName: 'short' })}</span></p></li>
+                    <li><p><strong>Close Time:</strong> <span id="pane__close--${inject.ID}" data-time="${inject.CloseTime.toISOString()}">${inject.CloseTime.toLocaleString(undefined, { timeZoneName: 'short' })}</span></p></li>
                     </ul>
                     `
                     description.appendChild(descTemp)
