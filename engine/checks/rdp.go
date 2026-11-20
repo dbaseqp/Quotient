@@ -1,11 +1,6 @@
 package checks
 
-import (
-	"net"
-	"strconv"
-	"time"
-	// why are there no good rdp libraries?
-)
+// why are there no good rdp libraries?
 
 type Rdp struct {
 	Service
@@ -13,8 +8,7 @@ type Rdp struct {
 
 func (c Rdp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		_, err := net.DialTimeout("tcp", c.Target+":"+strconv.Itoa(c.Port), time.Duration(c.Timeout)*time.Second)
-		if err != nil {
+		if err := dialAndClose(c.Service); err != nil {
 			checkResult.Error = "connection error"
 			checkResult.Debug = err.Error()
 			response <- checkResult

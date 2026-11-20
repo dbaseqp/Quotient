@@ -32,7 +32,8 @@ type Runner interface {
 	SetTaskCredentials(creds []TaskCredential)
 }
 
-// services will inherit Service so that config.Config can be read from file, but will not be used after initial read
+// Service holds the settings every check shares. Checks embed it; it is read from the config
+// file and sent to the runners as part of each check's JSON.
 type Service struct {
 	Name            string           `toml:"-"`          // Name is the box name plus the service (ex. lunar-dns)
 	Display         string           `toml:",omitempty"` // Display is the name of the service (ex. dns)

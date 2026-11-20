@@ -4,15 +4,17 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
-	"net"
 	"regexp"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/hirochachacha/go-smb2"
 )
 
 type Smb struct {
 	Service
+	workstationNaming
 	Domain string
 	Share  string
 	File   []smbFile
@@ -40,7 +42,9 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			}
 		}
 
-		conn, err := net.Dial("tcp", c.Target+":"+strconv.Itoa(c.Port))
+		// The socket asks for the window scale of Windows, the OS the workstation name claims
+		// (clientOS.windowClamp says when the host allows it).
+		conn, err := clientWindows.dialer(time.Duration(c.Timeout)*time.Second).Dial("tcp", c.Target+":"+strconv.Itoa(c.Port))
 		if err != nil {
 			checkResult.Error = "smb connection failed"
 			checkResult.Debug = err.Error()
@@ -55,8 +59,9 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 
 		d := &smb2.Dialer{
 			Initiator: &smb2.NTLMInitiator{
-				User:     username,
-				Password: password,
+				User:        username,
+				Password:    password,
+				Workstation: c.workstation(teamIdentifier),
 			},
 		}
 
@@ -75,7 +80,7 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		defer s.Logoff()
 
 		if len(c.File) > 0 {
-			fs, err := s.Mount(c.Share)
+			fs, err := s.Mount(uncShare(c.Target, c.Share))
 			if err != nil {
 				checkResult.Error = "failed to mount share"
 				checkResult.Debug = "share " + c.Share + ", creds " + username + ":" + password
@@ -160,6 +165,16 @@ func (c Smb) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 	}
 
 	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
+}
+
+// uncShare returns the tree-connect path \\target\share. For a bare share name go-smb2 uses the
+// connection's remote address, ip:port (\\10.0.0.5:445\share), which no Windows or Samba client
+// sends. A share that already contains a path separator is passed through unchanged.
+func uncShare(target, share string) string {
+	if strings.ContainsAny(share, `\/`) {
+		return share
+	}
+	return `\\` + target + `\` + share
 }
 
 func (c *Smb) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {

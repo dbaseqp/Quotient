@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -47,10 +48,10 @@ func (c Dns) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 		// Send the query
 		client := dns.Client{Timeout: time.Duration(c.Timeout-1) * time.Second, DialTimeout: time.Duration(c.Timeout-1) * time.Second}
 		// _, _ = dns.ExchangeContext(deadctx, &msg, fmt.Sprintf("%s:%d", c.Target, c.Port)) // double tap for propagation
-		in, rtt, err := client.Exchange(&msg, fmt.Sprintf("%s:%d", c.Target, c.Port))
+		in, rtt, err := exchangeLikeStub(&client, &msg, fmt.Sprintf("%s:%d", c.Target, c.Port))
 		if err != nil {
 			if errors.Is(err, os.ErrDeadlineExceeded) {
-				in, rtt, err = client.Exchange(&msg, fmt.Sprintf("%s:%d", c.Target, c.Port))
+				in, rtt, err = exchangeLikeStub(&client, &msg, fmt.Sprintf("%s:%d", c.Target, c.Port))
 				if err != nil {
 					checkResult.Error = "error sending query"
 					checkResult.Debug = "record " + record.Domain + ":" + fmt.Sprint(record.Answer) + fmt.Sprintf("(took %s)", rtt) + ": " + err.Error()
@@ -106,6 +107,64 @@ func dnsAnswerMatches(answer dns.RR, expected string) bool {
 		return strings.EqualFold(rr.Mx, dns.Fqdn(expected))
 	}
 	return false
+}
+
+// dnsDefaultTimeout is miekg/dns's read and write timeout for a Client without a Timeout.
+const dnsDefaultTimeout = 2 * time.Second
+
+// exchangeLikeStub sends msg the way the glibc stub resolver (getaddrinfo) resolves a host name:
+// an A question is followed straight away by an AAAA question for the same name on the same
+// socket. Only the reply to msg is returned: packets with another ID (the AAAA reply) or for
+// another question type that arrive before it are skipped. Other query types go out alone.
+func exchangeLikeStub(client *dns.Client, msg *dns.Msg, addr string) (*dns.Msg, time.Duration, error) {
+	if len(msg.Question) != 1 || msg.Question[0].Qtype != dns.TypeA {
+		return client.Exchange(msg, addr)
+	}
+	co, err := client.Dial(addr)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = co.Close() }()
+
+	timeout := client.Timeout
+	if timeout == 0 {
+		timeout = dnsDefaultTimeout
+	}
+	start := time.Now()
+	if err := co.SetDeadline(start.Add(timeout)); err != nil {
+		return nil, 0, err
+	}
+	if err := co.WriteMsg(msg); err != nil {
+		return nil, 0, err
+	}
+	var aaaa dns.Msg
+	aaaa.SetQuestion(msg.Question[0].Name, dns.TypeAAAA)
+	for aaaa.Id == msg.Id {
+		aaaa.Id = dns.Id()
+	}
+	if err := co.WriteMsg(&aaaa); err != nil {
+		return nil, 0, err
+	}
+	p := make([]byte, dns.MinMsgSize)
+	for {
+		n, err := co.Read(p)
+		if err != nil {
+			return nil, time.Since(start), err
+		}
+		if n < 2 || binary.BigEndian.Uint16(p) != msg.Id {
+			continue
+		}
+		// A reply with msg's ID that does not parse fails the query, as it does in Exchange.
+		in := new(dns.Msg)
+		if err := in.Unpack(p[:n]); err != nil {
+			return nil, time.Since(start), err
+		}
+		// Exchange accepts any question section; only a reply for another question type is skipped.
+		if len(in.Question) > 0 && in.Question[0].Qtype != dns.TypeA {
+			continue
+		}
+		return in, time.Since(start), nil
+	}
 }
 
 func (c *Dns) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {

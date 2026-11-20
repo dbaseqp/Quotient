@@ -2,7 +2,6 @@ package checks
 
 import (
 	"errors"
-	"net"
 	"strconv"
 	"time"
 )
@@ -13,8 +12,7 @@ type Tcp struct {
 
 func (c Tcp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		_, err := net.DialTimeout("tcp", c.Target+":"+strconv.Itoa(c.Port), time.Duration(c.Timeout)*time.Second)
-		if err != nil {
+		if err := dialAndClose(c.Service); err != nil {
 			checkResult.Error = "connection error"
 			checkResult.Debug = err.Error()
 			response <- checkResult
@@ -26,6 +24,18 @@ func (c Tcp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 	}
 
 	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
+}
+
+// dialAndClose opens a TCP connection to the service's target and port and closes it straight
+// away, without sending anything. The close is a FIN, or an RST if the server has already sent
+// data.
+func dialAndClose(s Service) error {
+	conn, err := clientLinux.dialer(time.Duration(s.Timeout)*time.Second).Dial("tcp", s.Target+":"+strconv.Itoa(s.Port))
+	if err != nil {
+		return err
+	}
+	_ = conn.Close()
+	return nil
 }
 
 func (c *Tcp) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {

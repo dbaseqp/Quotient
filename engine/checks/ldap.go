@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -32,16 +33,21 @@ func (c Ldap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 		if c.Encrypted {
 			scheme = "ldaps"
 		}
-		lconn, err := ldap.DialURL(fmt.Sprintf("%s://%s:%d", scheme, c.Target, c.Port))
+		lconn, err := ldap.DialURL(fmt.Sprintf("%s://%s:%d", scheme, c.Target, c.Port), ldap.DialWithDialer(clientLinux.dialer(time.Duration(c.Timeout)*time.Second)))
 		if err != nil {
 			checkResult.Error = "failed to connect"
 			checkResult.Debug = "login " + username + " password " + password + " failed with error: " + err.Error()
 			response <- checkResult
 			return
 		}
+		// Unbind before closing, as ldapsearch and other LDAP clients do; Unbind also closes.
+		// ErrConnUnbound means the server already closed the connection: nothing to report.
 		defer func() {
-			if err := lconn.Close(); err != nil {
-				slog.Error("failed to close ldap connection", "error", err)
+			if err := lconn.Unbind(); err != nil {
+				if !errors.Is(err, ldap.ErrConnUnbound) {
+					slog.Error("failed to unbind ldap connection", "error", err)
+				}
+				_ = lconn.Close()
 			}
 		}()
 
