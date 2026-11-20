@@ -88,12 +88,29 @@ func TestRetryDelayFitsFinishWithin(t *testing.T) {
 	assert.True(t, extra, "spread retries wait past AttemptDelay")
 }
 
-func TestRetryDelayWithoutFinishWithinKeepsMargin(t *testing.T) {
+// TestFirstStartFitsDeadline: a task popped late, with less of its round left
+// than StartAfter, starts early enough that its worst case still ends
+// SpreadMargin before the deadline.
+func TestFirstStartFitsDeadline(t *testing.T) {
 	now := time.Now()
-	task := &engine.Task{Attempts: 3, AttemptDelay: 10, Spread: 120, Deadline: now.Add(120 * time.Second)}
+	task := &engine.Task{
+		Attempts: 2, AttemptDelay: 5, Spread: 120,
+		StartAfter: 72 * time.Second, FinishWithin: 100 * time.Second, Deadline: now.Add(40 * time.Second),
+	}
+	// 2 attempts of 10 s with 5 s between them: 25 s worst case.
+	start := firstStart(task, 10, now, now)
+	assert.False(t, start.Before(now))
+	assert.False(t, start.Add(25*time.Second).After(task.Deadline.Add(-engine.SpreadMargin)), "worst case ends by Deadline - SpreadMargin")
+}
+
+// TestRetryDelayFitsDeadline: when the deadline is closer than FinishWithin,
+// retry extras still leave the remaining attempts SpreadMargin before it.
+func TestRetryDelayFitsDeadline(t *testing.T) {
+	now := time.Now()
+	task := &engine.Task{Attempts: 3, AttemptDelay: 10, Spread: 120, FinishWithin: 90 * time.Second, Deadline: now.Add(80 * time.Second)}
 	for range 500 {
 		d := retryDelay(task, 20, 1, now, now)
-		require.LessOrEqual(t, d+50*time.Second+engine.SpreadMargin, 120*time.Second, "the remaining attempts still fit")
+		require.LessOrEqual(t, now.Add(d+50*time.Second), task.Deadline.Add(-engine.SpreadMargin), "the remaining attempts still fit")
 	}
 }
 
@@ -183,7 +200,8 @@ func TestHandleTaskSpreadKeepsResults(t *testing.T) {
 }
 
 // TestHandleTaskMarksScheduled: while a spread task waits for its start, its
-// task key says which runner holds it and when it starts.
+// task key says which runner holds it and when it starts; once it ran, the
+// key holds its result.
 func TestHandleTaskMarksScheduled(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -191,34 +209,40 @@ func TestHandleTaskMarksScheduled(t *testing.T) {
 
 	rdb, _ := testutil.StartContainers(t)
 	ctx := context.Background()
-	require.NoError(t, rdb.Client.Del(ctx, "results").Err())
+	key := "task:false:1:1:Scripted:box-scheduled"
+	require.NoError(t, rdb.Client.Del(ctx, "results", key).Err())
 	defer func(id string) { runnerID = id }(runnerID)
 	runnerID = "runner-scheduled-test"
 
 	task := &engine.Task{
 		TeamID: 1, ServiceType: "Scripted", ServiceName: "box-scheduled", RoundID: 1, Attempts: 1,
-		Spread: 60, StartAfter: 500 * time.Millisecond, FinishWithin: 2 * time.Second, Deadline: time.Now().Add(10 * time.Second),
+		Spread: 60, StartAfter: time.Minute, FinishWithin: 2 * time.Minute, Deadline: time.Now().Add(3 * time.Minute),
 	}
-	key := "task:false:1:1:Scripted:box-scheduled"
+	check := &scriptedCheck{Service: checks.Service{Timeout: 1, Points: 3}}
+	waitCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTask(ctx, rdb.Client, &scriptedCheck{Service: checks.Service{Timeout: 1, Points: 3}}, task)
+		handleTask(waitCtx, rdb.Client, check, task)
 	}()
 
-	time.Sleep(200 * time.Millisecond)
-	raw, err := rdb.Client.Get(ctx, key).Result()
-	require.NoError(t, err, "no task key while the task waits for its start")
 	var status checks.Result
-	require.NoError(t, json.Unmarshal([]byte(raw), &status))
-	assert.Equal(t, "scheduled", status.StatusText)
+	require.Eventually(t, func() bool {
+		raw, err := rdb.Client.Get(ctx, key).Result()
+		return err == nil && json.Unmarshal([]byte(raw), &status) == nil
+	}, 10*time.Second, 10*time.Millisecond, "no task key while the task waits for its start")
+	cancel()
+	<-done
+	assert.Equal(t, checks.StatusScheduled, status.StatusText)
 	assert.Equal(t, "runner-scheduled-test", status.RunnerID)
 	assert.NotEmpty(t, status.StartTime)
 	assert.Positive(t, rdb.Client.TTL(ctx, key).Val(), "the key expires with the round")
+	assert.Empty(t, check.starts, "the check must not run before its start")
 
-	<-done
-	raw, err = rdb.Client.Get(ctx, key).Result()
+	task.StartAfter = time.Millisecond
+	handleTask(ctx, rdb.Client, check, task)
+	raw, err := rdb.Client.Get(ctx, key).Result()
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal([]byte(raw), &status))
-	assert.Equal(t, "success", status.StatusText)
+	assert.Equal(t, checks.StatusSuccess, status.StatusText)
 }

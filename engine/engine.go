@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -332,12 +333,9 @@ func (se *ScoringEngine) GetActiveTasks() (map[string]any, error) {
 	ctx := context.Background()
 
 	// Default empty response structure
-	result := map[string]any{
-		"scheduled":   []any{},
-		"running":     []any{},
-		"success":     []any{},
-		"failed":      []any{},
-		"all_runners": []any{},
+	result := map[string]any{"all_runners": []any{}}
+	for _, status := range checks.TaskStatuses {
+		result[string(status)] = []any{}
 	}
 
 	// Get all task keys using a single pattern
@@ -387,8 +385,8 @@ func (se *ScoringEngine) GetActiveTasks() (map[string]any, error) {
 			runnersSet[taskStatus.RunnerID] = struct{}{}
 		}
 
-		// Categorize by status - directly using the status as map key for cleaner code
-		if statusKey := taskStatus.StatusText; statusKey == "scheduled" || statusKey == "running" || statusKey == "success" || statusKey == "failed" {
+		if slices.Contains(checks.TaskStatuses, taskStatus.StatusText) {
+			statusKey := string(taskStatus.StatusText)
 			result[statusKey] = append(result[statusKey].([]any), taskStatus)
 		}
 	}

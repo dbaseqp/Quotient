@@ -177,18 +177,19 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 	}
 
 	if task.StartAfter > 0 {
-		result.StartTime = picked.Add(task.StartAfter).Format(time.RFC3339)
-		result.StatusText = "scheduled"
+		start := firstStart(task, runner.GetTimeout(), picked, time.Now())
+		result.StartTime = start.Format(time.RFC3339)
+		result.StatusText = checks.StatusScheduled
 		statusJSON, _ := json.Marshal(result)
 		rdb.Set(ctx, taskKey, statusJSON, time.Until(task.Deadline))
-		if !sleepCtx(ctx, time.Until(picked.Add(task.StartAfter))) {
+		if !sleepCtx(ctx, time.Until(start)) {
 			return
 		}
 	}
 
 	result.StartTime = time.Now().Format(time.RFC3339)
-	result.StatusText = "running"
-	// Set initial "running" status in Redis for visualization
+	result.StatusText = checks.StatusRunning
+	// Mark the task running in Redis for visualization
 	statusJSON, _ := json.Marshal(result)
 	rdb.Set(ctx, taskKey, statusJSON, time.Until(task.Deadline))
 
@@ -247,7 +248,10 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 	}
 
 	result.EndTime = time.Now().Format(time.RFC3339)
-	result.StatusText = map[bool]string{true: "success", false: "failed"}[result.Status]
+	result.StatusText = checks.StatusFailed
+	if result.Status {
+		result.StatusText = checks.StatusSuccess
+	}
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
 		slog.Error("failed to marshal result", "error", err)
@@ -266,18 +270,39 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 	rdb.Set(ctx, taskKey, resultJSON, 3*time.Minute)
 }
 
-// retryDelay is how long to wait at now, after failed attempt number done of
-// a task picked up at picked, before the next attempt: AttemptDelay, plus a
-// random extra for a spread task that still lets the remaining attempts end
-// by FinishWithin worst case (by SpreadMargin before the deadline when the
-// engine sent no FinishWithin).
+// finishBy is when a spread task must finish worst case: FinishWithin after
+// pickup, capped at Deadline-SpreadMargin (the cap only moves it earlier, so
+// runner clock skew can't overrun the deadline).
+func finishBy(task *engine.Task, picked time.Time) time.Time {
+	by := picked.Add(task.FinishWithin)
+	if capped := task.Deadline.Add(-engine.SpreadMargin); capped.Before(by) {
+		return capped
+	}
+	return by
+}
+
+// firstStart is when a spread task's first attempt starts: StartAfter after
+// pickup, earlier if its worst case would not otherwise end by finishBy, and
+// never before now.
+func firstStart(task *engine.Task, timeout int, picked, now time.Time) time.Time {
+	worst := time.Duration(checks.WorstCaseSeconds(timeout, task.Attempts, task.AttemptDelay)) * time.Second
+	start := picked.Add(task.StartAfter)
+	if latest := finishBy(task, picked).Add(-worst); latest.Before(start) {
+		start = latest
+	}
+	if start.Before(now) {
+		return now
+	}
+	return start
+}
+
+// retryDelay is how long to wait at now, after failed attempt number done,
+// before the next attempt: AttemptDelay, plus for a spread task a random
+// extra that still lets the remaining attempts end by finishBy.
 func retryDelay(task *engine.Task, timeout, done int, picked, now time.Time) time.Duration {
 	delay := time.Duration(task.AttemptDelay) * time.Second
-	budget := task.FinishWithin - now.Sub(picked)
-	if task.FinishWithin == 0 {
-		budget = task.Deadline.Sub(now) - engine.SpreadMargin
-	}
-	extra := engine.SpreadDelay(budget-delay, timeout, task.Attempts-done, task.AttemptDelay, time.Duration(task.Spread)*time.Second, rand.Int64N)
+	budget := finishBy(task, picked).Sub(now) - delay
+	extra := engine.SpreadDelay(budget, timeout, task.Attempts-done, task.AttemptDelay, time.Duration(task.Spread)*time.Second, rand.Int64N)
 	return delay + extra
 }
 

@@ -135,8 +135,8 @@ type MiscConfig struct {
 	// SlaPenalty is a pointer so an explicit 0 (count SLAs without deducting
 	// points) can be told apart from an omitted key.
 	SlaPenalty *int
-	// Spread caps, in seconds, how far into the round a check's first attempt
-	// may start, and how long past AttemptDelay a retry may wait, so that
+	// Spread caps, in seconds, how long after a runner picks a check up its
+	// first attempt may start, and how long past AttemptDelay a retry may wait, so that
 	// rounds don't hit every team at the same instant or in the same order.
 	// The engine draws each team's check start every round, only from the time
 	// left once the check's worst case and the round tail are set aside.
