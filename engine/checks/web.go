@@ -21,6 +21,27 @@ type Web struct {
 	Service
 	Url    []urlData
 	Scheme string
+	// DisableRedirects judges any 3xx as the response instead of following
+	// redirects to the same hostname.
+	DisableRedirects bool `toml:",omitempty"`
+}
+
+const maxRedirects = 10
+
+// redirectPolicy follows redirects only while they stay on the first request's
+// hostname (any port or scheme); a redirect to another hostname is returned as
+// the response, and the check judges it against the URL's Status and Regex.
+// disable refuses every redirect.
+func redirectPolicy(disable bool) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if disable || !strings.EqualFold(req.URL.Hostname(), via[0].URL.Hostname()) {
+			return http.ErrUseLastResponse
+		}
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxRedirects)
+		}
+		return nil
+	}
 }
 
 type urlData struct {
@@ -60,11 +81,11 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 				InsecureSkipVerify: true, // #nosec G402 -- competition services may use self-signed certs
 			},
 		}
-		// Set client timeout to slightly less than check timeout to get better error messages
 		clientTimeout := time.Duration(c.Timeout) * time.Second
 		client := &http.Client{
-			Transport: tr,
-			Timeout:   clientTimeout,
+			Transport:     tr,
+			Timeout:       clientTimeout,
+			CheckRedirect: redirectPolicy(c.DisableRedirects),
 		}
 
 		requestURL := fmt.Sprintf("%s://%s:%d%s", c.Scheme, c.Target, c.Port, u.Path)
@@ -102,18 +123,22 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
-		if u.Status != 0 && resp.StatusCode != u.Status {
-			checkResult.Error = "status returned by webserver was incorrect"
-			checkResult.Debug = "status was " + strconv.Itoa(resp.StatusCode) + " wanted " + strconv.Itoa(u.Status) + " for url " + u.Path
-			response <- checkResult
-			return
-		}
-
 		defer func() {
 			if err := resp.Body.Close(); err != nil {
 				slog.Error("failed to close http response body", "error", err)
 			}
 		}()
+
+		if u.Status != 0 && resp.StatusCode != u.Status {
+			checkResult.Error = "status returned by webserver was incorrect"
+			checkResult.Debug = "status was " + strconv.Itoa(resp.StatusCode) + " wanted " + strconv.Itoa(u.Status) + " for url " + u.Path
+			if loc := resp.Header.Get("Location"); loc != "" {
+				checkResult.Debug += " (redirect to " + loc + ")"
+			}
+			response <- checkResult
+			return
+		}
+
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			checkResult.Error = "error reading page content"
@@ -181,7 +206,12 @@ func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty 
 	if c.Scheme == "" {
 		c.Scheme = "http"
 	}
+	var errs error
 	for _, u := range c.Url {
+		if u.Status == 0 && u.Regex == "" {
+			errs = errors.Join(errs, fmt.Errorf("%s: url %q needs a status or regex, otherwise any response passes", c.Name, u.Path))
+			continue
+		}
 		if u.Diff != 0 && u.CompareFile == "" {
 			return errors.New("need compare file for diff in web")
 		}
@@ -190,5 +220,5 @@ func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty 
 		}
 	}
 
-	return nil
+	return errs
 }

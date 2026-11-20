@@ -271,7 +271,7 @@ func (conf *ConfigSettings) SetConfig(path string) error {
 
 	// check the configuration and set defaults
 	if err := checkConfig(&tempConf); err != nil {
-		return fmt.Errorf("configuration file ("+path+") is invalid:", err)
+		return fmt.Errorf("configuration file (%s) is invalid: %w", path, err)
 	}
 
 	// if we're here, the config is valid

@@ -90,6 +90,8 @@
     Display = "https"
     Scheme = "https"
     Port = 443
+    # Redirects to the same host are followed; others are judged as the 3xx response.
+    # DisableRedirects = true  # judge every redirect as the 3xx response instead
     [[Box.Web.Url]]
       Path = "/"
       Status = 200
