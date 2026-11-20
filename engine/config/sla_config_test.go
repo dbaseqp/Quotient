@@ -113,7 +113,7 @@ func TestSlaRulesPerCheckOverrides(t *testing.T) {
 	assert.Equal(t, SlaRule{Threshold: 5, Penalty: 30}, rules("box-plain"))
 	assert.Equal(t, SlaRule{Threshold: 5, Penalty: 0}, rules("box-free"), "an explicit per-check 0 deducts nothing")
 	assert.Equal(t, SlaRule{Threshold: 8, Penalty: 30}, rules("box-patient"))
-	assert.Equal(t, SlaRule{Threshold: 5, Penalty: 30}, rules("box-removed"), "a check a reload removed gets the globals")
+	assert.Equal(t, SlaRule{Threshold: 5, Penalty: 30}, rules("box-removed"), "a check no longer in the config gets the globals")
 }
 
 // Unset per-check values inherit even when the check never went through

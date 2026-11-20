@@ -43,7 +43,7 @@ type Service struct {
 	Points          int              `toml:",omitempty"`
 	Timeout         int              `toml:",omitempty"`
 	SlaPenalty      *int             `toml:",omitempty"` // overrides MiscSettings.SlaPenalty; a pointer so an explicit 0 differs from unset
-	SlaThreshold    int              `toml:",omitempty"` // overrides MiscSettings.SlaThreshold; 0 means unset
+	SlaThreshold    int              `toml:",omitempty"` // overrides MiscSettings.SlaThreshold; 0 before Configure means inherit
 	LaunchTime      time.Time        `toml:",omitempty"`
 	StopTime        time.Time        `toml:",omitempty"`
 	Disabled        bool             `toml:",omitempty"`
@@ -97,12 +97,14 @@ func (service *Service) GetPoints() int {
 	return service.Points
 }
 
-// GetSlaThreshold returns the check's own SLA threshold, 0 when unset.
+// GetSlaThreshold returns the check's SLA threshold; 0 only before Configure
+// fills in the global.
 func (service *Service) GetSlaThreshold() int {
 	return service.SlaThreshold
 }
 
-// GetSlaPenalty returns the check's own SLA penalty and whether it sets one.
+// GetSlaPenalty returns the check's SLA penalty; set is false only before
+// Configure fills in the global.
 func (service *Service) GetSlaPenalty() (penalty int, set bool) {
 	if service.SlaPenalty == nil {
 		return 0, false

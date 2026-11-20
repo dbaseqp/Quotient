@@ -83,9 +83,8 @@ func TestLoadSLAs_PerCheckThresholds(t *testing.T) {
 	require.Equal(t, 1, se.SlaPerService[teamID]["box01-strict"])
 	require.Equal(t, 3, se.SlaPerService[teamID]["box01-default"])
 
-	rules := se.Config.Current().SlaRules()
 	restored := make(map[uint]map[string]int)
-	require.NoError(t, pg.DB.LoadSLAs(&restored, func(serviceName string) int { return rules(serviceName).Threshold }))
+	require.NoError(t, pg.DB.LoadSLAs(&restored, se.Config.Current().SlaRules()))
 	assert.Equal(t, se.SlaPerService[teamID], restored[teamID])
 }
 

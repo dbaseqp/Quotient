@@ -610,9 +610,25 @@ type SlaRule struct {
 	Penalty   int
 }
 
+// Advance returns a check's failures since its last SLA after one more result,
+// and whether that result costs an SLA. An SLA starts the count again at 0.
+func (rule SlaRule) Advance(failures int, passed bool) (next int, violated bool) {
+	if passed {
+		return 0, false
+	}
+	failures++
+	if failures >= rule.Threshold {
+		return 0, true
+	}
+	return failures, false
+}
+
 // SlaRules returns a lookup of the SLA rule each check is scored with: its own
-// SlaThreshold and SlaPenalty where set, MiscSettings' otherwise. A check name
-// not in conf, such as one a reload removed, gets MiscSettings' rule.
+// SlaThreshold and SlaPenalty where set, MiscSettings' otherwise. Configure
+// fills unset values in from MiscSettings, so the fallback matters only for a
+// check that never went through Configure. A check name not in conf, such as
+// a removed check whose results are still in the database, gets MiscSettings'
+// rule.
 func (conf *ConfigSettings) SlaRules() func(serviceName string) SlaRule {
 	global := SlaRule{Threshold: conf.MiscSettings.SlaThreshold, Penalty: *conf.MiscSettings.SlaPenalty}
 	rules := make(map[string]SlaRule)
