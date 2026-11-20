@@ -51,7 +51,7 @@ func TestGraphsMarkOnlyCallersOwnSeries(t *testing.T) {
 	require.NoError(t, pg.DB.ResetScores())
 	pg.ResetCompetitionState(t)
 	eng := engine.NewTestEngine(t, redis, pg, 3)
-	eng.Config.UISettings.EnablePublicGraphs = true // the test verifies anon access to public graphs
+	eng.Config.Current().UISettings.EnablePublicGraphs = true // the test verifies anon access to public graphs
 	a := api.NewAPI(eng.Config, eng)
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
 	t.Cleanup(func() { assert.NoError(t, pg.DB.ResetScores()) })
@@ -319,7 +319,7 @@ func TestGetEngineReturnsCompetitionTimezone(t *testing.T) {
 
 	redis, pg := testutil.StartContainers(t)
 	eng := engine.NewTestEngine(t, redis, pg, 3)
-	eng.Config.InjectSettings.CompetitionTimezone = "America/Los_Angeles"
+	eng.Config.Current().InjectSettings.CompetitionTimezone = "America/Los_Angeles"
 	a := api.NewAPI(eng.Config, eng)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/engine", nil)

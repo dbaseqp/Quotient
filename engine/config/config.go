@@ -239,7 +239,7 @@ type Box struct {
 	WinRM  []*checks.WinRM  `toml:"Winrm,omitempty" json:"winrm,omitempty"`
 }
 
-// Load in a config
+// Load in a config. conf must not be shared yet: reloads go through Live.Reload.
 func (conf *ConfigSettings) SetConfig(path string) error {
 	slog.Info("Loading configuration file", "path", path)
 

@@ -51,7 +51,7 @@ func (router *Router) pageData(r *http.Request, unique map[string]any) map[strin
 		data["roles"] = id.Roles
 	}
 	data["name"] = "QUOTIENT"
-	data["config"] = router.Config
+	data["config"] = router.Config.Current()
 	data["error"] = ""
 	data["path"] = r.URL.Path
 
@@ -189,11 +189,12 @@ func (router *Router) GraphPage(w http.ResponseWriter, r *http.Request) {
 	roles := api.CallerRoles(r.Context())
 	isAnon := len(roles) == 0
 	isAdmin := slices.Contains(roles, "admin")
-	if !router.Config.UISettings.EnablePublicGraphs && isAnon {
+	conf := router.Config.Current()
+	if !conf.UISettings.EnablePublicGraphs && isAnon {
 		http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
 		return
 	}
-	if router.Config.UISettings.DisableGraphsForBlueTeam && !isAdmin && slices.Contains(roles, "team") {
+	if conf.UISettings.DisableGraphsForBlueTeam && !isAdmin && slices.Contains(roles, "team") {
 		http.Error(w, "graphs have been disabled for team users", http.StatusForbidden)
 		return
 	}

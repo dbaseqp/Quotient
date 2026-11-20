@@ -27,7 +27,7 @@ func (a *API) GetMetadata(w http.ResponseWriter, r *http.Request) {
 func (a *API) buildMetadata() MetadataResponse {
 	var metadata MetadataResponse
 
-	for _, box := range a.conf.Box {
+	for _, box := range a.conf.Current().Box {
 		boxMeta := BoxMetadata{
 			Name:     box.Name,
 			IP:       box.IP,
