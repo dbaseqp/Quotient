@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -85,7 +87,7 @@ func TestLogoutEndpoint(t *testing.T) {
 // TestLogoutMethodRestriction verifies that only POST is accepted on /api/logout.
 func TestLogoutMethodRestriction(t *testing.T) {
 	mux := http.NewServeMux()
-	a := &API{conf: &config.ConfigSettings{}}
+	a := &API{conf: config.NewLive(&config.ConfigSettings{})}
 
 	// Register only POST, matching www/router.go.
 	mux.HandleFunc("POST /api/logout", a.Logout)
@@ -142,11 +144,28 @@ func authenticateWith(a *API, cookie *http.Cookie) (Identity, bool) {
 
 // Rotating a leaked local password must end the sessions issued under it.
 func TestPasswordChangeInvalidatesLocalSession(t *testing.T) {
-	conf := &config.ConfigSettings{Admin: []config.Admin{
-		{Name: "admin", Pw: "leaked-password"},
-		{Name: "other", Pw: "other-password"},
-	}}
-	a := NewAPI(conf, nil)
+	path := filepath.Join(t.TempDir(), "event.conf")
+	writeConfig := func(adminPw string) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(path, []byte(`[RequiredSettings]
+EventName = "Session Test"
+EventType = "rvb"
+DBConnectURL = "postgres://x:x@localhost:5432/x"
+BindAddress = "127.0.0.1"
+
+[[admin]]
+name = "admin"
+pw = "`+adminPw+`"
+
+[[admin]]
+name = "other"
+pw = "other-password"
+`), 0o600))
+	}
+	writeConfig("leaked-password")
+	live := &config.Live{}
+	require.NoError(t, live.Reload(path))
+	a := NewAPI(live, nil)
 	stolen := loginCookie(t, a, "admin", "leaked-password")
 	untouched := loginCookie(t, a, "other", "other-password")
 
@@ -154,7 +173,8 @@ func TestPasswordChangeInvalidatesLocalSession(t *testing.T) {
 	require.True(t, ok, "control: a fresh cookie authenticates")
 	require.Equal(t, []string{"admin"}, id.Roles)
 
-	conf.Admin[0].Pw = "new-password"
+	writeConfig("new-password")
+	require.NoError(t, live.Reload(path)) // what the config watcher calls
 
 	id, ok = authenticateWith(a, stolen)
 	assert.False(t, ok, "cookie issued before the password change still authenticates as %q with roles %v", id.Username, id.Roles)
@@ -169,7 +189,7 @@ func TestPasswordChangeInvalidatesLocalSession(t *testing.T) {
 // A local session cookie issued without a credential fingerprint (before the
 // fingerprint existed) is rejected, forcing one fresh login.
 func TestLocalSessionWithoutCredentialRejected(t *testing.T) {
-	a := NewAPI(&config.ConfigSettings{Admin: []config.Admin{{Name: "admin", Pw: "pw"}}}, nil)
+	a := NewAPI(config.NewLive(&config.ConfigSettings{Admin: []config.Admin{{Name: "admin", Pw: "pw"}}}), nil)
 	value, err := CookieEncoder.Encode(COOKIENAME, map[string]any{"username": "admin", "authSource": "local"})
 	require.NoError(t, err)
 

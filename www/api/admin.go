@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -196,10 +198,11 @@ func (a *API) ExportScores(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var data []TeamScore
+	data := make([]TeamScore, 0, len(teamScores))
 	for _, score := range teamScores {
 		data = append(data, *score)
 	}
+	slices.SortFunc(data, func(x, y TeamScore) int { return cmp.Compare(x.TeamID, y.TeamID) })
 
 	WriteJSON(w, http.StatusOK, data)
 }
@@ -241,11 +244,14 @@ func (a *API) GetEngine(w http.ResponseWriter, r *http.Request) {
 		"scheduled_end_time":   schedule.End,
 		"schedule_source":      schedule.Source,
 		"preflight":            preflight,
-		"competition_timezone": a.conf.InjectSettings.CompetitionTimezone,
+		"competition_timezone": a.conf.Current().InjectSettings.CompetitionTimezone,
 	})
 }
 
 func (a *API) UpdateTeams(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
 	type Form struct {
 		Teams []struct {
 			TeamID     uint   `json:"id"`
@@ -391,18 +397,19 @@ func readImportedHelpers(baseDir, scriptPath, scriptContent string) []scriptHelp
 }
 
 func (a *API) GetCustomChecks(w http.ResponseWriter, r *http.Request) {
+	conf := a.conf.Current()
 	serviceFilter := r.URL.Query().Get("service")
 	baseDir := resolveChecksRoot()
 	checks := make([]customCheckInfo, 0)
 
-	credLabelsByPath := make(map[string]string, len(a.conf.CredlistSettings.Credlist))
-	for _, cl := range a.conf.CredlistSettings.Credlist {
+	credLabelsByPath := make(map[string]string, len(conf.CredlistSettings.Credlist))
+	for _, cl := range conf.CredlistSettings.Credlist {
 		if cl.CredlistPath != "" && cl.CredlistName != "" && cl.CredlistName != cl.CredlistPath {
 			credLabelsByPath[cl.CredlistPath] = cl.CredlistName + " (" + cl.CredlistPath + ")"
 		}
 	}
 
-	for _, box := range a.conf.Box {
+	for _, box := range conf.Box {
 		for _, c := range box.Custom {
 			if serviceFilter != "" && c.Name != serviceFilter {
 				continue

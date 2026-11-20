@@ -12,7 +12,7 @@ import (
 
 func withEasyPCR(t *testing.T, enabled bool) *API {
 	t.Helper()
-	return &API{conf: &config.ConfigSettings{MiscSettings: config.MiscConfig{EasyPCR: enabled}}}
+	return &API{conf: config.NewLive(&config.ConfigSettings{MiscSettings: config.MiscConfig{EasyPCR: enabled}})}
 }
 
 // allowPCRForTeam admits an admin for any team and a team user only for their
