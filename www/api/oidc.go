@@ -658,7 +658,7 @@ func (a *API) extractUserInfoFromClaims(claims *IDTokenClaims) (username string,
 		groups = claims.RealmAccess.Roles
 	case "resource_access.roles":
 		// Client roles live under the client this deployment logs in as.
-		groups = claims.ResourceAccess[a.conf.OIDCSettings.OIDCClientID].Roles
+		groups = claims.ResourceAccess[a.conf.Current().OIDCSettings.OIDCClientID].Roles
 	default:
 		// Unsupported group claim location
 		slog.Warn("Unsupported OIDCGroupClaim value", "claim", groupClaim)
