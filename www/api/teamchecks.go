@@ -16,7 +16,7 @@ func (a *API) GetTeamChecks(w http.ResponseWriter, r *http.Request) {
 
 	// Collect unique services from configuration
 	serviceMap := make(map[string]bool)
-	for _, chk := range a.eng.Config.AllChecks() {
+	for _, chk := range a.conf.Current().AllChecks() {
 		serviceMap[chk.GetName()] = true
 	}
 	services := make([]string, 0, len(serviceMap))
@@ -51,6 +51,9 @@ func (a *API) GetTeamChecks(w http.ResponseWriter, r *http.Request) {
 
 // UpdateTeamChecks updates per-team service check states
 func (a *API) UpdateTeamChecks(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(w, r) {
+		return
+	}
 	type update struct {
 		TeamID      uint   `json:"team_id"`
 		ServiceName string `json:"service_name"`

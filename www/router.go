@@ -14,12 +14,12 @@ import (
 )
 
 type Router struct {
-	Config *config.ConfigSettings
+	Config *config.Live
 	Engine *engine.ScoringEngine
 	api    *api.API
 }
 
-func NewRouter(conf *config.ConfigSettings, eng *engine.ScoringEngine) *Router {
+func NewRouter(conf *config.Live, eng *engine.ScoringEngine) *Router {
 	router := &Router{Config: conf, Engine: eng, api: api.NewAPI(conf, eng)}
 
 	// Initialize OIDC if enabled
@@ -31,9 +31,12 @@ func NewRouter(conf *config.ConfigSettings, eng *engine.ScoringEngine) *Router {
 }
 
 func (router *Router) Start() {
+	// The listener is set up once, from the config at startup.
+	conf := router.Config.Current()
+
 	// choose http/https
 	var protocol string
-	if router.Config.SslSettings == (config.SslConfig{}) {
+	if conf.SslSettings == (config.SslConfig{}) {
 		protocol = "http"
 	} else {
 		protocol = "https"
@@ -76,13 +79,13 @@ func (router *Router) Start() {
 
 	ALLAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication(a, "team", "admin", "red", "inject"))
 	// general auth API routes
-	mux.HandleFunc("GET /api/logout", ALLAUTH(a.Logout))
+	mux.HandleFunc("POST /api/logout", ALLAUTH(a.Logout))
 
 	mux.HandleFunc("GET /api/announcements", ALLAUTH(a.GetAnnouncements))
 	mux.HandleFunc("GET /announcements/{id}/{file}", ALLAUTH(a.DownloadAnnouncementFile))
 
 	// general auth WWW routes
-	mux.HandleFunc("GET /logout", ALLAUTH(router.LogoutPage))
+	mux.HandleFunc("POST /logout", ALLAUTH(router.LogoutPage))
 	mux.HandleFunc("GET /announcements", ALLAUTH(router.AnnouncementsPage))
 	// mux.HandleFunc("GET /graphs", ALLAUTH(router.GraphPage))
 
@@ -96,6 +99,7 @@ func (router *Router) Start() {
 	// team auth API routes
 	mux.HandleFunc("GET /api/teams", TEAMAUTH(a.GetTeams))
 	mux.HandleFunc("GET /api/metadata", TEAMAUTH(a.GetMetadata))
+	mux.HandleFunc("GET /api/events", TEAMAUTH(a.StreamEvents))
 	mux.HandleFunc("GET /api/services/{team_id}", TEAMAUTH(a.GetTeamSummary))
 	mux.HandleFunc("GET /api/services/{team_id}/{service_name}", TEAMAUTH(a.GetServiceAll))
 	mux.HandleFunc("GET /api/injects", TEAMAUTH(a.GetInjects))
@@ -162,11 +166,11 @@ func (router *Router) Start() {
 
 	ADMINAUTH := middleware.MiddlewareChain(middleware.Logging, middleware.Authentication(a, "admin"))
 	mux.HandleFunc("POST /api/engine/pause", ADMINAUTH(a.PauseEngine))
-	mux.HandleFunc("GET /api/engine/reset", ADMINAUTH(a.ResetScores))
+	mux.HandleFunc("POST /api/engine/reset", ADMINAUTH(a.ResetScores))
 	mux.HandleFunc("GET /api/engine", ADMINAUTH(a.GetEngine))
 	mux.HandleFunc("GET /api/engine/tasks", ADMINAUTH(a.GetActiveTasks))
-	mux.HandleFunc("GET /api/engine/preflight", ADMINAUTH(a.GetPreflight))
 	mux.HandleFunc("POST /api/competition/start", ADMINAUTH(a.SetCompetitionStarted))
+	mux.HandleFunc("POST /api/competition/schedule", ADMINAUTH(a.SetCompetitionSchedule))
 	mux.HandleFunc("POST /api/admin/teams", ADMINAUTH(a.UpdateTeams))
 	mux.HandleFunc("GET /api/admin/teamchecks", ADMINAUTH(a.GetTeamChecks))
 	mux.HandleFunc("POST /api/admin/teamchecks", ADMINAUTH(a.UpdateTeamChecks))
@@ -189,17 +193,17 @@ func (router *Router) Start() {
 	mux.HandleFunc("GET /admin/appearance", ADMINAUTH(router.AdministrateAppearancePage))
 
 	// start server with security headers middleware wrapping all routes
-	securityMiddleware := middleware.SecurityHeaders(router.Config)
+	securityMiddleware := middleware.SecurityHeaders(conf)
 	server := http.Server{
-		Addr:              fmt.Sprintf("%s:%d", router.Config.RequiredSettings.BindAddress, router.Config.MiscSettings.Port),
+		Addr:              fmt.Sprintf("%s:%d", conf.RequiredSettings.BindAddress, conf.MiscSettings.Port),
 		Handler:           http.HandlerFunc(securityMiddleware(mux.ServeHTTP)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	slog.Info(fmt.Sprintf("Starting Web Server on %s://%s:%d", protocol, router.Config.RequiredSettings.BindAddress, router.Config.MiscSettings.Port))
+	slog.Info(fmt.Sprintf("Starting Web Server on %s://%s:%d", protocol, conf.RequiredSettings.BindAddress, conf.MiscSettings.Port))
 
 	// start server
-	if router.Config.SslSettings != (config.SslConfig{}) {
-		log.Fatal(server.ListenAndServeTLS(router.Config.SslSettings.HttpsCert, router.Config.SslSettings.HttpsKey))
+	if conf.SslSettings != (config.SslConfig{}) {
+		log.Fatal(server.ListenAndServeTLS(conf.SslSettings.HttpsCert, conf.SslSettings.HttpsKey))
 	} else {
 		log.Fatal(server.ListenAndServe())
 	}

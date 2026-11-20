@@ -29,13 +29,13 @@ const loginWindow = time.Minute
 const loginBodyLimit = 4 << 10 // 4 KiB, well above any real credential pair
 
 type API struct {
-	conf         *config.ConfigSettings
+	conf         *config.Live
 	eng          *engine.ScoringEngine
 	oidc         *oidcState
 	loginLimiter sync.Map // IP string -> *loginAttempts
 }
 
-func NewAPI(c *config.ConfigSettings, e *engine.ScoringEngine) *API {
+func NewAPI(c *config.Live, e *engine.ScoringEngine) *API {
 	return &API{conf: c, eng: e, oidc: nil}
 }
 

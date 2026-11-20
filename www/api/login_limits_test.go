@@ -15,7 +15,7 @@ import (
 // newTestAPI returns a minimal API with an empty config (no valid credentials).
 func newTestAPI() *API {
 	return &API{
-		conf: &config.ConfigSettings{},
+		conf: config.NewLive(&config.ConfigSettings{}),
 	}
 }
 

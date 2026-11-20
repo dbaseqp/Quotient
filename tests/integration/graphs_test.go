@@ -51,6 +51,7 @@ func TestGraphsMarkOnlyCallersOwnSeries(t *testing.T) {
 	require.NoError(t, pg.DB.ResetScores())
 	pg.ResetCompetitionState(t)
 	eng := engine.NewTestEngine(t, redis, pg, 3)
+	eng.Config.Current().UISettings.EnablePublicGraphs = true // the test verifies anon access to public graphs
 	a := api.NewAPI(eng.Config, eng)
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
 	t.Cleanup(func() { assert.NoError(t, pg.DB.ResetScores()) })
@@ -129,4 +130,298 @@ func TestGraphsMarkOnlyCallersOwnSeries(t *testing.T) {
 			assert.True(t, names[me.Name], "admins still see real team names")
 		})
 	}
+}
+
+func TestPreflightWebUIEndpoints(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	redis, pg := testutil.StartContainers(t)
+	require.NoError(t, pg.DB.ResetScores())
+	pg.ResetCompetitionState(t)
+	t.Cleanup(func() { assert.NoError(t, pg.DB.ResetScores()) })
+
+	eng := engine.NewTestEngine(t, redis, pg, 3)
+	a := api.NewAPI(eng.Config, eng)
+
+	team, err := pg.DB.CreateTeam(db.TeamSchema{
+		Name:       fmt.Sprintf("preflight-ui-%d", time.Now().UnixNano()),
+		Identifier: "01",
+		Active:     true,
+	})
+	require.NoError(t, err)
+
+	roundTime := time.Now().Truncate(time.Microsecond)
+	require.NoError(t, pg.DB.CreatePreflightRound(db.PreflightRoundSchema{
+		ID:        1,
+		StartTime: roundTime,
+		Checks: []db.PreflightCheckSchema{
+			{
+				TeamID:      team.ID,
+				ServiceName: "box01-ssh",
+				ServiceType: "SSH",
+				Result:      true,
+				Debug:       "creds used were admin:secret",
+			},
+			{
+				TeamID:      team.ID,
+				ServiceName: "box01-web",
+				ServiceType: "Web",
+				Result:      false,
+				Error:       "connection refused",
+			},
+		},
+	}))
+
+	adminID := &api.Identity{Username: "admin", Roles: []string{"admin"}}
+	teamUserID := &api.Identity{Username: "team01", Roles: []string{"team"}, TeamID: team.ID, HasTeam: true}
+
+	callWithIdentity := func(method, target string, pathValues map[string]string, id *api.Identity, h http.HandlerFunc) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, target, nil)
+		for k, v := range pathValues {
+			r.SetPathValue(k, v)
+		}
+		if id != nil {
+			ctx := api.WithIdentity(r.Context(), *id)
+			ctx = context.WithValue(ctx, "roles", id.Roles) //nolint:staticcheck
+			r = r.WithContext(ctx)
+		}
+		w := httptest.NewRecorder()
+		h(w, r)
+		return w
+	}
+
+	for _, h := range []http.HandlerFunc{a.GetServiceStatus, a.GetUptimeStatus, a.GetTeamSummary, a.GetServiceAll} {
+		w := callWithIdentity(http.MethodGet, "/", map[string]string{"team_id": fmt.Sprint(team.ID), "service_name": "box01-ssh"}, teamUserID, h)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	}
+
+	w := callWithIdentity(http.MethodGet, "/api/graphs/services", nil, adminID, a.GetServiceStatus)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var statusResp struct {
+		RoundID uint `json:"roundID"`
+		Series  []struct {
+			ID   uint
+			Name string
+			Data []struct {
+				X string
+				Y int
+			}
+		} `json:"series"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &statusResp))
+	assert.Equal(t, uint(1), statusResp.RoundID)
+	var foundTeamStatus bool
+	for _, s := range statusResp.Series {
+		if s.ID == team.ID {
+			foundTeamStatus = true
+			byService := map[string]int{}
+			for _, pt := range s.Data {
+				byService[pt.X] = pt.Y
+			}
+			assert.Equal(t, api.Up, byService["box01-ssh"])
+			assert.Equal(t, api.Down, byService["box01-web"])
+		}
+	}
+	assert.True(t, foundTeamStatus, "preflight service status includes active team")
+
+	w = callWithIdentity(http.MethodGet, "/api/graphs/uptimes", nil, adminID, a.GetUptimeStatus)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var uptimeResp struct {
+		Series []struct {
+			Name string
+			Data []struct {
+				Service string
+				Uptime  float64
+			}
+		} `json:"series"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &uptimeResp))
+	var foundTeamUptime bool
+	for _, s := range uptimeResp.Series {
+		if s.Name == team.Name {
+			foundTeamUptime = true
+			byService := map[string]float64{}
+			for _, pt := range s.Data {
+				byService[pt.Service] = pt.Uptime
+			}
+			assert.InDelta(t, 1.0, byService["box01-ssh"], 1e-6)
+			assert.InDelta(t, 0.0, byService["box01-web"], 1e-6)
+		}
+	}
+	assert.True(t, foundTeamUptime, "preflight uptimes include active team")
+
+	require.NoError(t, pg.DB.CreatePreflightRound(db.PreflightRoundSchema{
+		ID:        2,
+		StartTime: roundTime.Add(time.Minute),
+	}))
+
+	w = callWithIdentity(http.MethodGet, "/api/services/"+fmt.Sprint(team.ID), map[string]string{"team_id": fmt.Sprint(team.ID)}, adminID, a.GetTeamSummary)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var summaries []db.ServiceSummary
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &summaries))
+	require.Len(t, summaries, 2)
+	assert.Equal(t, "box01-ssh", summaries[0].ServiceName)
+	assert.InDelta(t, 1.0, summaries[0].Uptime, 1e-6)
+	require.Len(t, summaries[0].Last10Rounds, 2)
+	assert.Equal(t, uint(2), summaries[0].Last10Rounds[0].ID)
+	assert.NotNil(t, summaries[0].Last10Rounds[0].Checks, "empty preflight round checks must serialize as [] not null")
+	assert.Empty(t, summaries[0].Last10Rounds[0].Checks)
+	assert.Equal(t, uint(1), summaries[0].Last10Rounds[1].ID)
+	assert.Equal(t, "box01-web", summaries[1].ServiceName)
+	assert.InDelta(t, 0.0, summaries[1].Uptime, 1e-6)
+
+	w = callWithIdentity(http.MethodGet, "/api/services/"+fmt.Sprint(team.ID)+"/box01-ssh", map[string]string{"team_id": fmt.Sprint(team.ID), "service_name": "box01-ssh"}, adminID, a.GetServiceAll)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var drilldown []db.ServiceCheckSchema
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &drilldown))
+	require.Len(t, drilldown, 1)
+	assert.Equal(t, uint(1), drilldown[0].Round.ID)
+	assert.True(t, drilldown[0].Result)
+	assert.Equal(t, "creds used were admin:secret", drilldown[0].Debug)
+
+	w = callWithIdentity(http.MethodGet, "/api/engine", nil, adminID, a.GetEngine)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var engineResp struct {
+		Preflight bool           `json:"preflight"`
+		LastRound db.RoundSchema `json:"last_round"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &engineResp))
+	assert.True(t, engineResp.Preflight)
+	assert.Equal(t, uint(2), engineResp.LastRound.ID)
+
+	// Starting the competition immediately stops serving preflight data even before scored round 1 finishes.
+	require.NoError(t, pg.DB.SetCompetitionStarted(true))
+
+	w = callWithIdentity(http.MethodGet, "/api/graphs/services", nil, teamUserID, a.GetServiceStatus)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &statusResp))
+	assert.Zero(t, statusResp.RoundID, "preflight round must not leak once competition starts")
+
+	w = callWithIdentity(http.MethodGet, "/api/services/"+fmt.Sprint(team.ID), map[string]string{"team_id": fmt.Sprint(team.ID)}, teamUserID, a.GetTeamSummary)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	summaries = nil
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &summaries))
+	assert.Empty(t, summaries, "preflight services must not leak to team after competition starts")
+
+	w = callWithIdentity(http.MethodGet, "/api/engine", nil, adminID, a.GetEngine)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &engineResp))
+	assert.False(t, engineResp.Preflight)
+	assert.Zero(t, engineResp.LastRound.ID)
+}
+
+func TestGetEngineReturnsCompetitionTimezone(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	redis, pg := testutil.StartContainers(t)
+	eng := engine.NewTestEngine(t, redis, pg, 3)
+	eng.Config.Current().InjectSettings.CompetitionTimezone = "America/Los_Angeles"
+	a := api.NewAPI(eng.Config, eng)
+
+	r := httptest.NewRequest(http.MethodGet, "/api/engine", nil)
+	w := httptest.NewRecorder()
+	a.GetEngine(w, r)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var resp struct {
+		CompetitionTimezone string `json:"competition_timezone"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "America/Los_Angeles", resp.CompetitionTimezone)
+}
+
+// The leaderboard ranks teams by their last score graph point. A round stored
+// before the async cumulative_scores refresh must not show only its SLA
+// penalties, and after the refresh the last point matches the score export.
+func TestScoreGraphLeaderboardBeforeViewRefresh(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	redis, pg := testutil.StartContainers(t)
+	require.NoError(t, pg.DB.ResetScores())
+	pg.ResetCompetitionState(t)
+	eng := engine.NewTestEngine(t, redis, pg, 2)
+	a := api.NewAPI(eng.Config, eng)
+	require.NoError(t, pg.DB.SetCompetitionStarted(true))
+	t.Cleanup(func() { assert.NoError(t, pg.DB.ResetScores()) })
+
+	suffix := time.Now().UnixNano()
+	leader, err := pg.DB.CreateTeam(db.TeamSchema{Name: fmt.Sprintf("leader-%d", suffix), Identifier: "01", Active: true})
+	require.NoError(t, err)
+	second, err := pg.DB.CreateTeam(db.TeamSchema{Name: fmt.Sprintf("second-%d", suffix), Identifier: "02", Active: true})
+	require.NoError(t, err)
+
+	store := func(round uint, leaderSvc2 bool) {
+		_, err := pg.DB.CreateRound(db.RoundSchema{ID: round, StartTime: time.Now(), Checks: []db.ServiceCheckSchema{
+			{TeamID: leader.ID, ServiceName: "svc1", Points: 10, Result: true},
+			{TeamID: leader.ID, ServiceName: "svc2", Points: 10, Result: leaderSvc2},
+			{TeamID: second.ID, ServiceName: "svc1", Points: 10, Result: true},
+		}})
+		require.NoError(t, err)
+	}
+	for r := uint(1); r <= 7; r++ {
+		store(r, r < 6)
+	}
+	_, err = pg.DB.CreateSLA(db.SLASchema{TeamID: leader.ID, RoundID: 7, ServiceName: "svc2", Penalty: 30})
+	require.NoError(t, err)
+	require.NoError(t, pg.DB.RefreshScoresMaterializedView())
+	// leader = 70 + 50 - 30 = 90, second = 70
+
+	store(8, true) // stored, view not refreshed yet
+	// leader = 110, second = 80
+
+	admin := &api.Identity{Username: "admin", Roles: []string{"admin"}}
+	leaderboard := func() ([]string, map[string]int) {
+		t.Helper()
+		w, _ := graphRequest(t, a.GetScoreStatus, admin)
+		var body struct {
+			Series []struct {
+				Name string
+				Data []struct{ Round, Total int }
+			}
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		order := []string{}
+		last := map[string]int{}
+		for _, s := range body.Series {
+			if s.Name != leader.Name && s.Name != second.Name {
+				continue
+			}
+			order = append(order, s.Name)
+			if len(s.Data) > 0 {
+				last[s.Name] = s.Data[len(s.Data)-1].Total
+			}
+		}
+		return order, last
+	}
+
+	order, last := leaderboard()
+	assert.Equal(t, []string{leader.Name, second.Name}, order, "leader is ranked first")
+	assert.Equal(t, map[string]int{leader.Name: 90, second.Name: 70}, last, "totals as of the last refresh")
+
+	require.NoError(t, pg.DB.RefreshScoresMaterializedView())
+	order, last = leaderboard()
+	assert.Equal(t, []string{leader.Name, second.Name}, order)
+	assert.Equal(t, map[string]int{leader.Name: 110, second.Name: 80}, last)
+
+	w := httptest.NewRecorder()
+	a.ExportScores(w, httptest.NewRequest(http.MethodGet, "/", nil))
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var export []struct {
+		TeamName    string `json:"team_name"`
+		TotalPoints int    `json:"total_points"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &export))
+	exported := map[string]int{}
+	for _, e := range export {
+		if e.TeamName == leader.Name || e.TeamName == second.Name {
+			exported[e.TeamName] = e.TotalPoints
+		}
+	}
+	assert.Equal(t, last, exported, "score export matches the graph's last point")
 }

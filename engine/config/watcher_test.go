@@ -66,12 +66,12 @@ Jitter = 5
 
 	require.NoError(t, os.WriteFile(configPath, []byte(writeConfig("Initial Event")), 0o600))
 
-	conf := &ConfigSettings{}
-	require.NoError(t, conf.SetConfig(configPath))
+	conf := &Live{}
+	require.NoError(t, conf.Reload(configPath))
 
 	reloaded := make(chan string, 4)
 	require.NoError(t, conf.WatchConfig(configPath, func() {
-		reloaded <- conf.RequiredSettings.EventName
+		reloaded <- conf.Current().RequiredSettings.EventName
 	}))
 
 	// Atomic rename replacement simulates editor in-place saves (vim/sed -i).

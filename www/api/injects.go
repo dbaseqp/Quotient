@@ -18,6 +18,11 @@ import (
 	"gorm.io/gorm"
 )
 
+// releaseTimeGrace is how far in the past UpdateInject accepts a new release
+// time for an unreleased inject, so an admin can release it "now" from a
+// minute-precision form.
+const releaseTimeGrace = 5 * time.Minute
+
 func (a *API) GetInjects(w http.ResponseWriter, r *http.Request) {
 	data, err := a.eng.DB.GetInjects()
 	if err != nil {
@@ -276,6 +281,13 @@ func (a *API) UpdateInject(w http.ResponseWriter, r *http.Request) {
 		openTime, err := time.Parse(time.RFC3339, openTimeStr)
 		if err != nil {
 			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid open time format"})
+			return
+		}
+		// Moving an unreleased inject's release time into the past would
+		// release it to every team at once; require a current or future time.
+		now := time.Now()
+		if inject.OpenTime.After(now) && openTime.Before(now.Add(-releaseTimeGrace)) {
+			WriteJSON(w, http.StatusBadRequest, map[string]any{"error": "Release time of an unreleased inject cannot be moved into the past"})
 			return
 		}
 		inject.OpenTime = openTime
