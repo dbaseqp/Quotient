@@ -1,15 +1,20 @@
 package checks
 
 import (
+	"bytes"
 	"compress/gzip"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,8 +52,6 @@ func galleryHandler(w http.ResponseWriter, r *http.Request) {
 
 // TestWebCheckScoringOutcomes pins the pass/fail result and error of the web
 // check for each case, over HTTP, HTTPS with HTTP/1.1 and HTTPS with HTTP/2.
-// The same expectations hold for the check before the browser-profile change
-// (Go's default client), so the change does not alter scoring.
 func TestWebCheckScoringOutcomes(t *testing.T) {
 	const gallery = `href="/gif/wilee\d+\.gif"`
 	cases := []struct {
@@ -136,5 +139,58 @@ func TestWebCheckConnectionRefused(t *testing.T) {
 		assert.False(t, r.Status)
 		assert.Equal(t, "web request errored out", r.Error)
 		assert.True(t, strings.Contains(r.Debug, "connection refused"), r.Debug)
+	}
+}
+
+// TestWebCheckFailsOversizedPages: a page over maxWebBodyBytes fails the
+// check, and a few-KB br or zstd body that decodes to 64 MiB fails without
+// being decoded in full.
+func TestWebCheckFailsOversizedPages(t *testing.T) {
+	const decoded = 64 << 20
+	bomb := func(buf *bytes.Buffer, w io.WriteCloser) []byte {
+		zeros := make([]byte, 1<<20)
+		for range decoded / len(zeros) {
+			_, err := w.Write(zeros)
+			require.NoError(t, err)
+		}
+		require.NoError(t, w.Close())
+		return buf.Bytes()
+	}
+	var brBuf, zstdBuf bytes.Buffer
+	zw, err := zstd.NewWriter(&zstdBuf)
+	require.NoError(t, err)
+	bodies := map[string][]byte{
+		"br":       bomb(&brBuf, brotli.NewWriterLevel(&brBuf, brotli.BestSpeed)),
+		"zstd":     bomb(&zstdBuf, zw),
+		"identity": make([]byte, maxWebBodyBytes+1),
+	}
+	for coding, body := range bodies {
+		t.Run(coding, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Encoding", coding)
+				_, _ = w.Write(body)
+			}))
+			defer srv.Close()
+			c := Web{
+				Service: Service{Target: "127.0.0.1", Port: srv.Listener.Addr().(*net.TCPAddr).Port, Timeout: 5},
+				Scheme:  "http",
+				Url:     []urlData{{Path: "/", Status: 200}},
+			}
+			results := make(chan Result, 1)
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			c.Run(1, "01", 1, results)
+			select {
+			case r := <-results:
+				runtime.ReadMemStats(&after)
+				assert.False(t, r.Status)
+				assert.Equal(t, "error reading page content", r.Error, "debug: %s", r.Debug)
+			case <-time.After(10 * time.Second):
+				t.Fatal("check did not report")
+			}
+			if coding != "identity" {
+				assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(decoded*3/4), "bytes allocated while decoding")
+			}
+		})
 	}
 }

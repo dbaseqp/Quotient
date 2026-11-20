@@ -7,9 +7,11 @@ import (
 	"compress/gzip"
 	"compress/zlib"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -17,31 +19,44 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
 	utls "github.com/refraction-networking/utls"
-	"golang.org/x/net/http2"
 )
 
-// A browserProfile ties together everything a check sends that a browser
-// would also send: the User-Agent, the client hints, the request headers in
-// wire order, and the TLS ClientHello. Each part must come from the same
-// browser build; a Chrome User-Agent over a Go ClientHello with Go's header
-// order is easier to spot than any one of them alone.
-type browserProfile struct {
-	name      string
-	platform  string   // sec-ch-ua-platform value, quoted the way Chrome sends it
-	uaOS      string   // the OS part of the User-Agent
-	os        clientOS // the OS whose SYN window settings the sockets carry
-	helloSpec func() (*utls.ClientHelloSpec, error)
+// chromeClientOSes are the desktop OSes a web check run can claim. The
+// User-Agent, the client hints and the sockets' SYN window settings of a run
+// all name the same one.
+var chromeClientOSes = []clientOS{clientWindows, clientMacOS, clientLinux}
+
+func randomClientOS() clientOS {
+	return chromeClientOSes[rand.IntN(len(chromeClientOSes))] // #nosec G404 -- non-crypto selection of the claimed OS
 }
 
-var browserProfiles = []browserProfile{
-	{name: "chrome-windows", platform: `"Windows"`, uaOS: "Windows NT 10.0; Win64; x64", os: clientWindows, helloSpec: chromeHelloSpec},
-	{name: "chrome-macos", platform: `"macOS"`, uaOS: "Macintosh; Intel Mac OS X 10_15_7", os: clientMacOS, helloSpec: chromeHelloSpec},
-	{name: "chrome-linux", platform: `"Linux"`, uaOS: "X11; Linux x86_64", os: clientLinux, helloSpec: chromeHelloSpec},
+// chromeUAOS is the OS part of desktop Chrome's User-Agent on o.
+func (o clientOS) chromeUAOS() string {
+	switch o {
+	case clientWindows:
+		return "Windows NT 10.0; Win64; x64"
+	case clientMacOS:
+		return "Macintosh; Intel Mac OS X 10_15_7"
+	}
+	return "X11; Linux x86_64"
+}
+
+// chromePlatform is desktop Chrome's sec-ch-ua-platform value on o, quoted
+// the way Chrome sends it.
+func (o clientOS) chromePlatform() string {
+	switch o {
+	case clientWindows:
+		return `"Windows"`
+	case clientMacOS:
+		return `"macOS"`
+	}
+	return `"Linux"`
 }
 
 // chromeMLDSASignatureSchemes are the ML-DSA-44/65/87 signature algorithms
@@ -66,16 +81,6 @@ func chromeHelloSpec() (*utls.ClientHelloSpec, error) {
 	return &spec, nil
 }
 
-func randomBrowserProfile() browserProfile {
-	return browserProfiles[rand.IntN(len(browserProfiles))] // #nosec G404 -- non-crypto selection of a browser profile
-}
-
-// userAgent is the reduced User-Agent Chrome sends since version 110: the
-// minor, build and patch numbers are always zero.
-func (p browserProfile) userAgent() string {
-	return ChromeUserAgent(p.uaOS)
-}
-
 const (
 	chromeNavigationAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
 	chromeAcceptLanguage   = "en-US,en;q=0.9"
@@ -83,16 +88,17 @@ const (
 
 type headerField struct{ name, value string }
 
-// navigationHeaders returns the headers Chrome sends when the user types the
-// URL into the address bar, in Chrome's HTTP/1.1 wire order and spelling,
+// navigationHeaders returns the headers Chrome on o sends when the user types
+// the URL into the address bar, in Chrome's HTTP/1.1 wire order and spelling,
 // without Host. Client hints, Sec-Fetch-* and br/zstd are only sent to
 // potentially trustworthy origins (HTTPS, localhost and loopback addresses).
-func (p browserProfile) navigationHeaders(trustworthy bool) []headerField {
+func navigationHeaders(o clientOS, trustworthy bool) []headerField {
+	ua := ChromeUserAgent(o.chromeUAOS())
 	if !trustworthy {
 		return []headerField{
 			{"Connection", "keep-alive"},
 			{"Upgrade-Insecure-Requests", "1"},
-			{"User-Agent", p.userAgent()},
+			{"User-Agent", ua},
 			{"Accept", chromeNavigationAccept},
 			{"Accept-Encoding", "gzip, deflate"},
 			{"Accept-Language", chromeAcceptLanguage},
@@ -102,9 +108,9 @@ func (p browserProfile) navigationHeaders(trustworthy bool) []headerField {
 		{"Connection", "keep-alive"},
 		{"sec-ch-ua", ChromeSecCHUA(ChromeMajor)},
 		{"sec-ch-ua-mobile", "?0"},
-		{"sec-ch-ua-platform", p.platform},
+		{"sec-ch-ua-platform", o.chromePlatform()},
 		{"Upgrade-Insecure-Requests", "1"},
-		{"User-Agent", p.userAgent()},
+		{"User-Agent", ua},
 		{"Accept", chromeNavigationAccept},
 		{"Sec-Fetch-Site", "none"},
 		{"Sec-Fetch-Mode", "navigate"},
@@ -129,15 +135,15 @@ func isTrustworthyOrigin(u *url.URL) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// tlsHandshake runs the profile's ClientHello over conn. Certificates are not
+// tlsHandshake runs Chrome's ClientHello over conn. Certificates are not
 // verified because competition services use self-signed certificates. Like a
 // browser, it sends no SNI when host is an IP address.
-func (p browserProfile) tlsHandshake(ctx context.Context, conn net.Conn, host string) (*utls.UConn, error) {
+func tlsHandshake(ctx context.Context, conn net.Conn, host string) (*utls.UConn, error) {
 	cfg := &utls.Config{InsecureSkipVerify: true} // #nosec G402 -- competition services may use self-signed certs
 	if net.ParseIP(host) == nil {
 		cfg.ServerName = host
 	}
-	spec, err := p.helloSpec()
+	spec, err := chromeHelloSpec()
 	if err != nil {
 		return nil, err
 	}
@@ -152,57 +158,82 @@ func (p browserProfile) tlsHandshake(ctx context.Context, conn net.Conn, host st
 }
 
 // browserTransport is an http.RoundTripper that sends body-less requests the
-// way the profile's browser does: its ClientHello, HTTP/2 when the server
-// selects it through ALPN, otherwise HTTP/1.1 with the browser's header order,
-// and keep-alive connections that are reused for later requests to the same
-// origin (for example a redirect). Responses are decoded according to
-// Content-Encoding. Headers in the request that the profile does not define
-// are sent after the profile's headers.
+// way desktop Chrome on os does: Chrome's ClientHello, HTTP/2 when the server
+// selects it through ALPN, otherwise HTTP/1.1 with Chrome's header order, and
+// keep-alive connections that are reused for later requests to the same
+// origin (for example a redirect). Every request carries exactly Chrome's
+// navigation headers; req.Header is ignored, so a followed redirect carries
+// no Referer, as with a typed-in URL. Responses are decoded according to
+// Content-Encoding.
 //
 // One browserTransport serves one check run. Call CloseIdleConnections when
 // the run is done.
 type browserTransport struct {
-	profile browserProfile
-	dialer  net.Dialer
-	h2t     http2.Transport
+	os     clientOS
+	dialer *net.Dialer
 
 	mu     sync.Mutex
 	idleH1 map[string]*h1Conn
-	h2     map[string]*http2.ClientConn
+	h2     map[string]*http.ClientConn
 }
 
-func newBrowserTransport(p browserProfile) *browserTransport {
-	return &browserTransport{profile: p, dialer: net.Dialer{Control: p.os.control}, idleH1: map[string]*h1Conn{}, h2: map[string]*http2.ClientConn{}}
+func newBrowserTransport(o clientOS) *browserTransport {
+	return &browserTransport{os: o, dialer: o.dialer(0), idleH1: map[string]*h1Conn{}, h2: map[string]*http.ClientConn{}}
 }
 
+// maxResponseHeaderBytes bounds the HTTP/1.1 response heads read for one
+// request, as http.Transport's MaxResponseHeaderBytes does.
+const maxResponseHeaderBytes = 1 << 20
+
+var errResponseHeaderTooLarge = fmt.Errorf("server response headers exceeded %d bytes; aborted", maxResponseHeaderBytes)
+
+// h1Conn is an HTTP/1.1 connection. br reads conn through h1Conn.Read, which
+// fails once readLimit bytes have been read.
 type h1Conn struct {
-	conn net.Conn
-	br   *bufio.Reader
+	conn      net.Conn
+	br        *bufio.Reader
+	readLimit int64
 }
 
-var errRequestBody = errors.New("browserTransport sends only requests without a body")
+func newH1Conn(conn net.Conn) *h1Conn {
+	pc := &h1Conn{conn: conn, readLimit: math.MaxInt64}
+	pc.br = bufio.NewReader(pc)
+	return pc
+}
+
+func (pc *h1Conn) Read(p []byte) (int, error) {
+	if pc.readLimit <= 0 {
+		return 0, errResponseHeaderTooLarge
+	}
+	if int64(len(p)) > pc.readLimit {
+		p = p[:pc.readLimit]
+	}
+	n, err := pc.conn.Read(p)
+	pc.readLimit -= int64(n)
+	return n, err
+}
 
 func (t *browserTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Body != nil && req.Body != http.NoBody && req.ContentLength != 0 {
-		return nil, errRequestBody
+		return nil, errors.New("browserTransport sends only requests without a body")
 	}
 	if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
 		return nil, fmt.Errorf("unsupported protocol scheme %q", req.URL.Scheme)
 	}
 	addr := canonicalAddr(req.URL)
 	origin := req.URL.Scheme + "://" + addr
-	headers := t.requestHeaders(req)
+	headers := navigationHeaders(t.os, isTrustworthyOrigin(req.URL))
 
 	if cc := t.takeH2(origin); cc != nil {
 		return t.roundTripH2(cc, req, headers)
 	}
 	if pc := t.takeIdleH1(origin); pc != nil {
-		resp, err := t.roundTripH1(pc, origin, req, headers)
-		if err == nil || req.Context().Err() != nil {
+		resp, dead, err := t.roundTripH1(pc, origin, req, headers)
+		if !dead || req.Context().Err() != nil {
 			return resp, err
 		}
-		// The server may have closed the idle connection just before we
-		// reused it; a browser retries an idempotent request on a new one.
+		// The server closed the idle connection before the request reached
+		// it; a browser retries an idempotent request on a new one.
 	}
 
 	conn, err := t.dialer.DialContext(req.Context(), "tcp", addr)
@@ -210,13 +241,13 @@ func (t *browserTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		return nil, err
 	}
 	if req.URL.Scheme == "https" {
-		uc, err := t.profile.tlsHandshake(req.Context(), conn, req.URL.Hostname())
+		uc, err := tlsHandshake(req.Context(), conn, req.URL.Hostname())
 		if err != nil {
 			_ = conn.Close()
 			return nil, err
 		}
 		if uc.ConnectionState().NegotiatedProtocol == "h2" {
-			cc, err := t.h2t.NewClientConn(uc)
+			cc, err := newH2ClientConn(req.Context(), uc, addr)
 			if err != nil {
 				_ = uc.Close()
 				return nil, err
@@ -228,34 +259,45 @@ func (t *browserTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		}
 		conn = uc
 	}
-	return t.roundTripH1(&h1Conn{conn: conn, br: bufio.NewReader(conn)}, origin, req, headers)
+	resp, _, err := t.roundTripH1(newH1Conn(conn), origin, req, headers)
+	return resp, err
 }
 
-// requestHeaders is the profile's header list followed by any other request
-// headers, sorted, with Host left out.
-func (t *browserTransport) requestHeaders(req *http.Request) []headerField {
-	headers := t.profile.navigationHeaders(isTrustworthyOrigin(req.URL))
-	var extra []string
-	for name := range req.Header {
-		if strings.EqualFold(name, "Host") || slices.ContainsFunc(headers, func(f headerField) bool { return strings.EqualFold(f.name, name) }) {
-			continue
-		}
-		extra = append(extra, name)
+// newH2ClientConn runs HTTP/2 over uc, which negotiated h2. net/http builds
+// a ClientConn only over a connection it dials, so the Transport's TLS dialer
+// returns uc.
+func newH2ClientConn(ctx context.Context, uc *utls.UConn, addr string) (*http.ClientConn, error) {
+	cs := uc.ConnectionState()
+	conn := h2Conn{Conn: uc, state: tls.ConnectionState{
+		Version:            cs.Version,
+		HandshakeComplete:  cs.HandshakeComplete,
+		CipherSuite:        cs.CipherSuite,
+		NegotiatedProtocol: cs.NegotiatedProtocol,
+		ServerName:         cs.ServerName,
+	}}
+	var protocols http.Protocols
+	protocols.SetHTTP2(true)
+	tr := &http.Transport{
+		DialTLSContext: func(context.Context, string, string) (net.Conn, error) { return conn, nil },
+		Protocols:      &protocols,
 	}
-	slices.Sort(extra)
-	for _, name := range extra {
-		for _, v := range req.Header[name] {
-			headers = append(headers, headerField{name, v})
-		}
-	}
-	return headers
+	return tr.NewClientConn(ctx, "https", addr)
 }
 
-func (t *browserTransport) takeH2(origin string) *http2.ClientConn {
+// h2Conn carries a uTLS connection's state as a crypto/tls ConnectionState,
+// the form in which net/http reads the negotiated protocol.
+type h2Conn struct {
+	net.Conn
+	state tls.ConnectionState
+}
+
+func (c h2Conn) ConnectionState() tls.ConnectionState { return c.state }
+
+func (t *browserTransport) takeH2(origin string) *http.ClientConn {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	cc := t.h2[origin]
-	if cc != nil && !cc.CanTakeNewRequest() {
+	if cc != nil && cc.Available() == 0 {
 		delete(t.h2, origin)
 		_ = cc.Close()
 		return nil
@@ -280,8 +322,10 @@ func (t *browserTransport) putIdleH1(origin string, pc *h1Conn) {
 	t.idleH1[origin] = pc
 }
 
-// CloseIdleConnections closes every connection the transport holds. A
-// response body still being read keeps its connection until it is closed.
+// CloseIdleConnections closes every connection the transport holds; an
+// HTTP/2 connection closes at once, even with a response body still being
+// read. An HTTP/1.1 connection whose response body is still being read is
+// not held: it closes or becomes idle when the body is done.
 func (t *browserTransport) CloseIdleConnections() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -295,7 +339,7 @@ func (t *browserTransport) CloseIdleConnections() {
 	}
 }
 
-func (t *browserTransport) roundTripH2(cc *http2.ClientConn, req *http.Request, headers []headerField) (*http.Response, error) {
+func (t *browserTransport) roundTripH2(cc *http.ClientConn, req *http.Request, headers []headerField) (*http.Response, error) {
 	r := req.Clone(req.Context())
 	r.Host = hostHeader(req)
 	r.Header = make(http.Header, len(headers)+1)
@@ -303,7 +347,7 @@ func (t *browserTransport) roundTripH2(cc *http2.ClientConn, req *http.Request, 
 		if strings.EqualFold(f.name, "Connection") {
 			continue // connection-specific headers are not allowed in HTTP/2
 		}
-		// Add canonicalizes the name so x/net/http2 sees our Accept-Encoding
+		// Add canonicalizes the name so net/http sees our Accept-Encoding
 		// and does not add its own; HTTP/2 sends every name in lower case.
 		r.Header.Add(f.name, f.value)
 	}
@@ -314,24 +358,30 @@ func (t *browserTransport) roundTripH2(cc *http2.ClientConn, req *http.Request, 
 		return nil, err
 	}
 	resp.Request = req
-	decodeResponse(resp)
+	if err := decodeResponse(resp); err != nil {
+		_ = resp.Body.Close()
+		return nil, err
+	}
 	return resp, nil
 }
 
 var aLongTimeAgo = time.Unix(1, 0)
 
-func (t *browserTransport) roundTripH1(pc *h1Conn, origin string, req *http.Request, headers []headerField) (*http.Response, error) {
+// roundTripH1 sends req over pc. dead reports that pc was already closed by
+// the server: the request could not be written, or the connection ended
+// before the first byte of a response.
+func (t *browserTransport) roundTripH1(pc *h1Conn, origin string, req *http.Request, headers []headerField) (resp *http.Response, dead bool, err error) {
 	ctx := req.Context()
 	// Unblock reads and writes when the request is cancelled or the client
 	// times out, including while the caller reads the body.
 	stop := context.AfterFunc(ctx, func() { _ = pc.conn.SetDeadline(aLongTimeAgo) })
-	fail := func(err error) (*http.Response, error) {
+	fail := func(dead bool, err error) (*http.Response, bool, error) {
 		stop()
 		_ = pc.conn.Close()
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, false, ctx.Err()
 		}
-		return nil, err
+		return nil, dead, err
 	}
 
 	var head bytes.Buffer
@@ -341,20 +391,23 @@ func (t *browserTransport) roundTripH1(pc *h1Conn, origin string, req *http.Requ
 	}
 	head.WriteString("\r\n")
 	if _, err := pc.conn.Write(head.Bytes()); err != nil {
-		return fail(err)
+		return fail(true, err)
 	}
 
-	var resp *http.Response
+	pc.readLimit = maxResponseHeaderBytes
+	if _, err := pc.br.Peek(1); err != nil {
+		return fail(errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET), err)
+	}
 	for {
-		var err error
 		if resp, err = http.ReadResponse(pc.br, req); err != nil {
-			return fail(err)
+			return fail(false, err)
 		}
 		// Skip informational responses (100 Continue, 103 Early Hints).
 		if resp.StatusCode < 100 || resp.StatusCode > 199 || resp.StatusCode == http.StatusSwitchingProtocols {
 			break
 		}
 	}
+	pc.readLimit = math.MaxInt64
 
 	resp.Body = &h1Body{ReadCloser: resp.Body, done: func(reusable bool) {
 		if stop() && reusable && !resp.Close {
@@ -363,8 +416,11 @@ func (t *browserTransport) roundTripH1(pc *h1Conn, origin string, req *http.Requ
 		}
 		_ = pc.conn.Close()
 	}}
-	decodeResponse(resp)
-	return resp, nil
+	if err := decodeResponse(resp); err != nil {
+		_ = resp.Body.Close()
+		return nil, false, err
+	}
+	return resp, false, nil
 }
 
 // h1Body hands its connection back as soon as the body has been read to the
@@ -422,33 +478,77 @@ func hostHeader(req *http.Request) string {
 	return host
 }
 
-// decodeResponse replaces resp.Body with a reader that undoes the response's
-// Content-Encoding, as a browser does. Codings this package does not know are
-// left in place.
-func decodeResponse(resp *http.Response) {
-	ce := resp.Header.Get("Content-Encoding")
-	if ce == "" {
-		return
+// maxContentCodings is how many codings a Content-Encoding may chain. Each
+// coding multiplies how far a small response can expand.
+const maxContentCodings = 2
+
+// zstdMaxWindow is the largest zstd window RFC 9659 lets HTTP content use.
+const zstdMaxWindow = 8 << 20
+
+// contentDecoders undo the Content-Encodings Chrome accepts.
+var contentDecoders = map[string]func(io.Reader) (io.ReadCloser, error){
+	"gzip":    func(r io.Reader) (io.ReadCloser, error) { return gzip.NewReader(r) },
+	"deflate": newDeflateReader,
+	"br":      func(r io.Reader) (io.ReadCloser, error) { return io.NopCloser(brotli.NewReader(r)), nil },
+	"zstd":    newZstdReader,
+}
+
+// newDeflateReader reads zlib-wrapped DEFLATE, which "deflate" names, and the
+// raw DEFLATE some servers send instead; browsers accept both.
+func newDeflateReader(r io.Reader) (io.ReadCloser, error) {
+	br := bufio.NewReader(r)
+	if hdr, err := br.Peek(2); err == nil && hdr[0]&0x0f == 8 && (uint16(hdr[0])<<8|uint16(hdr[1]))%31 == 0 {
+		return zlib.NewReader(br)
 	}
+	return flate.NewReader(br), nil
+}
+
+func newZstdReader(r io.Reader) (io.ReadCloser, error) {
+	zr, err := zstd.NewReader(r,
+		zstd.WithDecoderConcurrency(1),
+		zstd.WithDecoderMaxMemory(maxWebBodyBytes),
+		zstd.WithDecoderMaxWindow(zstdMaxWindow))
+	if err != nil {
+		return nil, err
+	}
+	return zr.IOReadCloser(), nil
+}
+
+// decodeResponse replaces resp.Body with a reader that undoes the response's
+// Content-Encoding, as a browser does. A list naming a coding this package
+// does not know is left in place. A list of more than maxContentCodings
+// codings, or naming one twice, is an error.
+func decodeResponse(resp *http.Response) error {
+	ce := resp.Header.Get("Content-Encoding")
 	var codings []string
 	for _, c := range strings.Split(ce, ",") {
 		c = strings.ToLower(strings.TrimSpace(c))
-		switch c {
-		case "", "identity":
-		case "gzip", "x-gzip", "deflate", "br", "zstd":
-			codings = append(codings, c)
-		default:
-			return
+		if c == "x-gzip" {
+			c = "gzip"
 		}
+		if c == "" || c == "identity" {
+			continue
+		}
+		if _, ok := contentDecoders[c]; !ok {
+			return nil
+		}
+		if slices.Contains(codings, c) {
+			return fmt.Errorf("response Content-Encoding %q applies %s twice", ce, c)
+		}
+		codings = append(codings, c)
+	}
+	if len(codings) > maxContentCodings {
+		return fmt.Errorf("response Content-Encoding %q chains more than %d codings", ce, maxContentCodings)
 	}
 	if len(codings) == 0 {
-		return
+		return nil
 	}
 	resp.Body = &decodedBody{src: resp.Body, codings: codings}
 	resp.Header.Del("Content-Encoding")
 	resp.Header.Del("Content-Length")
 	resp.ContentLength = -1
 	resp.Uncompressed = true
+	return nil
 }
 
 // decodedBody builds its decoders on the first Read so an empty body (a 204
@@ -457,7 +557,7 @@ type decodedBody struct {
 	src     io.ReadCloser
 	codings []string
 	r       io.Reader
-	closers []func()
+	closers []io.Closer
 	err     error
 }
 
@@ -475,45 +575,19 @@ func (d *decodedBody) build() (io.Reader, error) {
 	var r io.Reader = d.src
 	// Codings are listed in the order they were applied.
 	for i := len(d.codings) - 1; i >= 0; i-- {
-		switch d.codings[i] {
-		case "gzip", "x-gzip":
-			gz, err := gzip.NewReader(r)
-			if err != nil {
-				return nil, err
-			}
-			r = gz
-		case "deflate":
-			// "deflate" should be zlib-wrapped, but some servers send raw
-			// DEFLATE; browsers accept both.
-			br := bufio.NewReader(r)
-			if hdr, err := br.Peek(2); err == nil && hdr[0]&0x0f == 8 && (uint16(hdr[0])<<8|uint16(hdr[1]))%31 == 0 {
-				zr, err := zlib.NewReader(br)
-				if err != nil {
-					return nil, err
-				}
-				r = zr
-			} else {
-				fr := flate.NewReader(br)
-				d.closers = append(d.closers, func() { _ = fr.Close() })
-				r = fr
-			}
-		case "br":
-			r = brotli.NewReader(r)
-		case "zstd":
-			zr, err := zstd.NewReader(r, zstd.WithDecoderConcurrency(1))
-			if err != nil {
-				return nil, err
-			}
-			d.closers = append(d.closers, zr.Close)
-			r = zr
+		dr, err := contentDecoders[d.codings[i]](r)
+		if err != nil {
+			return nil, err
 		}
+		d.closers = append(d.closers, dr)
+		r = dr
 	}
 	return r, nil
 }
 
 func (d *decodedBody) Close() error {
 	for _, c := range d.closers {
-		c()
+		_ = c.Close()
 	}
 	return d.src.Close()
 }

@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,25 +32,20 @@ func headerNames(fields []headerField) []string {
 	return names
 }
 
-// Values below were captured from Chrome 151 (chromedp/headless-shell) with
-// tellcap; headless-shell omits Accept-Language, which desktop Chrome sends
-// last.
-func TestChromeSecCHUAMatchesChrome(t *testing.T) {
-	assert.Equal(t, `"Not=A?Brand";v="99", "Chrome";v="151", "Chromium";v="151"`, ChromeSecCHUA(151))
-}
-
+// The header order below was captured from Chrome 151 (chromedp/headless-shell)
+// with tellcap; headless-shell omits Accept-Language, which desktop Chrome
+// sends last.
 func TestNavigationHeadersFollowChromeOrder(t *testing.T) {
-	p := browserProfiles[0]
 	assert.Equal(t, []string{
 		"Connection", "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "Upgrade-Insecure-Requests",
 		"User-Agent", "Accept", "Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-User", "Sec-Fetch-Dest",
 		"Accept-Encoding", "Accept-Language",
-	}, headerNames(p.navigationHeaders(true)))
+	}, headerNames(navigationHeaders(clientWindows, true)))
 	assert.Equal(t, []string{
 		"Connection", "Upgrade-Insecure-Requests", "User-Agent", "Accept", "Accept-Encoding", "Accept-Language",
-	}, headerNames(p.navigationHeaders(false)))
+	}, headerNames(navigationHeaders(clientWindows, false)))
 
-	for _, f := range p.navigationHeaders(false) {
+	for _, f := range navigationHeaders(clientWindows, false) {
 		switch f.name {
 		case "Accept":
 			assert.Equal(t, "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7", f.value)
@@ -59,47 +55,42 @@ func TestNavigationHeadersFollowChromeOrder(t *testing.T) {
 			assert.Equal(t, "keep-alive", f.value)
 		}
 	}
+	for _, f := range navigationHeaders(clientWindows, true) {
+		switch f.name {
+		case "User-Agent":
+			assert.Equal(t, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36", f.value)
+		case "sec-ch-ua":
+			assert.Equal(t, `"Chromium";v="158", "Not.A/Brand";v="24", "Google Chrome";v="158"`, f.value)
+		case "sec-ch-ua-platform":
+			assert.Equal(t, `"Windows"`, f.value)
+		}
+	}
 }
 
-func TestBrowserProfilesAreConsistent(t *testing.T) {
-	platforms := map[string]string{"Windows NT": `"Windows"`, "Macintosh": `"macOS"`, "X11; Linux": `"Linux"`}
-	for _, p := range browserProfiles {
-		ua := p.userAgent()
-		assert.Contains(t, ua, "Chrome/158.0.0.0 Safari/537.36", p.name)
-		matched := false
-		for marker, platform := range platforms {
-			if strings.Contains(ua, marker) {
-				assert.Equal(t, platform, p.platform, p.name)
-				matched = true
-			}
-		}
-		assert.True(t, matched, "no platform for %s", p.name)
-		spec, err := p.helloSpec()
-		require.NoError(t, err, p.name)
-		var alpn []string
-		var sigalgs []utls.SignatureScheme
-		for _, ext := range spec.Extensions {
-			switch e := ext.(type) {
-			case *utls.ALPNExtension:
-				alpn = e.AlpnProtocols
-			case *utls.SignatureAlgorithmsExtension:
-				sigalgs = e.SupportedSignatureAlgorithms
-			}
-		}
-		assert.Equal(t, []string{"h2", "http/1.1"}, alpn, p.name)
-		require.GreaterOrEqual(t, len(sigalgs), 3, p.name)
-		assert.Equal(t, chromeMLDSASignatureSchemes, sigalgs[:3], p.name)
-		for _, f := range p.navigationHeaders(true) {
-			if f.name == "sec-ch-ua" {
-				assert.Contains(t, f.value, `"Chrome";v="158"`)
-			}
+func TestChromeHelloSpecOffersH2AndMLDSA(t *testing.T) {
+	spec, err := chromeHelloSpec()
+	require.NoError(t, err)
+	var alpn []string
+	var sigalgs []utls.SignatureScheme
+	for _, ext := range spec.Extensions {
+		switch e := ext.(type) {
+		case *utls.ALPNExtension:
+			alpn = e.AlpnProtocols
+		case *utls.SignatureAlgorithmsExtension:
+			sigalgs = e.SupportedSignatureAlgorithms
 		}
 	}
-	seen := map[string]bool{}
+	assert.Equal(t, []string{"h2", "http/1.1"}, alpn)
+	require.GreaterOrEqual(t, len(sigalgs), 3)
+	assert.Equal(t, chromeMLDSASignatureSchemes, sigalgs[:3])
+}
+
+func TestRandomClientOSPicksEveryOS(t *testing.T) {
+	seen := map[clientOS]bool{}
 	for range 300 {
-		seen[randomBrowserProfile().name] = true
+		seen[randomClientOS()] = true
 	}
-	assert.Len(t, seen, len(browserProfiles))
+	assert.Len(t, seen, len(chromeClientOSes))
 }
 
 func TestIsTrustworthyOrigin(t *testing.T) {
@@ -132,8 +123,8 @@ func TestHostHeaderDropsDefaultPort(t *testing.T) {
 }
 
 // TestBrowserTransportWireOrder reads the raw request head and checks that
-// headers leave in the profile's order and spelling, with Host first and
-// extra request headers after the profile's.
+// exactly Chrome's headers leave, in Chrome's order and spelling, with Host
+// first and the request's own headers left out.
 func TestBrowserTransportWireOrder(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -158,12 +149,12 @@ func TestBrowserTransportWireOrder(t *testing.T) {
 		_, _ = io.WriteString(c, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
 	}()
 
-	p := browserProfiles[0]
-	tr := newBrowserTransport(p)
+	tr := newBrowserTransport(clientWindows)
 	defer tr.CloseIdleConnections()
 	req, err := http.NewRequest("GET", "http://"+ln.Addr().String()+"/a?b=c", nil)
 	require.NoError(t, err)
 	req.Header.Set("X-Extra", "1")
+	req.Header.Set("Referer", "http://example.com/")
 	resp, err := (&http.Client{Transport: tr}).Do(req)
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
@@ -173,10 +164,9 @@ func TestBrowserTransportWireOrder(t *testing.T) {
 
 	lines := <-heads
 	want := []string{"GET /a?b=c HTTP/1.1", "Host: " + ln.Addr().String()}
-	for _, f := range p.navigationHeaders(true) { // 127.0.0.1 is a trustworthy origin
+	for _, f := range navigationHeaders(clientWindows, true) { // 127.0.0.1 is a trustworthy origin
 		want = append(want, f.name+": "+f.value)
 	}
-	want = append(want, "X-Extra: 1")
 	assert.Equal(t, want, lines)
 }
 
@@ -233,7 +223,7 @@ func TestBrowserTransportProtocolsAndReuse(t *testing.T) {
 			}
 			defer srv.Close()
 
-			tr := newBrowserTransport(browserProfiles[1])
+			tr := newBrowserTransport(clientMacOS)
 			defer tr.CloseIdleConnections()
 			client := &http.Client{Transport: tr, Timeout: 5 * time.Second}
 			resp, err := client.Get(scheme + "://" + srv.Listener.Addr().String() + "/start")
@@ -247,7 +237,7 @@ func TestBrowserTransportProtocolsAndReuse(t *testing.T) {
 			assert.Len(t, cc.addrs, 1, "the redirect should reuse the first connection")
 			for _, r := range got {
 				assert.Equal(t, tc.proto, r.ProtoMajor)
-				assert.Equal(t, browserProfiles[1].userAgent(), r.UserAgent())
+				assert.Equal(t, ChromeUserAgent(clientMacOS.chromeUAOS()), r.UserAgent())
 				assert.Equal(t, "navigate", r.Header.Get("Sec-Fetch-Mode"))
 				assert.Equal(t, `"macOS"`, r.Header.Get("Sec-Ch-Ua-Platform"))
 				if tc.tls {
@@ -268,7 +258,7 @@ func TestBrowserTransportRetriesStaleIdleConnection(t *testing.T) {
 		_, _ = w.Write([]byte("ok"))
 	}))
 	defer srv.Close()
-	tr := newBrowserTransport(browserProfiles[0])
+	tr := newBrowserTransport(clientWindows)
 	defer tr.CloseIdleConnections()
 	client := &http.Client{Transport: tr, Timeout: 5 * time.Second}
 	for i := range 2 {
@@ -279,6 +269,78 @@ func TestBrowserTransportRetriesStaleIdleConnection(t *testing.T) {
 		srv.CloseClientConnections()
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// serveRaw accepts connections on a new listener and hands each to handle.
+// It returns the listener's address and the number of connections accepted.
+func serveRaw(t *testing.T, handle func(net.Conn)) (string, *atomic.Int32) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+	var accepted atomic.Int32
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepted.Add(1)
+			go func() {
+				defer func() { _ = c.Close() }()
+				handle(c)
+			}()
+		}
+	}()
+	return ln.Addr().String(), &accepted
+}
+
+// TestBrowserTransportDoesNotRetryMalformedResponse: a reused connection that
+// answers with garbage fails the request; only a connection that ended before
+// the response is retried on a new one.
+func TestBrowserTransportDoesNotRetryMalformedResponse(t *testing.T) {
+	addr, accepted := serveRaw(t, func(c net.Conn) {
+		r := bufio.NewReader(c)
+		for i := 0; ; i++ {
+			if _, err := http.ReadRequest(r); err != nil {
+				return
+			}
+			reply := "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+			if i > 0 {
+				reply = "not a status line\r\n\r\n"
+			}
+			if _, err := io.WriteString(c, reply); err != nil {
+				return
+			}
+		}
+	})
+	tr := newBrowserTransport(clientLinux)
+	defer tr.CloseIdleConnections()
+	client := &http.Client{Transport: tr, Timeout: 5 * time.Second}
+	resp, err := client.Get("http://" + addr + "/")
+	require.NoError(t, err)
+	_, _ = io.ReadAll(resp.Body)
+	require.NoError(t, resp.Body.Close())
+
+	_, err = client.Get("http://" + addr + "/")
+	assert.ErrorContains(t, err, "malformed HTTP")
+	assert.EqualValues(t, 1, accepted.Load(), "the malformed response must not be retried on a new connection")
+}
+
+// TestBrowserTransportBoundsResponseHeaders: a response head larger than
+// maxResponseHeaderBytes fails instead of being buffered.
+func TestBrowserTransportBoundsResponseHeaders(t *testing.T) {
+	addr, _ := serveRaw(t, func(c net.Conn) {
+		if _, err := http.ReadRequest(bufio.NewReader(c)); err != nil {
+			return
+		}
+		line := "X-Pad: " + strings.Repeat("a", 1000) + "\r\n"
+		_, _ = io.WriteString(c, "HTTP/1.1 200 OK\r\n"+strings.Repeat(line, 2*maxResponseHeaderBytes/len(line)))
+	})
+	tr := newBrowserTransport(clientLinux)
+	defer tr.CloseIdleConnections()
+	_, err := (&http.Client{Transport: tr, Timeout: 5 * time.Second}).Get("http://" + addr + "/")
+	assert.ErrorIs(t, err, errResponseHeaderTooLarge)
 }
 
 func TestDecodeResponse(t *testing.T) {
@@ -314,7 +376,7 @@ func TestDecodeResponse(t *testing.T) {
 				buf.WriteString(page)
 			}
 			resp := &http.Response{Header: http.Header{"Content-Encoding": {header}}, Body: io.NopCloser(&buf)}
-			decodeResponse(resp)
+			require.NoError(t, decodeResponse(resp))
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 			require.NoError(t, resp.Body.Close())
@@ -329,7 +391,14 @@ func TestDecodeResponse(t *testing.T) {
 
 	t.Run("empty body with coding", func(t *testing.T) {
 		resp := &http.Response{Header: http.Header{"Content-Encoding": {"gzip"}}, Body: http.NoBody}
-		decodeResponse(resp)
+		require.NoError(t, decodeResponse(resp))
 		require.NoError(t, resp.Body.Close())
 	})
+
+	for _, ce := range []string{"gzip, br, zstd", "br, br", "gzip, x-gzip"} {
+		t.Run("rejects "+ce, func(t *testing.T) {
+			resp := &http.Response{Header: http.Header{"Content-Encoding": {ce}}, Body: http.NoBody}
+			assert.Error(t, decodeResponse(resp))
+		})
+	}
 }

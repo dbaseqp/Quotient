@@ -29,7 +29,6 @@ require (
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.59.0
 	golang.org/x/image v0.24.0
-	golang.org/x/net v0.63.0
 	golang.org/x/oauth2 v0.24.0
 	golang.org/x/text v0.44.0
 	gorm.io/driver/postgres v1.5.9
@@ -75,6 +74,7 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/tidwall/transform v0.0.0-20201103190739-32f242e2dbde // indirect
 	golang.org/x/mod v0.42.0 // indirect
+	golang.org/x/net v0.63.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect

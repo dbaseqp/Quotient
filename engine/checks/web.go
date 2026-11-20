@@ -32,28 +32,13 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
 		u := c.Url[rand.IntN(len(c.Url))] // #nosec G404 -- non-crypto selection of URL to test
 
-		// Look like one browser build throughout: User-Agent, client hints,
-		// header order, TLS ClientHello and connection reuse all come from
-		// the same profile.
-		tr := newBrowserTransport(randomBrowserProfile())
-		// Keep the connection open for a while after the check, as a browser
-		// tab does, instead of closing it right after the response.
-		defer time.AfterFunc(webKeepAliveLinger(), tr.CloseIdleConnections)
-		// Set client timeout to slightly less than check timeout to get better error messages
+		tr := newBrowserTransport(randomClientOS())
+		// Browsers keep idle connections for minutes (Firefox 115 s), so the
+		// server's keep-alive timeout usually ends them; closing right after
+		// the response is what scripts do.
+		defer time.AfterFunc(30*time.Second+rand.N(80*time.Second), tr.CloseIdleConnections) // #nosec G404 -- non-crypto timing jitter
 		clientTimeout := time.Duration(c.Timeout) * time.Second
-		client := &http.Client{
-			Transport: tr,
-			Timeout:   clientTimeout,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return errors.New("stopped after 10 redirects") // same limit and message as http.Client's default
-				}
-				// A browser sends no Referer when following a redirect of a
-				// typed-in navigation.
-				req.Header.Del("Referer")
-				return nil
-			},
-		}
+		client := &http.Client{Transport: tr, Timeout: clientTimeout}
 
 		requestURL := fmt.Sprintf("%s://%s:%d%s", c.Scheme, c.Target, c.Port, u.Path)
 		parsedURL, err := url.Parse(requestURL)
@@ -99,7 +84,10 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxWebBodyBytes+1))
+		if err == nil && len(body) > maxWebBodyBytes {
+			err = fmt.Errorf("page is larger than %d bytes", maxWebBodyBytes)
+		}
 		if err != nil {
 			checkResult.Error = "error reading page content"
 			checkResult.Debug = "error was '" + err.Error() + "' for url " + u.Path
@@ -136,13 +124,9 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
-// webKeepAliveLinger is how long a web check leaves its idle connection open.
-// Browsers keep idle connections for minutes (Firefox 115 s), so the server's
-// keep-alive timeout usually ends them; closing right after the response is
-// what scripts do.
-func webKeepAliveLinger() time.Duration {
-	return 30*time.Second + rand.N(80*time.Second) // #nosec G404 -- non-crypto timing jitter
-}
+// maxWebBodyBytes is the largest page, after its Content-Encoding is undone,
+// that the web check reads; a larger page fails the check.
+const maxWebBodyBytes = 10 << 20
 
 func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
 	if c.ServiceType == "" {

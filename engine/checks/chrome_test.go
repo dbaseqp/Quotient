@@ -95,5 +95,10 @@ func TestChromeMajorIsCurrent(t *testing.T) {
 	lag, err := chromeLag(ChromeMajor, today, loadChromeSchedule(t))
 	require.NoError(t, err)
 	assert.LessOrEqual(t, lag, maxChromeLag,
-		"ChromeMajor %d is %d days behind the current stable Chrome: bump it (and the curl_cffi target in the event checks)", ChromeMajor, int(lag.Hours()/24))
+		"ChromeMajor %d is %d days behind the current stable Chrome: bump it", ChromeMajor, int(lag.Hours()/24))
+}
+
+// Desktop Chrome 124 sends this sec-ch-ua.
+func TestChromeSecCHUAMatchesChrome(t *testing.T) {
+	assert.Equal(t, `"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"`, ChromeSecCHUA(124))
 }
