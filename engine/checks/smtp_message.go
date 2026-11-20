@@ -30,9 +30,10 @@ var (
 	mailClosings  = []string{"Thanks,", "Best,", "Regards,", "Cheers,"}
 )
 
-// composeMessage builds an RFC 5322 message with the headers every mail client writes (Message-ID,
-// Date, MIME-Version, From, To, Subject, Content-Type) and a short plain-text body.
-func composeMessage(from, to string, now time.Time) string {
+// composeMessage builds an RFC 5322 message with the headers mail clients such as Thunderbird
+// write (Message-ID, Date, MIME-Version, From, To, Subject, Content-Type,
+// Content-Transfer-Encoding) and a short plain-text body signed with the sender's local part.
+func composeMessage(from, to string) string {
 	// #nosec G404 -- non-crypto random for email content
 	subject := mailSubjects[rand.Intn(len(mailSubjects))]
 	var body strings.Builder
@@ -41,17 +42,17 @@ func composeMessage(from, to string, now time.Time) string {
 		body.WriteString(mailSentences[rand.Intn(len(mailSentences))] + "\r\n") // #nosec G404
 	}
 	body.WriteString("\r\n" + mailClosings[rand.Intn(len(mailClosings))] + "\r\n") // #nosec G404
-	if name, _, ok := strings.Cut(from, "@"); ok {
+	domain := "localhost"
+	if name, d, ok := strings.Cut(from, "@"); ok {
 		body.WriteString(name + "\r\n")
+		if d != "" {
+			domain = d
+		}
 	}
 
-	domain := "localhost"
-	if _, d, ok := strings.Cut(from, "@"); ok && d != "" {
-		domain = d
-	}
 	headers := []string{
 		"Message-ID: <" + uuid.NewString() + "@" + domain + ">",
-		"Date: " + now.Format(time.RFC1123Z),
+		"Date: " + time.Now().Format(time.RFC1123Z),
 		"MIME-Version: 1.0",
 		"From: <" + from + ">",
 		"To: <" + to + ">",

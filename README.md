@@ -256,7 +256,7 @@ ShowDebugToBlueTeam = false # Show check debug info to teams
 Port = 80                   # Server port (443 default with SSL)
 LogoImage = "/static/assets/quotient.svg"
 LogFile = ""                # Optional log file path
-WorkstationNames = ["WS_-01", "LAB_-PC"]  # Optional: the teams' own workstation names ("_" = team identifier). Each team gets a fixed pool of 4-6 names, mixing these with DESKTOP-XXXXXXX names; SMTP EHLO and the SMB workstation pick one per check per round
+WorkstationNames = ["WS_-01", "LAB_-PC"]  # Optional: the teams' own workstation names ("_" = team identifier). Each team gets a fixed pool of 4-6 names, mixing these with DESKTOP-XXXXXXX names; SMTP EHLO and the SMB workstation pick one on every check attempt
 StartPaused = true          # Start with the engine paused (no preflight or scored rounds until resumed)
 
 # Round timing
@@ -580,7 +580,6 @@ credlists = ["mail_users.credlist"]
 domain = "@example.com"    # Appended to usernames
 encrypted = false          # Use TLS
 requireauth = false        # Force authentication even if not advertised
-heloname = ""              # EHLO/HELO name; empty = one of the team's workstation names (see WorkstationNames), picked every round
 ```
 
 **Default port:** 25

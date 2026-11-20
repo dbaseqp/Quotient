@@ -13,12 +13,14 @@ import (
 // event's workstation-name templates and salt must survive that trip.
 func TestWorkstationNamesReachTheRunner(t *testing.T) {
 	conf := attemptTestConfig(120, 10, 30, 1, 0, checks.Service{})
+	conf.Box[0].Smtp = []*checks.Smtp{{Service: conf.Box[0].Tcp[0].Service}}
+	conf.Box[0].Tcp = nil
 	conf.MiscSettings.WorkstationNames = []string{"WS_-01", "LAB_-PC"}
 	require.NoError(t, checkConfig(conf))
 
 	data, err := json.Marshal(conf.Box[0].Runners[0])
 	require.NoError(t, err)
-	var onRunner checks.Tcp
+	var onRunner checks.Smtp
 	require.NoError(t, json.Unmarshal(data, &onRunner))
 	assert.Equal(t, []string{"WS_-01", "LAB_-PC"}, onRunner.WorkstationNames)
 	assert.Equal(t, "Test Event", onRunner.WorkstationSalt)

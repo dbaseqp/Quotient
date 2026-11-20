@@ -36,7 +36,6 @@ func (c WinRM) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan
 			return
 		}
 
-		// newClient keeps masterzen's NTLM flow but sends the Windows client's HTTP identity.
 		newClient := func(password string) (*winrm.Client, error) {
 			params := *winrm.DefaultParameters
 			params.TransportDecorator = func() winrm.Transporter {

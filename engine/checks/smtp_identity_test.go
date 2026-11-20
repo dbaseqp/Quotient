@@ -23,13 +23,6 @@ func TestSmtpRun_ClientIdentity(t *testing.T) {
 		assert.Contains(t, workstationPool("", "01", nil), name)
 	})
 
-	t.Run("configured HELO name", func(t *testing.T) {
-		srv := startSMTP(t, smtpBehaviour{})
-		res := runCheck(t, &Smtp{Service: testService(srv.port, loopbackCred), Domain: "@acme.local", HeloName: "ws-0412.acme.local"})
-		require.True(t, res.Status, "debug: %s, error: %s", res.Debug, res.Error)
-		assert.Equal(t, "EHLO ws-0412.acme.local", waitSession(t, srv, 0, "QUIT")[0])
-	})
-
 	t.Run("message carries client headers", func(t *testing.T) {
 		srv := startSMTP(t, smtpBehaviour{})
 		res := runCheck(t, &Smtp{Service: testService(srv.port, loopbackCred), Domain: "@acme.local"})

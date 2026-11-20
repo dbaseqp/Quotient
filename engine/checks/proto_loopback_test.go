@@ -24,7 +24,8 @@ import (
 )
 
 // These loopback tests pin the pass/fail result of the smtp, pop3, ftp and winrm checks against
-// scripted servers, so that changes to what the checks send on the wire cannot change scoring.
+// scripted servers, so that a change to what the checks send on the wire that changes the result
+// fails a test.
 
 // lineState is the per-connection state of a scripted line-protocol server.
 type lineState struct {
@@ -216,15 +217,15 @@ func TestSmtpRun_Loopback(t *testing.T) {
 
 type pop3Behaviour struct {
 	rejectPass bool
-	noCapa     bool // answer CAPA with -ERR, like a pre-RFC 2449 server
+	capaHang   bool // start a multi-line CAPA reply and never terminate it
 }
 
 func startPOP3(t *testing.T, b pop3Behaviour) *lineServer {
 	return startLineServer(t, "+OK Dovecot ready.\r\n", func(st *lineState, w io.Writer, line string) {
 		switch strings.ToUpper(strings.SplitN(line, " ", 2)[0]) {
 		case "CAPA":
-			if b.noCapa {
-				_, _ = io.WriteString(w, "-ERR unknown command\r\n")
+			if b.capaHang {
+				_, _ = io.WriteString(w, "+OK\r\nCAPA\r\n")
 			} else {
 				_, _ = io.WriteString(w, "+OK\r\nCAPA\r\nTOP\r\nUIDL\r\nRESP-CODES\r\nUSER\r\nSASL PLAIN\r\n.\r\n")
 			}
@@ -254,7 +255,7 @@ func TestPop3Run_Loopback(t *testing.T) {
 		errMsg string
 	}{
 		{name: "login and stat", creds: true, pass: true},
-		{name: "server without CAPA", b: pop3Behaviour{noCapa: true}, creds: true, pass: true},
+		{name: "unterminated CAPA reply", b: pop3Behaviour{capaHang: true}, creds: true, pass: true},
 		{name: "password rejected", b: pop3Behaviour{rejectPass: true}, creds: true, errMsg: "login failed"},
 		{name: "anonymous connect", pass: true},
 	}
@@ -363,6 +364,7 @@ type fakeWinRM struct {
 	mu       sync.Mutex
 	authed   map[string]bool
 	requests []http.Header
+	status   int // HTTP status of the SOAP replies; 0 means 200
 }
 
 var ntlmServerChallenge = []byte{1, 2, 3, 4, 5, 6, 7, 8}
@@ -418,6 +420,9 @@ func (f *fakeWinRM) serve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/soap+xml;charset=UTF-8")
+	if f.status != 0 {
+		w.WriteHeader(f.status)
+	}
 	_, _ = io.WriteString(w, winrsReply(string(body), f.stdout))
 }
 
@@ -519,16 +524,19 @@ func TestWinRMRun_Loopback(t *testing.T) {
 		commands []winCommandData
 		pass     bool
 		errMsg   string
+		status   int
 	}{
 		{name: "connectivity test", password: "Carrots1!", pass: true},
 		{name: "command output matches", password: "Carrots1!", commands: []winCommandData{{Command: "hostname", Output: "WIN-SRV01"}}, pass: true},
 		{name: "command output regex matches", password: "Carrots1!", commands: []winCommandData{{Command: "hostname", Output: `^WIN-`, UseRegex: true}}, pass: true},
 		{name: "command output differs", password: "Carrots1!", commands: []winCommandData{{Command: "hostname", Output: "DC01"}}, errMsg: "didn't match string"},
 		{name: "wrong password", password: "something else", errMsg: "connection test failed"},
+		{name: "SOAP reply with a non-200 status", password: "Carrots1!", status: http.StatusInternalServerError, pass: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := startWinRM(t, tt.password, "WIN-SRV01\r\n")
+			srv.status = tt.status
 			res := runCheck(t, &WinRM{Service: testService(srv.port, loopbackCred), Command: tt.commands})
 			assert.Equal(t, tt.pass, res.Status, "debug: %s, error: %s", res.Debug, res.Error)
 			if tt.errMsg != "" {
