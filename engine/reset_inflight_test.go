@@ -31,10 +31,10 @@ func TestResetScores_DiscardsRoundInFlight(t *testing.T) {
 	team := pg.CreateTestTeam(t, "Reset Inflight", "01")
 
 	se := NewTestEngine(t, redis, pg, 3)
-	se.Config.MiscSettings.Delay = 30
+	se.Config.Current().MiscSettings.Delay = 30
 	fast := &mockRunner{Service: checks.Service{Display: "web", Name: "box01-web", ServiceType: "Mock", Points: 10}}
 	slow := &mockRunner{Service: checks.Service{Display: "ssh", Name: "box01-ssh", ServiceType: "Mock", Points: 10}}
-	se.Config.Box = []config.Box{{Name: "box01", IP: "192.0.2.1", Runners: []checks.Runner{fast, slow}}}
+	se.Config.Current().Box = []config.Box{{Name: "box01", IP: "192.0.2.1", Runners: []checks.Runner{fast, slow}}}
 	require.NoError(t, pg.DB.SetCompetitionStarted(true))
 
 	slowStarted := make(chan struct{})

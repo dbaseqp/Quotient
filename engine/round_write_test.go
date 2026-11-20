@@ -44,9 +44,9 @@ func roundWriteEngine(t *testing.T, slaThreshold int) (*ScoringEngine, *testutil
 	pg.Exec(t, "UPDATE team_schemas SET active = false")
 	team := pg.CreateTestTeam(t, "Round Write Team", "01")
 	se := NewTestEngine(t, redis, pg, slaThreshold)
-	se.Config.MiscSettings.Delay = 3
+	se.Config.Current().MiscSettings.Delay = 3
 	svc := &mockRunner{Service: checks.Service{Display: "web", Name: "box01-web", ServiceType: "Mock", Points: 10}}
-	se.Config.Box = []config.Box{{Name: "box01", IP: "192.0.2.1", Runners: []checks.Runner{svc}}}
+	se.Config.Current().Box = []config.Box{{Name: "box01", IP: "192.0.2.1", Runners: []checks.Runner{svc}}}
 	fakeRunner(t, redis, func(task Task) []checks.Result {
 		res := passResult(task)
 		res[0].Status = false

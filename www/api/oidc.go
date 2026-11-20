@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/oauth2"
 )
 
@@ -65,30 +66,31 @@ type IDTokenClaims struct {
 
 // InitOIDC initializes the OIDC provider and OAuth2 configuration
 func (a *API) InitOIDC() error {
-	if !a.conf.OIDCSettings.OIDCEnabled {
+	conf := a.conf.Current()
+	if !conf.OIDCSettings.OIDCEnabled {
 		return nil
 	}
 
 	ctx := context.Background()
 
 	// Initialize OIDC provider
-	provider, err := oidc.NewProvider(ctx, a.conf.OIDCSettings.OIDCIssuerURL)
+	provider, err := oidc.NewProvider(ctx, conf.OIDCSettings.OIDCIssuerURL)
 	if err != nil {
 		return fmt.Errorf("failed to initialize OIDC provider: %w", err)
 	}
 
 	// Configure OAuth2
 	oauth2Config := &oauth2.Config{
-		ClientID:     a.conf.OIDCSettings.OIDCClientID,
-		ClientSecret: a.conf.OIDCSettings.OIDCClientSecret,
-		RedirectURL:  a.conf.OIDCSettings.OIDCRedirectURL,
+		ClientID:     conf.OIDCSettings.OIDCClientID,
+		ClientSecret: conf.OIDCSettings.OIDCClientSecret,
+		RedirectURL:  conf.OIDCSettings.OIDCRedirectURL,
 		Endpoint:     provider.Endpoint(),
-		Scopes:       a.conf.OIDCSettings.OIDCScopes,
+		Scopes:       conf.OIDCSettings.OIDCScopes,
 	}
 
 	// Initialize ID token verifier with more options
 	oidcVerifier := provider.Verifier(&oidc.Config{
-		ClientID:          a.conf.OIDCSettings.OIDCClientID,
+		ClientID:          conf.OIDCSettings.OIDCClientID,
 		SkipClientIDCheck: false,
 		SkipExpiryCheck:   false,
 		SkipIssuerCheck:   false,
@@ -102,8 +104,8 @@ func (a *API) InitOIDC() error {
 	}
 
 	slog.Info("OIDC provider initialized successfully",
-		"issuer", a.conf.OIDCSettings.OIDCIssuerURL,
-		"client_id", a.conf.OIDCSettings.OIDCClientID)
+		"issuer", conf.OIDCSettings.OIDCIssuerURL,
+		"client_id", conf.OIDCSettings.OIDCClientID)
 
 	// Clean up old sessions periodically
 	go a.oidc.cleanupOIDCSessions()
@@ -113,7 +115,7 @@ func (a *API) InitOIDC() error {
 
 // OIDCLoginHandler initiates the OIDC authentication flow
 func (a *API) OIDCLoginHandler(w http.ResponseWriter, r *http.Request) {
-	if !a.conf.OIDCSettings.OIDCEnabled {
+	if !a.conf.Current().OIDCSettings.OIDCEnabled {
 		http.Error(w, "OIDC authentication is not enabled", http.StatusNotFound)
 		return
 	}
@@ -185,7 +187,7 @@ func (a *API) OIDCLoginHandler(w http.ResponseWriter, r *http.Request) {
 func (a *API) OIDCCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	if !a.conf.OIDCSettings.OIDCEnabled {
+	if !a.conf.Current().OIDCSettings.OIDCEnabled {
 		http.Error(w, "OIDC authentication is not enabled", http.StatusNotFound)
 		return
 	}
@@ -365,7 +367,7 @@ func (a *API) OIDCLogoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Check if provider supports end session endpoint
 	var endSessionURL string
-	if a.conf.OIDCSettings.OIDCEnabled && a.oidc.oidcProvider != nil {
+	if a.conf.Current().OIDCSettings.OIDCEnabled && a.oidc.oidcProvider != nil {
 		// Try to get end session endpoint from provider metadata
 		var claims struct {
 			EndSessionEndpoint string `json:"end_session_endpoint"`
@@ -385,10 +387,11 @@ func (a *API) OIDCLogoutHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) mapGroupsToRoles(groups []string) []string {
+	conf := a.conf.Current()
 	var roles []string
 
 	// Check admin groups
-	for _, adminGroup := range a.conf.OIDCSettings.OIDCAdminGroups {
+	for _, adminGroup := range conf.OIDCSettings.OIDCAdminGroups {
 		if matchesGroup(groups, adminGroup) {
 			roles = append(roles, "admin")
 			break
@@ -396,7 +399,7 @@ func (a *API) mapGroupsToRoles(groups []string) []string {
 	}
 
 	// Check inject groups
-	for _, injectGroup := range a.conf.OIDCSettings.OIDCInjectGroups {
+	for _, injectGroup := range conf.OIDCSettings.OIDCInjectGroups {
 		if matchesGroup(groups, injectGroup) {
 			roles = append(roles, "inject")
 			break
@@ -404,7 +407,7 @@ func (a *API) mapGroupsToRoles(groups []string) []string {
 	}
 
 	// Check red groups
-	for _, redGroup := range a.conf.OIDCSettings.OIDCRedGroups {
+	for _, redGroup := range conf.OIDCSettings.OIDCRedGroups {
 		if matchesGroup(groups, redGroup) {
 			roles = append(roles, "red")
 			break
@@ -412,7 +415,7 @@ func (a *API) mapGroupsToRoles(groups []string) []string {
 	}
 
 	// Check team groups
-	for _, teamGroup := range a.conf.OIDCSettings.OIDCTeamGroups {
+	for _, teamGroup := range conf.OIDCSettings.OIDCTeamGroups {
 		if matchesGroup(groups, teamGroup) {
 			roles = append(roles, "team")
 			break
@@ -439,31 +442,32 @@ func matchesGroup(userGroups []string, configGroup string) bool {
 }
 
 func (a *API) getRefreshTokenExpiry(roles []string) int {
+	conf := a.conf.Current()
 	defaultExpiry := 86400 // 24 hours in seconds
 
 	if slices.Contains(roles, "admin") {
-		expiry := a.conf.OIDCSettings.OIDCRefreshTokenExpiryAdmin
+		expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryAdmin
 		if expiry == 0 {
 			return defaultExpiry
 		}
 		return expiry
 	}
 	if slices.Contains(roles, "red") {
-		expiry := a.conf.OIDCSettings.OIDCRefreshTokenExpiryRed
+		expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryRed
 		if expiry == 0 {
 			return defaultExpiry
 		}
 		return expiry
 	}
 	if slices.Contains(roles, "inject") {
-		expiry := a.conf.OIDCSettings.OIDCRefreshTokenExpiryInject
+		expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryInject
 		if expiry == 0 {
 			return defaultExpiry
 		}
 		return expiry
 	}
 	// Default for team users
-	expiry := a.conf.OIDCSettings.OIDCRefreshTokenExpiryTeam
+	expiry := conf.OIDCSettings.OIDCRefreshTokenExpiryTeam
 	if expiry == 0 {
 		return defaultExpiry
 	}
@@ -512,11 +516,14 @@ func (a *API) storeOIDCUserInfo(username string, groups []string, roles []string
 	}
 }
 
-func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
+// GetOIDCUserInfo reads a user's OIDC session. Reports false with a nil error
+// when the user has no live session; a non-nil error means Redis could not be
+// read, which says nothing about the session.
+func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool, error) {
 	// Try to get from Redis
 	if a.eng == nil || a.eng.RedisClient == nil {
 		slog.Warn("Redis client not available, cannot retrieve OIDC session", "username", username)
-		return nil, false
+		return nil, false, nil
 	}
 
 	ctx := context.Background()
@@ -524,16 +531,12 @@ func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
 
 	// Attempt to retrieve from Redis
 	data, err := a.eng.RedisClient.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		slog.Debug("OIDC user not found in Redis", "username", username)
+		return nil, false, nil
+	}
 	if err != nil {
-		if err.Error() == "redis: nil" {
-			slog.Debug("OIDC user not found in Redis", "username", username)
-		} else {
-			slog.Error("Failed to retrieve OIDC session from Redis", "username", username, "error", err)
-		}
-
-		// Try to refresh the session if we had a cached refresh token
-		// This would require storing refresh tokens separately, which we'll skip for now
-		return nil, false
+		return nil, false, fmt.Errorf("failed to retrieve OIDC session for %q from Redis: %w", username, err)
 	}
 
 	// Deserialize from JSON
@@ -542,7 +545,7 @@ func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
 		slog.Error("Failed to unmarshal OIDC user info", "username", username, "error", err)
 		// Delete corrupted data
 		a.eng.RedisClient.Del(ctx, key)
-		return nil, false
+		return nil, false, nil
 	}
 
 	// Check if session has expired (Redis TTL should handle this, but double-check)
@@ -557,10 +560,10 @@ func (a *API) GetOIDCUserInfo(username string) (*OidcUserInfo, bool) {
 			}
 		}
 
-		return nil, false
+		return nil, false, nil
 	}
 
-	return &info, true
+	return &info, true, nil
 }
 
 // tryRefreshOIDCSession attempts to refresh an OIDC session using the refresh token
@@ -631,7 +634,9 @@ func (a *API) tryRefreshOIDCSession(username string, oldInfo *OidcUserInfo) bool
 func (a *API) extractUserInfoFromClaims(claims *IDTokenClaims) (username string, groups []string, roles []string) {
 	// Extract username
 	username = claims.PreferredUsername
-	if username == "" {
+	// The username keys the session, so an email nobody verified must not
+	// become it: anyone could claim another user's address.
+	if username == "" && claims.EmailVerified {
 		username = claims.Email
 	}
 	if username == "" {
@@ -639,7 +644,7 @@ func (a *API) extractUserInfoFromClaims(claims *IDTokenClaims) (username string,
 	}
 
 	// Extract groups based on configured claim
-	groupClaim := a.conf.OIDCSettings.OIDCGroupClaim
+	groupClaim := a.conf.Current().OIDCSettings.OIDCGroupClaim
 	if groupClaim == "" {
 		groupClaim = "groups"
 	}
@@ -649,8 +654,11 @@ func (a *API) extractUserInfoFromClaims(claims *IDTokenClaims) (username string,
 		groups = claims.Groups
 	case "roles":
 		groups = claims.Roles
-	case "realm_access.roles", "resource_access.roles":
+	case "realm_access.roles":
 		groups = claims.RealmAccess.Roles
+	case "resource_access.roles":
+		// Client roles live under the client this deployment logs in as.
+		groups = claims.ResourceAccess[a.conf.Current().OIDCSettings.OIDCClientID].Roles
 	default:
 		// Unsupported group claim location
 		slog.Warn("Unsupported OIDCGroupClaim value", "claim", groupClaim)
@@ -739,7 +747,7 @@ func (a *API) ValidateOIDCToken(token string) (map[string]interface{}, error) {
 
 	// Extract groups using same logic as callback
 	var groups []string
-	groupClaim := a.conf.OIDCSettings.OIDCGroupClaim
+	groupClaim := a.conf.Current().OIDCSettings.OIDCGroupClaim
 	if groupClaim == "" {
 		groupClaim = "groups"
 	}
