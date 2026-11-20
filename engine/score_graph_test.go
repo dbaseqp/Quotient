@@ -19,12 +19,13 @@ func waitScoresRefreshed(t *testing.T, se *ScoringEngine) {
 	require.NoError(t, se.DB.RefreshScoresMaterializedView())
 }
 
-func processRound(se *ScoringEngine, round uint, results ...checks.Result) {
+func processRound(t *testing.T, se *ScoringEngine, round uint, results ...checks.Result) {
+	t.Helper()
 	se.CurrentRound = round
 	for i := range results {
 		results[i].RoundID = round
 	}
-	se.processCollectedResults(results)
+	require.NoError(t, se.processCollectedResults(se.Config.Current(), results, 0))
 }
 
 func exportTotal(t *testing.T, se *ScoringEngine, team uint) int {
@@ -62,15 +63,15 @@ func TestScoreGraphCarriesTotalsThroughRoundsWithoutChecks(t *testing.T) {
 		return checks.Result{TeamID: team, ServiceName: "svc", Status: false, Points: 10}
 	}
 	for r := uint(1); r <= 5; r++ {
-		processRound(se, r, pass(a.ID), pass(b.ID))
+		processRound(t, se, r, pass(a.ID), pass(b.ID))
 		waitScoresRefreshed(t, se)
 	}
-	processRound(se, 6, fail(a.ID), pass(b.ID))
-	processRound(se, 7, fail(a.ID), pass(b.ID)) // A: SLA (30) in round 7
+	processRound(t, se, 6, fail(a.ID), pass(b.ID))
+	processRound(t, se, 7, fail(a.ID), pass(b.ID)) // A: SLA (30) in round 7
 	waitScoresRefreshed(t, se)
-	processRound(se, 8) // lost round: no results
-	processRound(se, 9, pass(a.ID), pass(b.ID))
-	processRound(se, 10, pass(b.ID)) // all of A's checks disabled
+	processRound(t, se, 8) // lost round: no results
+	processRound(t, se, 9, pass(a.ID), pass(b.ID))
+	processRound(t, se, 10, pass(b.ID)) // all of A's checks disabled
 	waitScoresRefreshed(t, se)
 
 	scores, err := pg.DB.GetServiceCheckSumByRound()
@@ -108,14 +109,14 @@ func TestScoreGraphTotalsBeforeViewRefresh(t *testing.T) {
 	}
 	// A has two services, B one. A's svc2 fails rounds 6-8: SLA (30) in round 7.
 	for r := uint(1); r <= 7; r++ {
-		processRound(se, r, res(a.ID, "svc1", true), res(a.ID, "svc2", r < 6), res(b.ID, "svc1", true))
+		processRound(t, se, r, res(a.ID, "svc1", true), res(a.ID, "svc2", r < 6), res(b.ID, "svc1", true))
 		waitScoresRefreshed(t, se)
 	}
 	// A = 70 + 50 - 30 = 90, B = 70.
 
 	se.Refreshing.Store(true) // a refresh is still in flight
-	processRound(se, 8, res(a.ID, "svc1", true), res(a.ID, "svc2", false), res(b.ID, "svc1", true))
-	processRound(se, 9, res(a.ID, "svc1", true), res(a.ID, "svc2", false), res(b.ID, "svc1", true))
+	processRound(t, se, 8, res(a.ID, "svc1", true), res(a.ID, "svc2", false), res(b.ID, "svc1", true))
+	processRound(t, se, 9, res(a.ID, "svc1", true), res(a.ID, "svc2", false), res(b.ID, "svc1", true))
 	se.Refreshing.Store(false)
 	// Round 9 adds a second SLA for A that the view does not cover yet.
 

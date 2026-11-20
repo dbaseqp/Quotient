@@ -309,7 +309,9 @@ func (d *DB) GetServiceScores() ([]ServiceScoreData, error) {
 }
 
 func (d *DB) LoadSLAs(slaPerService *map[uint]map[string]int, slaThreshold int) error {
-	rows, err := d.db.Table("service_check_schemas").Select("team_id, service_name, result").Rows()
+	// Streaks are replayed in round order; without ORDER BY Postgres may
+	// return rows in any order (e.g. a synchronized seq scan starts mid-table).
+	rows, err := d.db.Table("service_check_schemas").Select("team_id, service_name, result").Order("round_id").Rows()
 	if err != nil {
 		return err
 	}
