@@ -21,7 +21,8 @@ type CompetitionStateSchema struct {
 	// resumed scoring after.
 	OvertimeEnd *time.Time
 	// Paused is the last pause or resume an admin or the scheduled start made,
-	// so a restarted engine keeps it; nil until then, when StartPaused applies.
+	// so a restarted engine keeps it; nil until the first, when StartPaused
+	// applies. A score reset keeps it, as the running engine does.
 	Paused *bool
 }
 
@@ -82,8 +83,9 @@ func (d *DB) SetCompetitionStarted(started bool) error {
 	})
 }
 
-// StartCompetitionOnce opens the competition as of its scheduled start unless
-// it has ever been started; it reports whether it did.
+// StartCompetitionOnce opens the competition as of its scheduled start, and
+// records scoring as resumed, unless it has ever been started; it reports
+// whether it did.
 func (d *DB) StartCompetitionOnce(at time.Time) (bool, error) {
 	var started bool
 	err := d.updateCompetitionState(func(tx *gorm.DB, state *CompetitionStateSchema) error {
@@ -91,8 +93,7 @@ func (d *DB) StartCompetitionOnce(at time.Time) (bool, error) {
 			return nil
 		}
 		started = true
-		resumed := false
-		state.Paused = &resumed
+		state.Paused = new(false)
 		return state.start(tx, true, at)
 	})
 	return started, err

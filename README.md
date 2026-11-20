@@ -271,7 +271,7 @@ Attempts = 1                # Tries before a check fails (default: 1)
 AttemptDelay = 0            # Seconds to wait before retrying a failed attempt (default: 0)
 ```
 
-`StartPaused` only decides how the engine boots before anyone has paused or resumed it. Once an admin pauses or resumes the engine, or the scheduled start resumes it, that state is saved and an engine restart keeps it. Reset Scores clears the saved state, so `StartPaused` applies again.
+`StartPaused` only decides how the engine boots before anyone has paused or resumed it. Once an admin pauses or resumes the engine, or the scheduled start resumes it, that state is saved and an engine restart keeps it. Reset Scores keeps it too, both in the running engine and across a restart.
 
 Every attempt, plus the waits between them, must fit in the shortest round: `Attempts * Timeout + (Attempts - 1) * AttemptDelay` must be less than `Delay - Jitter`.
 

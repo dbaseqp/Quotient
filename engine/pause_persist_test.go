@@ -19,8 +19,8 @@ func bootEngine(t *testing.T, redis *testutil.RedisContainer, pg *testutil.Postg
 	return se
 }
 
-// With StartPaused and a scheduled start, a restart after the start must keep
-// scoring instead of coming back paused until an admin notices.
+// With StartPaused and a scheduled start, a restart after the start keeps
+// scoring.
 func TestLoadPauseState_RestartAfterScheduledStartKeepsScoring(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -37,22 +37,53 @@ func TestLoadPauseState_RestartAfterScheduledStartKeepsScoring(t *testing.T) {
 	assert.False(t, bootEngine(t, redis, pg, true).Paused(), "the scheduled start's resume survives a restart")
 }
 
-// An admin pause (e.g. during an infrastructure outage) must survive a
-// restart, and a score reset forgets it so StartPaused applies again.
-func TestLoadPauseState_AdminPauseSurvivesRestartUntilReset(t *testing.T) {
+// An admin pause or resume survives a restart and a score reset.
+func TestSetPaused_SurvivesRestartAndReset(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 	redis, pg := testutil.StartContainers(t)
 	require.NoError(t, pg.DB.ResetScores())
 	pg.ResetCompetitionState(t)
+	se := bootEngine(t, redis, pg, false)
 
-	require.NoError(t, pg.DB.SetPaused(true))
+	require.NoError(t, se.SetPaused(true))
 	assert.True(t, bootEngine(t, redis, pg, false).Paused(), "an admin pause survives a restart")
 
-	require.NoError(t, pg.DB.SetPaused(false))
+	require.NoError(t, se.SetPaused(false))
 	assert.False(t, bootEngine(t, redis, pg, true).Paused(), "an admin resume survives a restart")
 
-	require.NoError(t, pg.DB.ResetScores())
-	assert.True(t, bootEngine(t, redis, pg, true).Paused(), "after a reset StartPaused applies again")
+	require.NoError(t, se.ResetScores())
+	assert.False(t, se.Paused(), "a reset keeps the running engine's state")
+	assert.False(t, bootEngine(t, redis, pg, true).Paused(), "a restart after a reset keeps the running engine's state")
+}
+
+// A pause whose write fails leaves the engine running, so the running engine
+// never disagrees with what a restart restores, and a retry is not rejected.
+func TestSetPaused_FailedWriteLeavesEngineUnchanged(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	redis, pg := testutil.StartContainers(t)
+	pg.ResetCompetitionState(t)
+	se := bootEngine(t, redis, pg, false)
+
+	dropTrigger := func() { pg.Exec(t, "DROP TRIGGER IF EXISTS reject_write ON competition_state_schemas") }
+	dropFunction := func() { pg.Exec(t, "DROP FUNCTION IF EXISTS reject_competition_state_write()") }
+	t.Cleanup(func() {
+		dropTrigger()
+		dropFunction()
+	})
+	dropTrigger() // a killed earlier run may have left these behind
+	dropFunction()
+	pg.Exec(t, `CREATE FUNCTION reject_competition_state_write() RETURNS trigger LANGUAGE plpgsql AS
+		$$ BEGIN RAISE EXCEPTION 'competition_state write rejected by test'; END $$`)
+	pg.Exec(t, "CREATE TRIGGER reject_write BEFORE UPDATE ON competition_state_schemas EXECUTE FUNCTION reject_competition_state_write()")
+
+	require.Error(t, se.SetPaused(true))
+	assert.False(t, se.Paused(), "a pause that was not saved does not take effect")
+
+	dropTrigger()
+	require.NoError(t, se.SetPaused(true), "the retry is a real transition")
+	assert.True(t, se.Paused())
 }

@@ -1,11 +1,11 @@
 package engine
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/dbaseqp/Quotient/engine/config"
 	"github.com/dbaseqp/Quotient/tests/testutil"
 
 	"github.com/stretchr/testify/assert"
@@ -13,8 +13,12 @@ import (
 )
 
 func TestPause_RacingTogglesWithAWaitingLoop(t *testing.T) {
-	se := &ScoringEngine{Config: config.NewLive(&config.ConfigSettings{})}
-	se.resetPauseState(false)
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	redis, pg := testutil.StartContainers(t)
+	pg.ResetCompetitionState(t)
+	se := NewTestEngine(t, redis, pg, 3)
 
 	stop := make(chan struct{})
 	loopDone := make(chan struct{})
@@ -42,14 +46,16 @@ func TestPause_RacingTogglesWithAWaitingLoop(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for i := range 2000 {
-				se.SetPaused(i%2 == 0)
+			for i := range 100 {
+				_ = se.SetPaused(i%2 == 0)
 			}
 		}()
 	}
 	wg.Wait()
 
-	se.SetPaused(false)
+	if err := se.SetPaused(false); err != nil && !errors.Is(err, ErrPauseUnchanged) {
+		t.Fatal(err)
+	}
 	se.pauseMu.Lock()
 	resume := se.resume
 	se.pauseMu.Unlock()
@@ -68,9 +74,10 @@ func TestStart_ExitsCleanlyOnResetWhilePaused(t *testing.T) {
 	}
 
 	redis, pg := testutil.StartContainers(t)
+	pg.ResetCompetitionState(t)
 
 	se := NewTestEngine(t, redis, pg, 3)
-	require.True(t, se.SetPaused(true))
+	require.NoError(t, se.SetPaused(true))
 
 	done := make(chan struct{})
 	go func() {

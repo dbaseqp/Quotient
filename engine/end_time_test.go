@@ -72,7 +72,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		assert.True(t, se.Paused())
 		assert.Nil(t, overtime(t), "pausing at the end is not overtime yet")
 
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 		assert.Nil(t, overtime(t), "the resume itself writes nothing; the loop does")
 		assert.False(t, boundary(t, se), "an admin resume after the end runs overtime")
 		require.NotNil(t, overtime(t), "the loop persists the resume as overtime")
@@ -86,7 +86,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		end := at(-2 * time.Hour)
 		se := newEngine(t, end)
 		require.True(t, boundary(t, se))
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 
 		dropTrigger := func() { pg.Exec(t, "DROP TRIGGER IF EXISTS reject_write ON competition_state_schemas") }
 		dropFunction := func() { pg.Exec(t, "DROP FUNCTION IF EXISTS reject_competition_state_write()") }
@@ -115,15 +115,15 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 	t.Run("a manual pause before the end is not overtime after it", func(t *testing.T) {
 		fresh(t)
 		se := newEngine(t, at(time.Hour))
-		require.True(t, se.SetPaused(true))
+		require.NoError(t, se.SetPaused(true))
 
 		se.Config.Current().InjectSettings.End = at(-time.Hour) // the end passes while paused
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 		assert.True(t, boundary(t, se), "the end is enforced at the next round boundary")
 		assert.True(t, se.Paused())
 		assert.Nil(t, overtime(t), "a resume from a manual pause records no overtime")
 
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 		assert.False(t, boundary(t, se), "resuming after the engine paused at the end runs overtime")
 		require.NotNil(t, overtime(t))
 		assert.True(t, se.Config.Current().InjectSettings.End.Equal(*overtime(t)))
@@ -132,7 +132,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 	t.Run("an admin pause landing before the end check re-blocks the loop", func(t *testing.T) {
 		fresh(t)
 		se := newEngine(t, at(-2*time.Hour))
-		require.True(t, se.SetPaused(true))
+		require.NoError(t, se.SetPaused(true))
 		assert.True(t, boundary(t, se), "the loop waits on the admin's pause instead of running a round")
 		assert.Nil(t, pausedAtEnd(se), "the admin's pause is not an end-pause")
 		assert.Nil(t, overtime(t))
@@ -142,7 +142,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		fresh(t)
 		se := newEngine(t, at(-2*time.Hour))
 		require.True(t, boundary(t, se))
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 
 		se.Config.Current().InjectSettings.End = at(2 * time.Hour)
 		assert.False(t, boundary(t, se))
@@ -155,7 +155,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		old := at(-2 * time.Hour)
 		se := newEngine(t, old)
 		require.True(t, boundary(t, se))
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 
 		later := at(-time.Hour)
 		require.NoError(t, pg.DB.SetOvertimeEnd(later), "an earlier run already resumed past the new end")
@@ -190,7 +190,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 			t.Fatal("Start did not return after ResetScores")
 		}
 
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 		assert.True(t, boundary(t, se), "the resume after a reset is not overtime for the old end")
 		assert.Nil(t, overtime(t))
 	})
@@ -200,7 +200,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		end := at(-2 * time.Hour)
 		first := newEngine(t, end)
 		require.True(t, boundary(t, first))
-		require.True(t, first.SetPaused(false))
+		require.NoError(t, first.SetPaused(false))
 		require.False(t, boundary(t, first), "the loop persists overtime at its next boundary")
 
 		restarted := newEngine(t, end)
@@ -212,7 +212,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		end := at(-2 * time.Hour)
 		first := newEngine(t, end)
 		require.True(t, boundary(t, first))
-		require.True(t, first.SetPaused(false))
+		require.NoError(t, first.SetPaused(false))
 
 		restarted := newEngine(t, end)
 		assert.True(t, boundary(t, restarted), "an unpersisted resume does not survive a restart")
@@ -227,7 +227,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		fresh(t)
 		se := newEngine(t, at(-2*time.Hour))
 		require.True(t, boundary(t, se))
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 		require.False(t, boundary(t, se))
 
 		se.Config.Current().InjectSettings.End = at(-time.Hour)
@@ -242,7 +242,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		assert.True(t, boundary(t, se))
 		assert.True(t, se.Paused())
 
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 		assert.False(t, boundary(t, se), "overtime is granted for the runtime end")
 		require.NoError(t, se.SetCompetitionSchedule(nil, nil))
 		assert.False(t, boundary(t, se), "clearing falls back to the configured end, which is ahead")
@@ -259,7 +259,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		require.NotNil(t, pausedAtEnd(se), "the write does not touch pausedAtEnd; the next boundary decides")
 		assert.True(t, oldEnd.Equal(*pausedAtEnd(se)))
 
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 		assert.True(t, boundary(t, se), "the old end no longer equals the effective end, so the new end is enforced")
 		assert.Nil(t, overtime(t), "a resume after a superseded end is not overtime for the new end")
 		require.NotNil(t, pausedAtEnd(se))
@@ -272,7 +272,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		require.True(t, boundary(t, se))
 
 		se.Config.Current().InjectSettings.End = at(-time.Hour) // an event.conf hot-reload
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 		assert.Nil(t, overtime(t), "overtime is recorded only for the end that is still in effect")
 		assert.True(t, boundary(t, se))
 	})
@@ -283,7 +283,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		end := at(-time.Hour)
 		require.NoError(t, se.SetCompetitionSchedule(nil, end))
 		require.True(t, boundary(t, se))
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 		require.False(t, boundary(t, se), "overtime is granted for the runtime end")
 		require.NotNil(t, overtime(t))
 
@@ -541,7 +541,7 @@ func TestCompetitionSchedule_OverrideAndAutoStart(t *testing.T) {
 	t.Run("the round loop performs a due start while paused", func(t *testing.T) {
 		fresh(t)
 		se := NewTestEngine(t, redis, pg, 3)
-		require.True(t, se.SetPaused(true))
+		require.NoError(t, se.SetPaused(true))
 		pastStart := at(-time.Minute)
 		require.NoError(t, se.SetCompetitionSchedule(pastStart, at(time.Hour)))
 		assert.False(t, pg.DB.GetCompetitionStarted(), "writing the schedule does not start the competition")
@@ -578,7 +578,7 @@ func TestCompetitionSchedule_OverrideAndAutoStart(t *testing.T) {
 	t.Run("an expired schedule never starts the competition", func(t *testing.T) {
 		fresh(t)
 		se := NewTestEngine(t, redis, pg, 3)
-		require.True(t, se.SetPaused(true))
+		require.NoError(t, se.SetPaused(true))
 		require.NoError(t, se.SetCompetitionSchedule(at(-2*time.Hour), at(-time.Hour)))
 
 		assert.False(t, pendingStart(t, se))
@@ -590,7 +590,7 @@ func TestCompetitionSchedule_OverrideAndAutoStart(t *testing.T) {
 	t.Run("a schedule written while waiting wakes the loop", func(t *testing.T) {
 		fresh(t)
 		se := NewTestEngine(t, redis, pg, 3)
-		require.True(t, se.SetPaused(true))
+		require.NoError(t, se.SetPaused(true))
 		ready := waitInBackground(t, se)
 		expectBlocked(t, ready, 100*time.Millisecond)
 
@@ -603,7 +603,7 @@ func TestCompetitionSchedule_OverrideAndAutoStart(t *testing.T) {
 	t.Run("a manual start before the scheduled start wins", func(t *testing.T) {
 		fresh(t)
 		se := NewTestEngine(t, redis, pg, 3)
-		require.True(t, se.SetPaused(true))
+		require.NoError(t, se.SetPaused(true))
 		require.NoError(t, se.SetCompetitionSchedule(at(time.Hour), nil))
 		ready := waitInBackground(t, se)
 
@@ -620,10 +620,10 @@ func TestCompetitionSchedule_OverrideAndAutoStart(t *testing.T) {
 		ready := waitInBackground(t, se)
 
 		time.Sleep(50 * time.Millisecond)
-		require.True(t, se.SetPaused(true))
+		require.NoError(t, se.SetPaused(true))
 		expectBlocked(t, ready, time.Second)
 
-		require.True(t, se.SetPaused(false))
+		require.NoError(t, se.SetPaused(false))
 		expectReady(t, ready, time.Second)
 	})
 
