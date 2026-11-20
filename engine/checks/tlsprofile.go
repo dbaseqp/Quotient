@@ -36,16 +36,15 @@ func randomClientOS() clientOS {
 	return chromeClientOSes[rand.IntN(len(chromeClientOSes))] // #nosec G404 -- non-crypto selection of the claimed OS
 }
 
-// chromeIdentity is the OS part of desktop Chrome's User-Agent on o and its
-// sec-ch-ua-platform value, quoted the way Chrome sends it.
-func (o clientOS) chromeIdentity() (uaOS, platform string) {
+// chromeIdentity is how desktop Chrome on o names its OS.
+func (o clientOS) chromeIdentity() chromeOS {
 	switch o {
 	case clientWindows:
-		return "Windows NT 10.0; Win64; x64", `"Windows"`
+		return chromeWindows
 	case clientMacOS:
-		return "Macintosh; Intel Mac OS X 10_15_7", `"macOS"`
+		return chromeMacOS
 	case clientLinux:
-		return "X11; Linux x86_64", `"Linux"`
+		return chromeLinux
 	}
 	panic(fmt.Sprintf("no Chrome identity for client OS %v", o))
 }
@@ -84,8 +83,8 @@ type headerField struct{ name, value string }
 // without Host. Client hints, Sec-Fetch-* and br/zstd are only sent to
 // potentially trustworthy origins (HTTPS, localhost and loopback addresses).
 func navigationHeaders(o clientOS, trustworthy bool) []headerField {
-	uaOS, platform := o.chromeIdentity()
-	ua := ChromeUserAgent(uaOS)
+	id := o.chromeIdentity()
+	ua := ChromeUserAgent(id.uaOS)
 	if !trustworthy {
 		return []headerField{
 			{"Connection", "keep-alive"},
@@ -100,7 +99,7 @@ func navigationHeaders(o clientOS, trustworthy bool) []headerField {
 		{"Connection", "keep-alive"},
 		{"sec-ch-ua", ChromeSecCHUA(ChromeMajor)},
 		{"sec-ch-ua-mobile", "?0"},
-		{"sec-ch-ua-platform", platform},
+		{"sec-ch-ua-platform", id.platform},
 		{"Upgrade-Insecure-Requests", "1"},
 		{"User-Agent", ua},
 		{"Accept", chromeNavigationAccept},

@@ -230,8 +230,7 @@ func TestBrowserTransportProtocolsAndReuse(t *testing.T) {
 			assert.Len(t, cc.addrs, 1, "the redirect should reuse the first connection")
 			for _, r := range got {
 				assert.Equal(t, tc.proto, r.ProtoMajor)
-				uaOS, _ := clientMacOS.chromeIdentity()
-				assert.Equal(t, ChromeUserAgent(uaOS), r.UserAgent())
+				assert.Equal(t, ChromeUserAgent(clientMacOS.chromeIdentity().uaOS), r.UserAgent())
 				assert.Equal(t, "navigate", r.Header.Get("Sec-Fetch-Mode"))
 				assert.Equal(t, `"macOS"`, r.Header.Get("Sec-Ch-Ua-Platform"))
 				if tc.tls {

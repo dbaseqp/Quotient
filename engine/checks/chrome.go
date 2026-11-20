@@ -5,13 +5,27 @@ import (
 	"strings"
 )
 
-// ChromeMajor is the one Chrome release every check that claims to be Chrome
-// sends: the web check's User-Agent and client hints, and custom checks'
-// browser_curl through QUOTIENT_CHROME_MAJOR and QUOTIENT_CHROME_SEC_CH_UA.
-// Keep it at the current stable release: TestChromeMajorIsCurrent fails once
-// a newer release has been stable for more than 8 weeks, going by the pinned
-// schedule in testdata/chrome_stable_schedule.json.
+// ChromeMajor is the Chrome release the web check and custom checks'
+// browser_curl claim in their User-Agent and client hints. Python checks that
+// impersonate Chrome through curl_cffi claim the release of their impersonate
+// target instead. Keep it at the current stable release:
+// TestChromeMajorIsCurrent fails once a newer release has been stable for more
+// than 8 weeks, going by the pinned schedule in
+// testdata/chrome_stable_schedule.json.
 const ChromeMajor = 158
+
+// chromeOS is how desktop Chrome names the OS it runs on: the OS part of its
+// User-Agent and its sec-ch-ua-platform value, quoted the way Chrome sends it.
+type chromeOS struct{ uaOS, platform string }
+
+var (
+	chromeWindows = chromeOS{"Windows NT 10.0; Win64; x64", `"Windows"`}
+	chromeMacOS   = chromeOS{"Macintosh; Intel Mac OS X 10_15_7", `"macOS"`}
+	chromeLinux   = chromeOS{"X11; Linux x86_64", `"Linux"`}
+)
+
+// chromeOSes are the desktop OSes a check run can claim.
+var chromeOSes = []chromeOS{chromeWindows, chromeMacOS, chromeLinux}
 
 // ChromeUserAgent is desktop Chrome's User-Agent for the given OS token, with
 // the minor version reduced to 0.0.0 as Chrome sends it.

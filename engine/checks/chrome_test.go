@@ -102,3 +102,17 @@ func TestChromeMajorIsCurrent(t *testing.T) {
 func TestChromeSecCHUAMatchesChrome(t *testing.T) {
 	assert.Equal(t, `"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"`, ChromeSecCHUA(124))
 }
+
+// Desktop Chrome on each OS sends these User-Agent and sec-ch-ua-platform
+// values.
+func TestChromeOSesMatchChrome(t *testing.T) {
+	var got [][2]string
+	for _, o := range chromeOSes {
+		got = append(got, [2]string{ChromeUserAgent(o.uaOS), o.platform})
+	}
+	assert.Equal(t, [][2]string{
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + strconv.Itoa(ChromeMajor) + ".0.0.0 Safari/537.36", `"Windows"`},
+		{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + strconv.Itoa(ChromeMajor) + ".0.0.0 Safari/537.36", `"macOS"`},
+		{"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + strconv.Itoa(ChromeMajor) + ".0.0.0 Safari/537.36", `"Linux"`},
+	}, got)
+}
