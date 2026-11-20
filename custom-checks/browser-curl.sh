@@ -23,7 +23,8 @@
 # HTTP/2, curl negotiates it and its SETTINGS, window updates and
 # pseudo-header order are curl's, not Chrome's. Headers curl adds itself
 # (Authorization for -u, Content-Type and Content-Length for -d) keep curl's
-# positions.
+# positions, and curl 8.18 sends Connection last (8.14, in the runner image,
+# keeps it after Host as Chrome does).
 
 # The Quotient runner sets the Chrome that browser_curl claims (ChromeEnv).
 _bc_missing='browser-curl.sh: the Quotient runner sets QUOTIENT_CHROME_USER_AGENT, QUOTIENT_CHROME_PLATFORM, QUOTIENT_CHROME_SEC_CH_UA and QUOTIENT_CHROME_LANGUAGE for each check; set them to run a check by hand'

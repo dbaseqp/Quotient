@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +37,16 @@ type rawRequest struct {
 	Names        []string          // header names in wire order
 	Headers      map[string]string // lower-case name -> value
 	Body         string
+}
+
+// namesBesidesConnection returns r's header names in wire order without
+// Connection, after checking it is keep-alive. curl 8.14 sends Connection
+// where -H put it (after Host, as Chrome does); curl 8.18 sends it last
+// whatever the order, so only its value is pinned.
+func namesBesidesConnection(t *testing.T, r rawRequest) []string {
+	t.Helper()
+	assert.Equal(t, "keep-alive", r.Headers["connection"])
+	return slices.DeleteFunc(slices.Clone(r.Names), func(n string) bool { return n == "Connection" })
 }
 
 // rawServer answers every request with "hello <method> <body>", gzip-encoded
@@ -221,7 +232,7 @@ func TestBrowserCurlPlainHTTPMatchesChrome(t *testing.T) {
 	reqs := s.take(t)
 	require.Len(t, reqs, 1)
 	r := reqs[0]
-	assert.Equal(t, []string{"Host", "Connection", "Upgrade-Insecure-Requests", "User-Agent", "Accept", "Accept-Encoding", "Accept-Language"}, r.Names)
+	assert.Equal(t, []string{"Host", "Upgrade-Insecure-Requests", "User-Agent", "Accept", "Accept-Encoding", "Accept-Language"}, namesBesidesConnection(t, r))
 	assert.Equal(t, env["QUOTIENT_CHROME_USER_AGENT"], r.Headers["user-agent"])
 	assert.Equal(t, chromeAccept, r.Headers["accept"])
 	assert.Equal(t, "gzip, deflate", r.Headers["accept-encoding"])
@@ -236,7 +247,7 @@ func TestBrowserCurlHTTPSMatchesChrome(t *testing.T) {
 	require.Equal(t, 0, code)
 	assert.Equal(t, "hello GET ", out)
 	r := s.take(t)[0]
-	assert.Equal(t, []string{"Host", "Connection", "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "Upgrade-Insecure-Requests", "User-Agent", "Accept", "Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-User", "Sec-Fetch-Dest", "Accept-Encoding", "Accept-Language"}, r.Names)
+	assert.Equal(t, []string{"Host", "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "Upgrade-Insecure-Requests", "User-Agent", "Accept", "Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-User", "Sec-Fetch-Dest", "Accept-Encoding", "Accept-Language"}, namesBesidesConnection(t, r))
 	assert.Equal(t, env["QUOTIENT_CHROME_SEC_CH_UA"], r.Headers["sec-ch-ua"])
 	assert.Equal(t, "?0", r.Headers["sec-ch-ua-mobile"])
 	assert.Equal(t, env["QUOTIENT_CHROME_PLATFORM"], r.Headers["sec-ch-ua-platform"])
@@ -306,8 +317,9 @@ func TestBrowserCurlCheckHeadersWin(t *testing.T) {
 	count := headerCounts(r)
 	assert.Equal(t, 1, count["accept"])
 	assert.Equal(t, 1, count["user-agent"])
-	assert.Equal(t, "Host", r.Names[0])
-	assert.Equal(t, "Cookie", r.Names[len(r.Names)-1])
+	names := namesBesidesConnection(t, r)
+	assert.Equal(t, "Host", names[0])
+	assert.Equal(t, "Cookie", names[len(names)-1])
 }
 
 // The check's headers count in short-option clusters (-sA, -sH, -HName:v) and
