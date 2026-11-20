@@ -460,6 +460,7 @@ scheme = "https"  # "http" or "https"
 
 **Default port:** 80 (http) or 443 (https)
 **Default scheme:** http
+**Body limit:** the check reads at most the first 10 MiB of a page, so `regex` must match within that prefix.
 
 #### SSH Check
 
