@@ -223,7 +223,7 @@ resolves:
 
 Name the group after its team to make the assignment unambiguous.
 
-The OIDC username (`preferred_username`, then `email`, then `sub`) is never
+The OIDC username (`preferred_username`, then `email` if `email_verified`, then `sub`) is never
 used to pick a team.
 
 Local and LDAP accounts are named after their team. A local team account is a

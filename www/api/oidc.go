@@ -631,7 +631,9 @@ func (a *API) tryRefreshOIDCSession(username string, oldInfo *OidcUserInfo) bool
 func (a *API) extractUserInfoFromClaims(claims *IDTokenClaims) (username string, groups []string, roles []string) {
 	// Extract username
 	username = claims.PreferredUsername
-	if username == "" {
+	// The username keys the session, so an email nobody verified must not
+	// become it: anyone could claim another user's address.
+	if username == "" && claims.EmailVerified {
 		username = claims.Email
 	}
 	if username == "" {
