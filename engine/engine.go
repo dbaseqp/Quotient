@@ -130,7 +130,8 @@ func (se *ScoringEngine) Start() {
 	}
 	se.uptimeMu.Unlock()
 
-	if err := se.DB.LoadSLAs(&se.SlaPerService, se.Config.Current().MiscSettings.SlaThreshold); err != nil {
+	slaRules := se.Config.Current().SlaRules()
+	if err := se.DB.LoadSLAs(&se.SlaPerService, func(serviceName string) int { return slaRules(serviceName).Threshold }); err != nil {
 		slog.Error("failed to load SLAs", "error", err)
 	}
 
@@ -962,6 +963,7 @@ func (se *ScoringEngine) processCollectedResults(conf *config.ConfigSettings, re
 		return
 	}
 
+	slaRules := conf.SlaRules()
 	se.uptimeMu.Lock()
 	for _, result := range results {
 		// Update uptime and SLA maps
@@ -987,13 +989,14 @@ func (se *ScoringEngine) processCollectedResults(conf *config.ConfigSettings, re
 		if result.Status {
 			se.SlaPerService[result.TeamID][result.ServiceName] = 0
 		} else {
+			rule := slaRules(result.ServiceName)
 			se.SlaPerService[result.TeamID][result.ServiceName]++
-			if se.SlaPerService[result.TeamID][result.ServiceName] >= conf.MiscSettings.SlaThreshold {
+			if se.SlaPerService[result.TeamID][result.ServiceName] >= rule.Threshold {
 				sla := db.SLASchema{
 					TeamID:      result.TeamID,
 					ServiceName: result.ServiceName,
 					RoundID:     uint(se.CurrentRound),
-					Penalty:     *conf.MiscSettings.SlaPenalty,
+					Penalty:     rule.Penalty,
 				}
 				if _, err := se.DB.CreateSLA(sla); err != nil {
 					slog.Error("failed to create SLA", "team", result.TeamID, "service", result.ServiceName, "error", err)

@@ -266,7 +266,7 @@ Jitter = 10                 # Random jitter in seconds (default: 5, must be < De
 Points = 5                  # Points per successful check (default: 1)
 Timeout = 30                # Check timeout in seconds (default: Delay/2)
 SlaThreshold = 5            # Consecutive failures before SLA penalty (default: 5)
-SlaPenalty = 50             # Points deducted for SLA violation (default: SlaThreshold * Points; 0 counts SLAs without deducting; not per-check)
+SlaPenalty = 50             # Points deducted for SLA violation (default: SlaThreshold * Points; 0 counts SLAs without deducting)
 Attempts = 1                # Tries before a check fails (default: 1)
 AttemptDelay = 0            # Seconds to wait before retrying a failed attempt (default: 0)
 ```
@@ -382,8 +382,8 @@ All checks support these common properties:
 | `port` | Service port | Type-specific |
 | `points` | Points awarded for success | Global default |
 | `timeout` | Check timeout in seconds | Global default |
-| `slathreshold` | Failures before SLA penalty | Global default |
-| `slapenalty` | Points deducted on SLA violation | Global default |
+| `slathreshold` | Consecutive failures before this check's SLA penalty; overrides the global value | Global default |
+| `slapenalty` | Points deducted on this check's SLA violation; overrides the global value, and `0` counts SLAs without deducting | Global default |
 | `attempts` | Tries before the check fails | Global default |
 | `attemptdelay` | Seconds to wait before retrying a failed attempt | Global default |
 | `credlists` | Array of credlist names for authentication | None |
