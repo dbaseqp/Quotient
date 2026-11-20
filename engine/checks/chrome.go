@@ -14,6 +14,10 @@ import (
 // testdata/chrome_stable_schedule.json.
 const ChromeMajor = 158
 
+// chromeAcceptLanguage is the Accept-Language the web check and custom
+// checks' browser_curl send.
+const chromeAcceptLanguage = "en-US,en;q=0.9"
+
 // chromeOS is how desktop Chrome names the OS it runs on: the OS part of its
 // User-Agent and its sec-ch-ua-platform value, quoted the way Chrome sends it.
 type chromeOS struct{ uaOS, platform string }

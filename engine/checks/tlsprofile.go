@@ -43,10 +43,8 @@ func (o clientOS) chromeIdentity() chromeOS {
 		return chromeWindows
 	case clientMacOS:
 		return chromeMacOS
-	case clientLinux:
-		return chromeLinux
 	}
-	panic(fmt.Sprintf("no Chrome identity for client OS %v", o))
+	return chromeLinux
 }
 
 // chromeMLDSASignatureSchemes are the ML-DSA-44/65/87 signature algorithms
@@ -71,10 +69,7 @@ func chromeHelloSpec() (*utls.ClientHelloSpec, error) {
 	return &spec, nil
 }
 
-const (
-	chromeNavigationAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
-	chromeAcceptLanguage   = "en-US,en;q=0.9"
-)
+const chromeNavigationAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
 
 type headerField struct{ name, value string }
 
@@ -223,9 +218,8 @@ func (t *browserTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		if !dead || req.Context().Err() != nil {
 			return resp, err
 		}
-		// The idle connection was found closed: the request could not be
-		// written, or the connection ended before any response. A browser
-		// retries an idempotent request on a new connection.
+		// A browser retries an idempotent request on a new connection when
+		// the idle one was found dead.
 	}
 
 	conn, err := t.dialer.DialContext(req.Context(), "tcp", addr)

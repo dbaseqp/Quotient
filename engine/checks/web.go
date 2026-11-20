@@ -84,10 +84,7 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 			return
 		}
 
-		body, err := io.ReadAll(io.LimitReader(resp.Body, maxWebBodyBytes+1))
-		if err == nil && len(body) > maxWebBodyBytes {
-			err = fmt.Errorf("page is larger than %d bytes", maxWebBodyBytes)
-		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxWebBodyBytes))
 		if err != nil {
 			checkResult.Error = "error reading page content"
 			checkResult.Debug = "error was '" + err.Error() + "' for url " + u.Path
@@ -124,8 +121,8 @@ func (c Web) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 	c.Service.Run(teamID, teamIdentifier, roundID, resultsChan, definition)
 }
 
-// maxWebBodyBytes is the largest page, after its Content-Encoding is undone,
-// that the web check reads; a larger page fails the check.
+// maxWebBodyBytes caps how much of a page, after its Content-Encoding is
+// undone, the web check reads; a Regex must match within this prefix.
 const maxWebBodyBytes = 10 << 20
 
 func (c *Web) Verify(box string, ip string, points int, timeout int, slapenalty int, slathreshold int) error {
