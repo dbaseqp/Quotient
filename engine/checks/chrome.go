@@ -33,6 +33,6 @@ func ChromeSecCHUA(major int) string {
 	order := orders[major%len(orders)]
 	brands[order[0]] = grease
 	brands[order[1]] = `"Chromium";v="` + v + `"`
-	brands[order[2]] = `"Chrome";v="` + v + `"`
+	brands[order[2]] = `"Google Chrome";v="` + v + `"`
 	return strings.Join(brands[:], ", ")
 }
