@@ -4,7 +4,7 @@ go 1.27.1
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.0
-	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358
+	github.com/Azure/go-ntlmssp v0.1.1
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c
 	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/corpix/uarand v0.2.0
