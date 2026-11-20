@@ -762,7 +762,6 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 		return nil, err
 	}
 
-	runners := 0
 	ctx, cancel := context.WithTimeout(context.Background(), time.Until(se.NextRoundStartTime))
 	defer cancel()
 
@@ -787,6 +786,7 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 		}
 	}
 
+	var payloads []any
 	for _, team := range teams {
 		if !team.Active {
 			continue
@@ -795,10 +795,11 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 			if !r.Runnable() {
 				continue
 			}
+			// A failed read must fail the round (the loop retries the same ID); skipping the check would
+			// store the round without it.
 			enabled, err := se.DB.IsTeamServiceEnabled(team.ID, r.GetName())
 			if err != nil {
-				slog.Error("failed to check service state", "team", team.ID, "service", r.GetName(), "error", err)
-				continue
+				return nil, fmt.Errorf("check service state for team %d %s: %w", team.ID, r.GetName(), err)
 			}
 			if !enabled {
 				continue
@@ -828,8 +829,7 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 				for _, credlistName := range credlists {
 					creds, err := se.DB.GetTeamCredentials(team.ID, credlistName)
 					if err != nil {
-						slog.Error("failed to get credentials for task", "team", team.ID, "credlist", credlistName, "error", err)
-						continue
+						return nil, fmt.Errorf("get credentials for team %d credlist %s: %w", team.ID, credlistName, err)
 					}
 					for _, c := range creds {
 						task.Credentials = append(task.Credentials, Credential{
@@ -851,10 +851,14 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 				slog.Error("failed to marshal service task", "error", err)
 				continue
 			}
-			se.RedisClient.RPush(ctx, "tasks", payload)
-			runners++
+			payloads = append(payloads, payload)
 		}
 	}
+	// Queue the round only once every read succeeded, so a failed read leaves nothing for the runners.
+	if len(payloads) > 0 {
+		se.RedisClient.RPush(ctx, "tasks", payloads...)
+	}
+	runners := len(payloads)
 	slog.Info("Enqueued checks", "count", runners)
 
 	results := make([]checks.Result, 0, runners)

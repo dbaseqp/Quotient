@@ -84,7 +84,7 @@ func TestRedisErrorKeepsOIDCSession(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1})
 	rdb.AddHook(fake)
 	t.Cleanup(func() { _ = rdb.Close() })
-	a := NewAPI(&config.ConfigSettings{}, &engine.ScoringEngine{RedisClient: rdb})
+	a := NewAPI(config.NewLive(&config.ConfigSettings{}), &engine.ScoringEngine{RedisClient: rdb})
 
 	ok, cleared := authenticateOIDC(t, a, "alice")
 	assert.False(t, ok, "identity cannot be resolved while Redis is down")
