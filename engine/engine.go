@@ -401,7 +401,7 @@ func (se *ScoringEngine) GetActiveTasks() (map[string]any, error) {
 }
 
 // loadPauseState applies the recorded pause state, or StartPaused if none was
-// ever recorded.
+// ever recorded, and creates the schedule-change channel.
 func (se *ScoringEngine) loadPauseState() error {
 	state, err := se.DB.GetCompetitionState()
 	if err != nil {
@@ -411,11 +411,6 @@ func (se *ScoringEngine) loadPauseState() error {
 	if state.Paused != nil {
 		paused = *state.Paused
 	}
-	se.resetPauseState(paused)
-	return nil
-}
-
-func (se *ScoringEngine) resetPauseState(paused bool) {
 	se.pauseMu.Lock()
 	defer se.pauseMu.Unlock()
 	se.resume = make(chan struct{})
@@ -423,6 +418,7 @@ func (se *ScoringEngine) resetPauseState(paused bool) {
 		close(se.resume)
 	}
 	se.scheduleChanged = make(chan struct{})
+	return nil
 }
 
 func (se *ScoringEngine) pausedLocked() bool {

@@ -73,7 +73,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		assert.Nil(t, overtime(t), "pausing at the end is not overtime yet")
 
 		require.NoError(t, se.SetPaused(false))
-		assert.Nil(t, overtime(t), "the resume itself writes nothing; the loop does")
+		assert.Nil(t, overtime(t), "the resume itself records no overtime; the loop does")
 		assert.False(t, boundary(t, se), "an admin resume after the end runs overtime")
 		require.NotNil(t, overtime(t), "the loop persists the resume as overtime")
 		assert.True(t, end.Equal(*overtime(t)))

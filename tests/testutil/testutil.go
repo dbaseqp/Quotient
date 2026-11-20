@@ -94,8 +94,8 @@ func (p *PostgresContainer) Reconnect(t *testing.T) *db.DB {
 
 // ResetCompetitionState clears every column of the singleton state row
 // (started, first start, runtime schedule, overtime, pause) but keeps the row, as
-// migrate seeded it, now and again at test cleanup. The first start is the one
-// column production never clears.
+// migrate seeded it, now and again at test cleanup. The first start and the
+// pause state are the columns production never clears.
 func (p *PostgresContainer) ResetCompetitionState(t *testing.T) {
 	t.Helper()
 	const reset = `UPDATE competition_state_schemas SET started = false, started_at = NULL,
