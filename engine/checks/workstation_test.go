@@ -2,7 +2,9 @@ package checks
 
 import (
 	"fmt"
+	"hash/fnv"
 	"regexp"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,7 +31,6 @@ func TestWorkstationPool(t *testing.T) {
 	}
 	assert.Len(t, sizes, 3, "pool sizes 4, 5 and 6 all occur")
 	assert.NotEqual(t, workstationPool("Inv3", "01", nil), workstationPool("Inv3", "02", nil), "teams get their own names")
-	assert.NotEqual(t, workstationPool("Inv3", "01", nil), workstationPool("Inv4", "01", nil), "seeds give their own names")
 
 	tpl := []string{"WS_-A", "LAB_PC", "T_-FRONTDESK", "T_-HR"}
 	pool := workstationPool("Inv3", "07", tpl)
@@ -48,7 +49,8 @@ func TestWorkstationPool(t *testing.T) {
 	assert.Equal(t, min(len(tpl), len(pool)-2), fromTpl, "templates fill the rest of the pool")
 }
 
-// TestWorkstationPoolGolden pins the pool algorithm's output.
+// TestWorkstationPoolGolden pins the pool algorithm's output; outside scripts that build the same
+// pools (the event's Python mail checks) pin the same vectors.
 func TestWorkstationPoolGolden(t *testing.T) {
 	assert.Equal(t, goldenNoTemplates, workstationPool("acme-anvil", "01", nil))
 	assert.Equal(t, goldenTemplates, workstationPool("acme-anvil", "01", []string{"WS_-A", "LAB_PC"}))
@@ -67,18 +69,49 @@ func TestWorkstationPicksFromPoolEachAttempt(t *testing.T) {
 	assert.Len(t, picked, len(pool), "every pool name gets used")
 }
 
-func TestWorkstationSeed(t *testing.T) {
-	var a, b workstationNaming
-	a.SetWorkstationNaming("s3cret", nil)
-	assert.Equal(t, "s3cret", a.WorkstationSeed, "a configured seed is used as is")
+func TestSetWorkstationNamingCopies(t *testing.T) {
+	var w workstationNaming
+	w.SetWorkstationNaming("s3cret", []string{"WS_-A"})
+	assert.Equal(t, workstationNaming{WorkstationSeed: "s3cret", WorkstationNames: []string{"WS_-A"}}, w,
+		"the config resolves the seed; the check keeps what it is given")
+	w.SetWorkstationNaming("", nil)
+	assert.Empty(t, w.WorkstationSeed, "no fallback seed in the checks layer")
+}
 
-	a.SetWorkstationNaming("", nil)
-	b.SetWorkstationNaming("", nil)
-	assert.Regexp(t, `^[0-9a-f]{64}$`, a.WorkstationSeed, "no seed configured: 32 random bytes")
-	assert.Equal(t, a.WorkstationSeed, b.WorkstationSeed, "the random seed lasts for the process")
+// fnvWorkstationPool is the former, reversible derivation: 64-bit FNV-1a of seed + "/" + team.
+// Its state after the seed can be recovered from observed names, giving every team's pool.
+func fnvWorkstationPool(seed, team string) []string {
+	sum := func(s string) uint64 {
+		h := fnv.New64a()
+		_, _ = h.Write([]byte(s))
+		return h.Sum64()
+	}
+	size := 4 + int(sum(seed+"/"+team)%3)
+	pool := make([]string, 0, size)
+	for i := range size {
+		x := sum(seed + "/" + team + "/desktop/" + strconv.Itoa(i))
+		var b [7]byte
+		for j := range b {
+			b[j] = workstationNameAlphabet[x%uint64(len(workstationNameAlphabet))]
+			x /= uint64(len(workstationNameAlphabet))
+		}
+		pool = append(pool, "DESKTOP-"+string(b[:]))
+	}
+	return pool
+}
+
+func TestWorkstationPoolKeyedBySeed(t *testing.T) {
+	for i := range 20 {
+		team := fmt.Sprintf("%02d", i)
+		pool := workstationPool("acme-anvil", team, nil)
+		assert.NotEqual(t, pool, workstationPool("acme-anvi1", team, nil), "team %s: seeds give their own names", team)
+		for _, n := range fnvWorkstationPool("acme-anvil", team) {
+			assert.NotContains(t, pool, n, "team %s: a name still follows from FNV of the seed", team)
+		}
+	}
 }
 
 var (
-	goldenNoTemplates = []string{"DESKTOP-88HZM9T", "DESKTOP-R9JTJDV", "DESKTOP-67DBT1R", "DESKTOP-P8F5P5S"}
-	goldenTemplates   = []string{"LAB01PC", "WS01-A", "DESKTOP-88HZM9T", "DESKTOP-R9JTJDV"}
+	goldenNoTemplates = []string{"DESKTOP-DZBNABW", "DESKTOP-GBLV7G3", "DESKTOP-UDBPSEH", "DESKTOP-XQG47CH"}
+	goldenTemplates   = []string{"LAB01PC", "WS01-A", "DESKTOP-DZBNABW", "DESKTOP-GBLV7G3"}
 )

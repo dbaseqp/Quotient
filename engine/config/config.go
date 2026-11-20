@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	_ "time/tzdata"
 	"unicode"
@@ -17,6 +19,13 @@ import (
 
 	"github.com/BurntSushi/toml"
 )
+
+// processWorkstationSeed is the WorkstationSeed of configs that set none. It lasts for the
+// process, so config reloads keep the pools, but a restart gives every team new names.
+var processWorkstationSeed = sync.OnceValue(func() string {
+	slog.Warn("MiscSettings.WorkstationSeed is not set: the teams' workstation names change on every engine restart")
+	return rand.Text()
+})
 
 var (
 	supportedEvents = []string{"rvb", "koth"} // golang doesn't have constant arrays :/
@@ -128,8 +137,8 @@ type MiscConfig struct {
 	WorkstationNames []string
 	// WorkstationSeed is a secret, constant for the event, that seeds each
 	// team's workstation-name pool. Teams that learn it can compute their
-	// pools. Empty: a random seed per engine process, so the names change
-	// on every restart.
+	// pools. Empty: checkConfig sets a random seed, one per engine process,
+	// so the names change on every restart.
 	WorkstationSeed string
 
 	StartPaused bool
@@ -409,6 +418,9 @@ func checkConfig(conf *ConfigSettings) error {
 		if name == "" || strings.ContainsFunc(name, unicode.IsSpace) {
 			errResult = errors.Join(errResult, fmt.Errorf("workstation name template %q must be non-empty and contain no spaces", name))
 		}
+	}
+	if conf.MiscSettings.WorkstationSeed == "" {
+		conf.MiscSettings.WorkstationSeed = processWorkstationSeed()
 	}
 
 	if conf.MiscSettings.Timeout == 0 {
