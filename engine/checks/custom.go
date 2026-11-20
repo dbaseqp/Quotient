@@ -103,7 +103,7 @@ func (c Custom) Run(teamID uint, teamIdentifier string, roundID uint, resultsCha
 		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", formedCommand) // #nosec G204 -- custom checks intentionally run user-defined commands
 
 		// Use os.Root to safely handle temp file operations
-		tmpRoot, err := os.OpenRoot("/tmp")
+		tmpRoot, err := os.OpenRoot(os.TempDir())
 		if err != nil {
 			checkResult.Error = "error opening tmp directory"
 			checkResult.Debug = err.Error()

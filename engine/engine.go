@@ -820,6 +820,7 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 				Deadline:       se.NextRoundStartTime,
 				Attempts:       r.GetAttempts(),
 				AttemptDelay:   r.GetAttemptDelay(),
+				Points:         r.GetPoints(),
 				CheckData:      data, // the entire specialized struct
 			}
 

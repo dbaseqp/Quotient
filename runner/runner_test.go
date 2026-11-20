@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -80,7 +81,7 @@ func checkTask(t *testing.T, check checks.Runner, attempts int, deadline time.Ti
 	require.NoError(t, err)
 	return &engine.Task{
 		TeamID: 1, TeamIdentifier: "01", ServiceType: check.GetType(), ServiceName: check.GetName(), RoundID: 1,
-		Attempts: attempts, Deadline: deadline, CheckData: data,
+		Attempts: attempts, Points: check.GetPoints(), Deadline: deadline, CheckData: data,
 		Credentials: []engine.Credential{{Username: "u", Password: "p", Credlist: "l"}},
 	}
 }
@@ -107,7 +108,7 @@ func TestHandleTaskRunsCheck(t *testing.T) {
 	port, _ := serveTeam(t, func(net.Conn) {})
 	check := &checks.Tcp{Service: checks.Service{Port: port}}
 	require.NoError(t, check.Verify("box01", "127.0.0.1", 5, 10, 0, 0))
-	handleTask(ctx, rdb.Client, check, checkTask(t, check, 1, time.Now().Add(10*time.Second)))
+	handleTask(ctx, rdb.Client, checkTask(t, check, 1, time.Now().Add(10*time.Second)))
 
 	result := popResult(t, rdb)
 	assert.True(t, result.Status, "error=%q debug=%q", result.Error, result.Debug)
@@ -129,12 +130,43 @@ func TestHandleTaskKeepsPointsWhenRoundEndsFirst(t *testing.T) {
 	port, _ := serveTeam(t, func(c net.Conn) { _, _ = io.Copy(io.Discard, c) })
 	check := &checks.Smb{Service: checks.Service{Port: port}}
 	require.NoError(t, check.Verify("box01", "127.0.0.1", 7, 30, 0, 0))
-	handleTask(ctx, rdb.Client, check, checkTask(t, check, 1, time.Now().Add(300*time.Millisecond)))
+	handleTask(ctx, rdb.Client, checkTask(t, check, 1, time.Now().Add(300*time.Millisecond)))
 
 	result := popResult(t, rdb)
 	assert.False(t, result.Status)
 	assert.Equal(t, "timeout", result.Error)
 	assert.Equal(t, 7, result.Points, "a failed check still counts toward the service's possible points")
+}
+
+// A custom check's script can outlive the check's Timeout, after the child has reported the timeout and exited. The
+// attempt must still stop the script and remove its output file, or a team that stalls its service fills the runner's
+// /tmp and leaves processes behind every round.
+func TestHandleTaskCleansUpAfterTimedOutCustomCheck(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	rdb, _ := testutil.StartContainers(t)
+	ctx := context.Background()
+	require.NoError(t, rdb.Client.Del(ctx, "results").Err())
+
+	// The script records its output file and a background process the check's own timeout does not kill.
+	dir := t.TempDir()
+	check := &checks.Custom{Command: fmt.Sprintf("readlink /proc/self/fd/2 > %[1]s/out; sleep 30 & echo $! > %[1]s/pid; wait", dir)}
+	require.NoError(t, check.Verify("box01", "127.0.0.1", 5, 1, 0, 0))
+	handleTask(ctx, rdb.Client, checkTask(t, check, 1, time.Now().Add(10*time.Second)))
+
+	result := popResult(t, rdb)
+	assert.False(t, result.Status)
+	out, err := os.ReadFile(filepath.Join(dir, "out"))
+	require.NoError(t, err)
+	assert.NoFileExists(t, strings.TrimSpace(string(out)), "the check's output file is removed")
+	pid, err := os.ReadFile(filepath.Join(dir, "pid"))
+	require.NoError(t, err)
+	assert.Eventually(t, func() bool {
+		stat, err := os.ReadFile("/proc/" + strings.TrimSpace(string(pid)) + "/stat")
+		return err != nil || strings.Contains(string(stat), ") Z ")
+	}, 5*time.Second, 50*time.Millisecond, "the script's processes are killed")
 }
 
 // A team's server can crash a check library inside a goroutine the library starts itself, where no recover in
@@ -197,7 +229,7 @@ func TestHandleTaskSurvivesCrashingCheck(t *testing.T) {
 			port, conns := serveTeam(t, tt.handle)
 			check := tt.check(port)
 			require.NoError(t, check.Verify("box01", "127.0.0.1", 10, 5, 0, 0))
-			handleTask(ctx, rdb.Client, check, checkTask(t, check, 2, time.Now().Add(20*time.Second)))
+			handleTask(ctx, rdb.Client, checkTask(t, check, 2, time.Now().Add(20*time.Second)))
 
 			result := popResult(t, rdb)
 			assert.False(t, result.Status)

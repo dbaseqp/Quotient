@@ -98,13 +98,7 @@ func runApp(err error) int {
 			continue
 		}
 
-		runner, err := createRunner(task)
-		if err != nil {
-			slog.Error("error creating runner", "error", err)
-			continue
-		}
-
-		go handleTask(ctx, rdb, runner, task)
+		go handleTask(ctx, rdb, task)
 	}
 }
 
@@ -179,7 +173,7 @@ func createRunner(task *engine.Task) (checks.Runner, error) {
 	return runner, nil
 }
 
-func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, task *engine.Task) {
+func handleTask(ctx context.Context, rdb *redis.Client, task *engine.Task) {
 	taskKey := fmt.Sprintf("task:%t:%d:%d:%s:%s", task.Preflight, task.RoundID, task.TeamID, task.ServiceType, task.ServiceName)
 
 	result := checks.Result{
@@ -194,7 +188,7 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 		StatusText:  "running",
 		// From the definition, not the check's answer: a check the round deadline cuts off never answers, and the
 		// export's max_points sums stored points.
-		Points: runner.GetPoints(),
+		Points: task.Points,
 	}
 
 	// Set initial "running" status in Redis for visualization
@@ -206,7 +200,6 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 		slog.Info("running check", "round_id", task.RoundID, "team_id", task.TeamID,
 			"service_type", task.ServiceType, "service_name", task.ServiceName, "attempt", i+1)
 
-		// Create context with deadline
 		checkCtx, cancel := context.WithDeadline(ctx, task.Deadline)
 		defer cancel()
 
@@ -221,7 +214,6 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 				"service_type", result.ServiceType, "status", result.Status, "debug", result.Debug, "error", result.Error)
 
 		case checkCtx.Err() != nil:
-			result.Status = false
 			result.Debug = "round ended before check completed"
 			result.Error = "timeout"
 
@@ -229,7 +221,6 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 				"service_type", task.ServiceType)
 
 		default:
-			result.Status = false
 			result.Debug = err.Error()
 			result.Error = "check crashed"
 
@@ -266,11 +257,9 @@ func handleTask(ctx context.Context, rdb *redis.Client, runner checks.Runner, ta
 	rdb.Set(ctx, taskKey, resultJSON, 3*time.Minute)
 }
 
-// runCheckProcess runs one check attempt for task in a child process (the runner binary re-executed as
-// "runner check", see runCheckChild) and returns the check's result. Check libraries parse team-controlled replies,
-// some in goroutines of their own where a panic cannot be recovered; in the child such a crash fails only this
-// attempt instead of killing the runner with every task on it. The child, and anything it started, is killed when
-// ctx ends.
+// runCheckProcess runs one check attempt in a "runner check" child (runCheckChild): check libraries can panic on team
+// replies in goroutines of their own, where recover cannot reach. The child's process group is killed when the attempt
+// ends (early if ctx ends first) and its temp directory removed.
 func runCheckProcess(ctx context.Context, task *engine.Task) (checks.Result, error) {
 	var result checks.Result
 	exe, err := os.Executable()
@@ -281,19 +270,37 @@ func runCheckProcess(ctx context.Context, task *engine.Task) (checks.Result, err
 	if err != nil {
 		return result, fmt.Errorf("failed to marshal task: %w", err)
 	}
+	// The check's temp files (custom check output) go here, so a check that outlives the child leaves none behind.
+	tmpDir, err := os.MkdirTemp("", "check-")
+	if err != nil {
+		return result, fmt.Errorf("failed to create check temp directory: %w", err)
+	}
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			slog.Error("failed to remove check temp directory", "error", err)
+		}
+	}()
 
 	var stdout bytes.Buffer
 	stderr := &tailWriter{max: maxCheckStderr}
 	cmd := exec.CommandContext(ctx, exe, checkSubcommand) // #nosec G204 -- re-executes this runner binary
+	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir)
 	cmd.Stdin = bytes.NewReader(taskJSON)
 	cmd.Stdout = &stdout
 	cmd.Stderr = io.MultiWriter(os.Stderr, stderr)
 	// Own process group, so ending the attempt also stops what the check started (custom check scripts).
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	killGroup := func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.Cancel = killGroup
 	cmd.WaitDelay = time.Second
 
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		return result, fmt.Errorf("failed to start check: %w", err)
+	}
+	err = cmd.Wait()
+	// A check can outlive the child (a custom check's script after its timeout); usually the group is already empty.
+	_ = killGroup()
+	if err != nil {
 		return result, fmt.Errorf("%w: %s", err, crashReport(stderr.buf))
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
@@ -316,15 +323,10 @@ func runCheckChild(in io.Reader, out io.Writer) int {
 		return 1
 	}
 
-	// Set credentials from task payload for the checks to use (per-instance, thread-safe)
 	if len(task.Credentials) > 0 {
 		creds := make([]checks.TaskCredential, len(task.Credentials))
 		for i, c := range task.Credentials {
-			creds[i] = checks.TaskCredential{
-				Username: c.Username,
-				Password: c.Password,
-				Credlist: c.Credlist,
-			}
+			creds[i] = checks.TaskCredential(c)
 		}
 		runner.SetTaskCredentials(creds)
 	}
@@ -356,17 +358,14 @@ func (w *tailWriter) Write(p []byte) (int, error) {
 // there is one, otherwise the last output.
 func crashReport(stderr []byte) string {
 	start := max(len(stderr)-maxCrashDebug, 0)
+	lines := append([]byte("\n"), stderr...)
 	for _, marker := range []string{"panic: ", "fatal error: "} {
-		if i := bytes.Index(append([]byte("\n"), stderr...), []byte("\n"+marker)); i >= 0 {
+		if i := bytes.Index(lines, []byte("\n"+marker)); i >= 0 {
 			start = i
 			break
 		}
 	}
-	report := stderr[start:]
-	if len(report) > maxCrashDebug {
-		report = report[:maxCrashDebug]
-	}
-	return string(bytes.TrimSpace(report))
+	return string(bytes.TrimSpace(stderr[start:min(len(stderr), start+maxCrashDebug)]))
 }
 
 // waitForRetry waits delay before the next attempt and reports whether that
