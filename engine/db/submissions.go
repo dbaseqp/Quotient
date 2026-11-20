@@ -30,30 +30,15 @@ func (d *DB) GetSubmissionsForInject(injectID uint) ([]SubmissionSchema, error) 
 	return submissions, nil
 }
 
-// gorm hook to set the version of the submission
-func (submission *SubmissionSchema) BeforeCreate(tx *gorm.DB) error {
-	var existingSubmission SubmissionSchema
-	result := tx.Where("inject_id = ? AND team_id = ?", submission.InjectID, submission.TeamID).Order("version desc").First(&existingSubmission)
-	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return result.Error
-	}
-
-	if result.Error == nil {
-		submission.Version = existingSubmission.Version + 1
-	} else {
-		submission.Version = 1
-	}
-
-	return nil
-}
-
-// CreateSubmission stores a new submission with the next version for its
-// team and inject. A transaction-scoped advisory lock on (inject, team)
-// serializes concurrent submissions so BeforeCreate never hands out the same
-// version twice.
+// CreateSubmission stores the submission as the next version for its
+// (inject, team). The advisory lock serializes the max+1 read with the insert.
 func (d *DB) CreateSubmission(submission SubmissionSchema) (SubmissionSchema, error) {
 	err := d.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(?::int4, ?::int4)", submission.InjectID, submission.TeamID).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&SubmissionSchema{}).Where("inject_id = ? AND team_id = ?", submission.InjectID, submission.TeamID).
+			Select("COALESCE(MAX(version), 0) + 1").Scan(&submission.Version).Error; err != nil {
 			return err
 		}
 		return tx.Create(&submission).Error

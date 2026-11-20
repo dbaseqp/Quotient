@@ -199,9 +199,8 @@ func TestDownloadAllSubmissions_MultipleTeamsSameFilename(t *testing.T) {
 	assert.Len(t, contents, numTeams, "All team submissions should have unique content in ZIP")
 }
 
-// TestConcurrentSubmissionVersions verifies that teammates submitting the same
-// inject at the same moment each get their own version. The version is the
-// directory the file is stored in and the key used to download it.
+// Concurrent submissions from one team need distinct versions: the version
+// names the storage directory and the download key.
 func TestConcurrentSubmissionVersions(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
