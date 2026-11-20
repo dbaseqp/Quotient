@@ -14,12 +14,12 @@ import (
 )
 
 type Router struct {
-	Config *config.ConfigSettings
+	Config *config.Live
 	Engine *engine.ScoringEngine
 	api    *api.API
 }
 
-func NewRouter(conf *config.ConfigSettings, eng *engine.ScoringEngine) *Router {
+func NewRouter(conf *config.Live, eng *engine.ScoringEngine) *Router {
 	router := &Router{Config: conf, Engine: eng, api: api.NewAPI(conf, eng)}
 
 	// Initialize OIDC if enabled
@@ -31,9 +31,12 @@ func NewRouter(conf *config.ConfigSettings, eng *engine.ScoringEngine) *Router {
 }
 
 func (router *Router) Start() {
+	// The listener is set up once, from the config at startup.
+	conf := router.Config.Current()
+
 	// choose http/https
 	var protocol string
-	if router.Config.SslSettings == (config.SslConfig{}) {
+	if conf.SslSettings == (config.SslConfig{}) {
 		protocol = "http"
 	} else {
 		protocol = "https"
@@ -190,17 +193,17 @@ func (router *Router) Start() {
 	mux.HandleFunc("GET /admin/appearance", ADMINAUTH(router.AdministrateAppearancePage))
 
 	// start server with security headers middleware wrapping all routes
-	securityMiddleware := middleware.SecurityHeaders(router.Config)
+	securityMiddleware := middleware.SecurityHeaders(conf)
 	server := http.Server{
-		Addr:              fmt.Sprintf("%s:%d", router.Config.RequiredSettings.BindAddress, router.Config.MiscSettings.Port),
+		Addr:              fmt.Sprintf("%s:%d", conf.RequiredSettings.BindAddress, conf.MiscSettings.Port),
 		Handler:           http.HandlerFunc(securityMiddleware(mux.ServeHTTP)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	slog.Info(fmt.Sprintf("Starting Web Server on %s://%s:%d", protocol, router.Config.RequiredSettings.BindAddress, router.Config.MiscSettings.Port))
+	slog.Info(fmt.Sprintf("Starting Web Server on %s://%s:%d", protocol, conf.RequiredSettings.BindAddress, conf.MiscSettings.Port))
 
 	// start server
-	if router.Config.SslSettings != (config.SslConfig{}) {
-		log.Fatal(server.ListenAndServeTLS(router.Config.SslSettings.HttpsCert, router.Config.SslSettings.HttpsKey))
+	if conf.SslSettings != (config.SslConfig{}) {
+		log.Fatal(server.ListenAndServeTLS(conf.SslSettings.HttpsCert, conf.SslSettings.HttpsKey))
 	} else {
 		log.Fatal(server.ListenAndServe())
 	}

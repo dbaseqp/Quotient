@@ -26,7 +26,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 	newEngine := func(t *testing.T, end *time.Time) *ScoringEngine {
 		t.Helper()
 		se := NewTestEngine(t, redis, pg, 3)
-		se.Config.InjectSettings.End = end
+		se.Config.Current().InjectSettings.End = end
 		return se
 	}
 	fresh := func(t *testing.T) {
@@ -117,7 +117,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		se := newEngine(t, at(time.Hour))
 		require.True(t, se.SetPaused(true))
 
-		se.Config.InjectSettings.End = at(-time.Hour) // the end passes while paused
+		se.Config.Current().InjectSettings.End = at(-time.Hour) // the end passes while paused
 		require.True(t, se.SetPaused(false))
 		assert.True(t, boundary(t, se), "the end is enforced at the next round boundary")
 		assert.True(t, se.Paused())
@@ -126,7 +126,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		require.True(t, se.SetPaused(false))
 		assert.False(t, boundary(t, se), "resuming after the engine paused at the end runs overtime")
 		require.NotNil(t, overtime(t))
-		assert.True(t, se.Config.InjectSettings.End.Equal(*overtime(t)))
+		assert.True(t, se.Config.Current().InjectSettings.End.Equal(*overtime(t)))
 	})
 
 	t.Run("an admin pause landing before the end check re-blocks the loop", func(t *testing.T) {
@@ -144,7 +144,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		require.True(t, boundary(t, se))
 		require.True(t, se.SetPaused(false))
 
-		se.Config.InjectSettings.End = at(2 * time.Hour)
+		se.Config.Current().InjectSettings.End = at(2 * time.Hour)
 		assert.False(t, boundary(t, se))
 		assert.Nil(t, pausedAtEnd(se))
 		assert.Nil(t, overtime(t), "a resume after a superseded end is not overtime")
@@ -159,11 +159,11 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 
 		later := at(-time.Hour)
 		require.NoError(t, pg.DB.SetOvertimeEnd(later), "an earlier run already resumed past the new end")
-		se.Config.InjectSettings.End = later
+		se.Config.Current().InjectSettings.End = later
 		assert.False(t, boundary(t, se))
 		assert.Nil(t, pausedAtEnd(se))
 
-		se.Config.InjectSettings.End = old
+		se.Config.Current().InjectSettings.End = old
 		assert.True(t, boundary(t, se), "reverting to the old end pauses instead of granting its overtime")
 		require.NotNil(t, overtime(t))
 		assert.True(t, later.Equal(*overtime(t)))
@@ -230,7 +230,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		require.True(t, se.SetPaused(false))
 		require.False(t, boundary(t, se))
 
-		se.Config.InjectSettings.End = at(-time.Hour)
+		se.Config.Current().InjectSettings.End = at(-time.Hour)
 		assert.True(t, boundary(t, se))
 		assert.True(t, se.Paused())
 	})
@@ -271,7 +271,7 @@ func TestPauseAtCompetitionEnd(t *testing.T) {
 		se := newEngine(t, at(-2*time.Hour))
 		require.True(t, boundary(t, se))
 
-		se.Config.InjectSettings.End = at(-time.Hour) // an event.conf hot-reload
+		se.Config.Current().InjectSettings.End = at(-time.Hour) // an event.conf hot-reload
 		require.True(t, se.SetPaused(false))
 		assert.Nil(t, overtime(t), "overtime is recorded only for the end that is still in effect")
 		assert.True(t, boundary(t, se))
@@ -499,7 +499,7 @@ func TestCompetitionSchedule_OverrideAndAutoStart(t *testing.T) {
 		se := NewTestEngine(t, redis, pg, 3)
 		confStart := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
 		confEnd := time.Date(2026, 10, 31, 17, 0, 0, 0, time.UTC)
-		se.Config.InjectSettings = config.InjectConfig{Start: &confStart, End: &confEnd}
+		se.Config.Current().InjectSettings = config.InjectConfig{Start: &confStart, End: &confEnd}
 
 		s, err := se.CompetitionSchedule()
 		require.NoError(t, err)
@@ -509,7 +509,7 @@ func TestCompetitionSchedule_OverrideAndAutoStart(t *testing.T) {
 		require.NoError(t, se.SetCompetitionSchedule(&newStart, nil))
 
 		restarted := NewTestEngine(t, redis, pg, 3)
-		restarted.Config.InjectSettings = se.Config.InjectSettings
+		restarted.Config.Current().InjectSettings = se.Config.Current().InjectSettings
 		s, err = restarted.CompetitionSchedule()
 		require.NoError(t, err)
 		assert.Equal(t, "runtime", s.Source)
@@ -522,7 +522,7 @@ func TestCompetitionSchedule_OverrideAndAutoStart(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, Schedule{Start: &confStart, End: &confEnd, Source: "config"}, s)
 
-		restarted.Config.InjectSettings = config.InjectConfig{}
+		restarted.Config.Current().InjectSettings = config.InjectConfig{}
 		s, err = restarted.CompetitionSchedule()
 		require.NoError(t, err)
 		assert.Equal(t, Schedule{Source: "none"}, s)
@@ -630,7 +630,7 @@ func TestCompetitionSchedule_OverrideAndAutoStart(t *testing.T) {
 	t.Run("a scheduled start lifting an end-pause records no overtime", func(t *testing.T) {
 		fresh(t)
 		se := NewTestEngine(t, redis, pg, 3)
-		se.Config.InjectSettings.End = at(-2 * time.Hour)
+		se.Config.Current().InjectSettings.End = at(-2 * time.Hour)
 		s, err := se.CompetitionSchedule()
 		require.NoError(t, err)
 		require.True(t, se.pauseAtCompetitionEnd(s))
