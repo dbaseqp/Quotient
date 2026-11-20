@@ -23,7 +23,7 @@ func requireJSONContentType(w http.ResponseWriter, r *http.Request) bool {
 
 func (a *API) GetCredlists(w http.ResponseWriter, r *http.Request) {
 	req_roles := CallerRoles(r.Context())
-	if !slices.Contains(req_roles, "admin") && !a.conf.MiscSettings.EasyPCR {
+	if !slices.Contains(req_roles, "admin") && !a.conf.Current().MiscSettings.EasyPCR {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": "PCR self service not allowed"})
 		return
 	}
@@ -106,7 +106,7 @@ func (a *API) allowPCRForTeam(w http.ResponseWriter, r *http.Request, teamID uin
 	if slices.Contains(CallerRoles(r.Context()), "admin") {
 		return true
 	}
-	if !a.conf.MiscSettings.EasyPCR {
+	if !a.conf.Current().MiscSettings.EasyPCR {
 		WriteJSON(w, http.StatusForbidden, map[string]any{"error": easyPCRDisabledMsg})
 		return false
 	}

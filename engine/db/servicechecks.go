@@ -43,21 +43,15 @@ func (d *DB) GetServiceCheckSumByTeam() (map[uint]any, error) {
 	return result, nil
 }
 
+// GetServiceCheckSumByRound returns each team's running total (earned points
+// minus SLA penalties) after every round, indexed by round ID - 1. Points come
+// from the cumulative_scores view, and only penalties of rounds the view covers
+// are applied, so every total comes from the same refresh; rounds stored since
+// then appear after the next refresh. A team with no checks in a round (lost
+// round, all its checks disabled) keeps its previous total.
 func (d *DB) GetServiceCheckSumByRound() ([]map[uint]int, error) {
-	var last RoundSchema
-
-	if r := d.db.Model(RoundSchema{}).Last(&last); r.Error != nil {
-		if errors.Is(r.Error, gorm.ErrRecordNotFound) {
-			return []map[uint]int{}, nil
-		}
-		return nil, r.Error
-	}
-
-	// creates array with size of num rounds
-	result := make([]map[uint]int, last.ID)
-
 	// Query from materialized view instead of running window function each time
-	rows, err := d.db.Raw(`
+	pointRows, err := d.db.Raw(`
 		SELECT round_id, team_id, cumulative_points
 		FROM cumulative_scores
 		ORDER BY team_id, round_id
@@ -67,62 +61,83 @@ func (d *DB) GetServiceCheckSumByRound() ([]map[uint]int, error) {
 	}
 
 	// nolint:errcheck
-	defer rows.Close()
-	for rows.Next() {
+	defer pointRows.Close()
+	points := make(map[uint]map[uint]int) // team -> round -> cumulative points
+	var lastRound uint
+	for pointRows.Next() {
 		var id uint
 		var team uint
-		var points int
+		var cumulative int
 
-		if err := rows.Scan(&id, &team, &points); err != nil {
+		if err := pointRows.Scan(&id, &team, &cumulative); err != nil {
 			return nil, err
 		}
 
 		// Validate id fits in int and is valid for array indexing
-		if id == 0 || id > math.MaxInt || id > uint(len(result)) {
+		if id == 0 || id > math.MaxInt {
 			continue // Skip invalid round IDs
 		}
 
-		roundidx := int(id) - 1
-		if result[roundidx] == nil {
-			result[roundidx] = make(map[uint]int)
+		if points[team] == nil {
+			points[team] = make(map[uint]int)
 		}
-
-		// id starts at 1 so 0 index needs -1
-		result[roundidx][team] = points
+		points[team][id] = cumulative
+		lastRound = max(lastRound, id)
+	}
+	if err := pointRows.Err(); err != nil {
+		return nil, err
+	}
+	if lastRound == 0 {
+		return []map[uint]int{}, nil
 	}
 
-	rows, err = d.db.Table("sla_schemas").Select("round_id, team_id, sum(penalty) as penalty").Group("round_id, team_id").Rows()
+	penaltyRows, err := d.db.Table("sla_schemas").Select("round_id, team_id, sum(penalty) as penalty").Where("round_id BETWEEN 1 AND ?", lastRound).Group("round_id, team_id").Rows()
 	if err != nil {
 		return nil, err
 	}
 
 	// nolint:errcheck
-	defer rows.Close()
-	for rows.Next() {
+	defer penaltyRows.Close()
+	penalties := make(map[uint]map[uint]int) // team -> round -> penalty
+	for penaltyRows.Next() {
 		var id uint
 		var team uint
 		var penalty int
 
-		if err := rows.Scan(&id, &team, &penalty); err != nil {
+		if err := penaltyRows.Scan(&id, &team, &penalty); err != nil {
 			return nil, err
 		}
 
-		// Validate id fits in int and is valid for array indexing
-		if id == 0 || id > math.MaxInt || id > uint(len(result)) {
-			continue // Skip invalid round IDs
+		if penalties[team] == nil {
+			penalties[team] = make(map[uint]int)
 		}
-
-		roundidx := int(id) - 1
-		if result[roundidx] == nil {
-			result[roundidx] = make(map[uint]int)
+		penalties[team][id] = penalty
+		if points[team] == nil {
+			points[team] = make(map[uint]int)
 		}
+	}
+	if err := penaltyRows.Err(); err != nil {
+		return nil, err
+	}
 
-		// id starts at 1 so 0 index needs -1
-		for i := roundidx; i < len(result); i++ {
-			if result[i] == nil {
-				result[i] = make(map[uint]int)
+	result := make([]map[uint]int, lastRound)
+	for i := range result {
+		result[i] = make(map[uint]int)
+	}
+	for team, cumulative := range points {
+		total, penalty, seen := 0, 0, false
+		for round := uint(1); round <= lastRound; round++ {
+			c, scored := cumulative[round]
+			p, penalized := penalties[team][round]
+			if scored {
+				total = c
 			}
-			result[i][team] -= penalty
+			penalty += p
+			seen = seen || scored || penalized
+			if seen {
+				// id starts at 1 so 0 index needs -1
+				result[round-1][team] = total - penalty
+			}
 		}
 	}
 
