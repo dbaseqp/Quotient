@@ -2,8 +2,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
-	"sync"
 	"testing"
 	"time"
 
@@ -15,50 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// collectRunner pops tasks like runner/runner.go and hands each to handle in
-// its own goroutine. Cleanup stops it with a sentinel task.
-func collectRunner(t *testing.T, redis *testutil.RedisContainer, handle func(task Task, push func(checks.Result))) {
-	t.Helper()
-	ctx := context.Background()
-	push := func(r checks.Result) {
-		payload, _ := json.Marshal(r)
-		redis.Client.RPush(ctx, "results", payload)
-	}
-	var wg sync.WaitGroup
-	finished := make(chan struct{})
-	go func() {
-		defer close(finished)
-		for {
-			val, err := redis.Client.BLPop(ctx, 0, "tasks").Result()
-			if err != nil || len(val) < 2 {
-				continue
-			}
-			if val[1] == "stop" {
-				return
-			}
-			var task Task
-			if err := json.Unmarshal([]byte(val[1]), &task); err != nil {
-				continue
-			}
-			wg.Add(1)
-			go func() { defer wg.Done(); handle(task, push) }()
-		}
-	}()
-	t.Cleanup(func() {
-		redis.Client.RPush(ctx, "tasks", "stop")
-		<-finished
-		wg.Wait()
-		redis.Client.Del(ctx, "tasks", "results")
-	})
-}
-
-func passed(task Task) checks.Result {
-	return checks.Result{
-		TeamID: task.TeamID, ServiceName: task.ServiceName, ServiceType: task.ServiceType,
-		RoundID: task.RoundID, Preflight: task.Preflight, Status: true, Points: 10,
-	}
-}
 
 // collectSetup starts from empty scores and queues with only the new teams active.
 func collectSetup(t *testing.T, teams int, services ...string) (*ScoringEngine, *testutil.RedisContainer, *testutil.PostgresContainer, []db.TeamSchema) {
@@ -84,7 +38,7 @@ func collectSetup(t *testing.T, teams int, services ...string) (*ScoringEngine, 
 	return se, redis, pg, created
 }
 
-func lastRoundChecks(t *testing.T, pg *testutil.PostgresContainer, teamID uint) (db.RoundSchema, []db.ServiceCheckSchema) {
+func lastRoundChecks(t *testing.T, pg *testutil.PostgresContainer, teamID uint) []db.ServiceCheckSchema {
 	t.Helper()
 	round, err := pg.DB.GetLastRound()
 	require.NoError(t, err)
@@ -94,7 +48,7 @@ func lastRoundChecks(t *testing.T, pg *testutil.PostgresContainer, teamID uint) 
 			mine = append(mine, c)
 		}
 	}
-	return round, mine
+	return mine
 }
 
 // A task whose result never comes back (runner crashed after BLPOP, result
@@ -104,11 +58,11 @@ func TestRvb_MissingResultDiscardsRoundForEveryTeam(t *testing.T) {
 	se, redis, pg, teams := collectSetup(t, 2, "web")
 	up, lost := teams[0], teams[1]
 
-	collectRunner(t, redis, func(task Task, push func(checks.Result)) {
+	fakeRunner(t, redis, func(task Task) []checks.Result {
 		if task.TeamID == lost.ID {
-			return
+			return nil
 		}
-		push(passed(task))
+		return passResult(task)
 	})
 
 	require.NoError(t, se.rvb())
@@ -120,30 +74,62 @@ func TestRvb_MissingResultDiscardsRoundForEveryTeam(t *testing.T) {
 	assert.Empty(t, se.SlaPerService)
 }
 
+// Preflight results never count, so a missing result does not discard the
+// results that did arrive.
+func TestPreflight_MissingResultKeepsOtherTeamsResults(t *testing.T) {
+	se, redis, pg, teams := collectSetup(t, 2, "web")
+	up, lost := teams[0], teams[1]
+
+	fakeRunner(t, redis, func(task Task) []checks.Result {
+		if task.TeamID == lost.ID {
+			return nil
+		}
+		return passResult(task)
+	})
+
+	require.NoError(t, se.preflight())
+
+	_, upRows := teamPreflight(t, pg, up.ID)
+	_, lostRows := teamPreflight(t, pg, lost.ID)
+	require.Len(t, upRows, 1)
+	assert.True(t, upRows[0].Result)
+	assert.Empty(t, lostRows)
+}
+
+// A task the engine cannot build (here the service-state lookup fails) never
+// reports, so the round is incomplete rather than scored without it.
+func TestRunChecks_TaskThatCannotBeBuiltLeavesRoundIncomplete(t *testing.T) {
+	se, _, pg, _ := collectSetup(t, 1, "web")
+	pg.Exec(t, "ALTER TABLE team_service_check_schemas RENAME TO team_service_check_schemas_broken")
+	t.Cleanup(func() {
+		pg.Exec(t, "ALTER TABLE team_service_check_schemas_broken RENAME TO team_service_check_schemas")
+	})
+
+	_, complete, err := se.runChecks(se.Config.Current(), 1, false)
+	require.NoError(t, err)
+	assert.False(t, complete)
+}
+
 // A result pushed shortly before the deadline is collected, and so is the
 // timeout result a runner pushes at the deadline for a check still running.
-// BLPOP's timeout is whole seconds, which used to end collection up to a
-// second early and discard the round.
 func TestRvb_CollectsResultsUpToDeadline(t *testing.T) {
 	se, redis, pg, teams := collectSetup(t, 1, "fast", "slow", "hung")
 
-	collectRunner(t, redis, func(task Task, push func(checks.Result)) {
+	fakeRunner(t, redis, func(task Task) []checks.Result {
+		r := passResult(task)
 		switch task.ServiceName {
 		case "box01-slow":
 			time.Sleep(time.Until(task.Deadline.Add(-400 * time.Millisecond)))
 		case "box01-hung":
 			time.Sleep(time.Until(task.Deadline))
-			r := passed(task)
-			r.Status, r.Points, r.Error = false, 0, "timeout"
-			push(r)
-			return
+			r[0].Status, r[0].Points, r[0].Error = false, 0, "timeout"
 		}
-		push(passed(task))
+		return r
 	})
 
 	require.NoError(t, se.rvb())
 
-	_, mine := lastRoundChecks(t, pg, teams[0].ID)
+	mine := lastRoundChecks(t, pg, teams[0].ID)
 	require.Len(t, mine, 3)
 	for _, c := range mine {
 		if c.ServiceName == "box01-hung" {
@@ -160,22 +146,26 @@ func TestRvb_CollectsResultsUpToDeadline(t *testing.T) {
 // not be counted twice or take the place of another team's result.
 func TestRvb_DuplicateSameRoundResultIsIgnored(t *testing.T) {
 	se, redis, pg, teams := collectSetup(t, 2, "web")
-	a, b := teams[0], teams[1]
 
-	var once sync.Once
-	collectRunner(t, redis, func(task Task, push func(checks.Result)) {
-		once.Do(func() {
-			push(checks.Result{TeamID: a.ID, ServiceName: "box01-web", ServiceType: "Mock",
-				RoundID: task.RoundID, Status: true, Points: 10, Debug: "pre-restart run"})
-		})
-		push(passed(task))
+	// The runner answers tasks in order, so the stray result for the first
+	// task's team lands right before that team's real result.
+	first := true
+	fakeRunner(t, redis, func(task Task) []checks.Result {
+		r := passResult(task)
+		if first {
+			first = false
+			stray := r[0]
+			stray.Debug = "pre-restart run"
+			r = append([]checks.Result{stray}, r...)
+		}
+		return r
 	})
 
 	require.NoError(t, se.rvb())
 
-	_, aChecks := lastRoundChecks(t, pg, a.ID)
-	_, bChecks := lastRoundChecks(t, pg, b.ID)
-	assert.Len(t, aChecks, 1, "one row per team, service and round")
-	require.Len(t, bChecks, 1)
-	assert.True(t, bChecks[0].Result, "team %d's own result is stored", b.ID)
+	for _, team := range teams {
+		mine := lastRoundChecks(t, pg, team.ID)
+		require.Len(t, mine, 1, "one row for team %d's service in the round", team.ID)
+		assert.True(t, mine[0].Result)
+	}
 }

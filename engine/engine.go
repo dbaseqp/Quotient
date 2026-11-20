@@ -672,11 +672,16 @@ func (se *ScoringEngine) koth() error {
 func (se *ScoringEngine) rvb() error {
 	slog.Info("Starting round", "round", se.CurrentRound)
 	conf := se.Config.Current()
-	results, err := se.runChecks(conf, se.CurrentRound, false)
+	results, complete, err := se.runChecks(conf, se.CurrentRound, false)
 	if err != nil {
 		return err
 	}
-	se.processCollectedResults(conf, results)
+	if complete {
+		se.processCollectedResults(conf, results)
+	} else {
+		// If one team can't be scored, no team is.
+		slog.Warn("Discarding round with missing results", "round", se.CurrentRound)
+	}
 	se.finishScoredRound()
 	return nil
 }
@@ -716,7 +721,8 @@ func (se *ScoringEngine) preflight() error {
 	}
 	round := db.PreflightRoundSchema{ID: last + 1, StartTime: se.CurrentRoundStartTime}
 	slog.Info("Starting preflight round", "preflight_round", round.ID)
-	results, err := se.runChecks(se.Config.Current(), round.ID, true)
+	// Preflight results never count, so a missing result costs only its own row.
+	results, _, err := se.runChecks(se.Config.Current(), round.ID, true)
 	if err != nil {
 		return err
 	}
@@ -741,8 +747,9 @@ func (se *ScoringEngine) preflight() error {
 	return nil
 }
 
-// runChecks enqueues the checks of conf, one config snapshot for the whole round.
-func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, preflight bool) ([]checks.Result, error) {
+// runChecks enqueues the checks of conf, one config snapshot for the whole round,
+// and collects their results. complete is false if a task's result is missing.
+func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, preflight bool) (results []checks.Result, complete bool, err error) {
 	// reassign the next round start time with jitter
 	// double the jitter and subtract it to get a random number between -jitter and jitter
 	randomJitter := rand.Intn(2*conf.MiscSettings.Jitter) - conf.MiscSettings.Jitter // #nosec G404 -- non-crypto randomization for timing jitter
@@ -759,13 +766,13 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 	teams, err := se.DB.GetTeams()
 	if err != nil {
 		slog.Error("failed to get teams:", "error", err)
-		return nil, err
+		return nil, false, err
 	}
 
-	// expected holds the key of every task of the round. A result is accepted only
-	// for a key still in it, so a duplicate or stray result (e.g. from a check
-	// the previous engine process started under the same round ID) can neither
-	// be counted twice nor crowd out another team's result.
+	// expected holds the key of every task of the round. A result counts only
+	// once and only for a still-expected key, so a stray same-round result (e.g.
+	// from a check the previous engine process started) can't crowd out another
+	// team's result.
 	expected := make(map[resultKey]struct{})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Until(se.NextRoundStartTime))
 	defer cancel()
@@ -795,16 +802,21 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 		if !team.Active {
 			continue
 		}
+	tasks:
 		for _, r := range allRunners {
 			if !r.Runnable() {
 				continue
 			}
 			enabled, err := se.DB.IsTeamServiceEnabled(team.ID, r.GetName())
-			if err != nil {
-				slog.Error("failed to check service state", "team", team.ID, "service", r.GetName(), "error", err)
+			if err == nil && !enabled {
 				continue
 			}
-			if !enabled {
+			// From here the task is expected: one the engine fails to build or
+			// enqueue never reports, so the round is incomplete.
+			key := resultKey{team.ID, r.GetName()}
+			expected[key] = struct{}{}
+			if err != nil {
+				slog.Error("failed to check service state", "team", team.ID, "service", r.GetName(), "error", err)
 				continue
 			}
 			// serialize the entire check definition to JSON
@@ -833,7 +845,7 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 					creds, err := se.DB.GetTeamCredentials(team.ID, credlistName)
 					if err != nil {
 						slog.Error("failed to get credentials for task", "team", team.ID, "credlist", credlistName, "error", err)
-						continue
+						continue tasks
 					}
 					for _, c := range creds {
 						task.Credentials = append(task.Credentials, Credential{
@@ -843,9 +855,10 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 						})
 					}
 				}
-				// Skip task if check requires credentials but none were loaded
+				// Skip task if check requires credentials but none were seeded
 				if len(task.Credentials) == 0 {
 					slog.Error("skipping check: requires credentials but none seeded", "service", r.GetName(), "team", team.ID)
+					delete(expected, key)
 					continue
 				}
 			}
@@ -855,28 +868,24 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 				slog.Error("failed to marshal service task", "error", err)
 				continue
 			}
-			// A task whose RPUSH failed can never report, so its key stays
-			// expected and the round is discarded at the deadline.
 			if err := se.RedisClient.RPush(ctx, "tasks", payload).Err(); err != nil {
 				slog.Error("failed to enqueue service task", "team", team.ID, "service", r.GetName(), "error", err)
 			}
-			expected[resultKey{team.ID, r.GetName()}] = struct{}{}
 		}
 	}
-	slog.Info("Enqueued checks", "count", len(expected))
+	slog.Info("Expecting check results", "count", len(expected))
 
-	// Runners give up at the task deadline and then push a timeout result, so
-	// keep collecting a little past it. BLPOP waits whole seconds, so poll in
-	// one-second slices and decide on the wall clock, not on a BLPOP timeout.
+	// go-redis sends BLPOP timeouts in whole seconds, so poll in 1 s slices and
+	// end on the wall clock.
 	collectUntil := se.NextRoundStartTime.Add(resultGracePeriod)
-	results := make([]checks.Result, 0, len(expected))
+	results = make([]checks.Result, 0, len(expected))
 	for len(expected) > 0 && time.Now().Before(collectUntil) {
 		select {
 		case msg := <-eventsChannel:
 			slog.Info("Received message", "message", msg.Payload)
 			if msg.Payload == "reset" {
 				slog.Info("Reset event received, quitting...")
-				return nil, errReset
+				return nil, false, errReset
 			}
 			continue
 		default:
@@ -918,20 +927,19 @@ func (se *ScoringEngine) runChecks(conf *config.ConfigSettings, roundID uint, pr
 	}
 
 	if len(expected) > 0 {
-		// If one team can't be scored, no team is: discard the whole round.
 		missing := make([]string, 0, len(expected))
 		for key := range expected {
 			missing = append(missing, fmt.Sprintf("team %d %s", key.teamID, key.service))
 		}
-		slog.Warn("Checks without a result by the round deadline, discarding round", "missing", missing, "collected", len(results), "round", roundID, "preflight", preflight)
-		return []checks.Result{}, nil
+		slog.Warn("Checks without a result by the round deadline", "missing", missing, "collected", len(results), "round", roundID, "preflight", preflight)
 	}
 
-	return results, nil
+	return results, len(expected) == 0, nil
 }
 
 // resultGracePeriod is how long past the task deadline the engine keeps
-// collecting, so the timeout result a runner pushes at the deadline still counts.
+// collecting (up to 1 s more for a BLPOP already waiting), so the timeout result
+// a runner pushes at the deadline still counts.
 const resultGracePeriod = 2 * time.Second
 
 type resultKey struct {
@@ -967,11 +975,6 @@ func (se *ScoringEngine) processCollectedResults(conf *config.ConfigSettings, re
 			Error:       sanitizeDBString(result.Error),
 			Debug:       sanitizeDBString(result.Debug),
 		})
-	}
-
-	if len(dbResults) == 0 {
-		slog.Warn("No results to process for the current round", "round", se.CurrentRound)
-		return
 	}
 
 	// Save results to database
