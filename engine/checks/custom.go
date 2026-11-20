@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"regexp"
@@ -228,11 +229,24 @@ func (c *Custom) Verify(box string, ip string, points int, timeout int, slapenal
 	return nil
 }
 
-// ChromeEnv is the environment that tells custom checks (browser-curl.sh)
-// which Chrome to claim, so ChromeMajor stays the only place it is set.
+// chromeLanguages are the Accept-Language values a custom check run can claim.
+var chromeLanguages = []string{
+	"en-US,en;q=0.9",
+	"en-US,en;q=0.9,es;q=0.8",
+	"en-GB,en-US;q=0.9,en;q=0.8",
+	"en-US,en;q=0.9,fr;q=0.8",
+}
+
+// ChromeEnv is the environment of every custom check: the desktop Chrome that
+// browser-curl.sh claims, ChromeMajor on one OS and with one Accept-Language,
+// both picked per check run.
 func ChromeEnv() []string {
+	o := chromeOSes[rand.IntN(len(chromeOSes))]                 // #nosec G404 -- non-crypto selection of the claimed OS
+	language := chromeLanguages[rand.IntN(len(chromeLanguages))] // #nosec G404 -- non-crypto selection of the claimed language
 	return []string{
-		"QUOTIENT_CHROME_MAJOR=" + strconv.Itoa(ChromeMajor),
+		"QUOTIENT_CHROME_USER_AGENT=" + ChromeUserAgent(o.uaOS),
+		"QUOTIENT_CHROME_PLATFORM=" + o.platform,
 		"QUOTIENT_CHROME_SEC_CH_UA=" + ChromeSecCHUA(ChromeMajor),
+		"QUOTIENT_CHROME_LANGUAGE=" + language,
 	}
 }

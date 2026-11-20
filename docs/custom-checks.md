@@ -137,21 +137,21 @@ docker-compose up -d runner
 - **Avoid infinite loops.** The runner forcibly kills the command when the timeout is reached.
 - **Use meaningful output.** Print context on both success and failure (see [Failure Messages](#failure-messages)).
 - **Handle escaped credentials.** USERNAME, PASSWORD and PASSWORD[name] are shell-escaped by the runner. If your script passes them to other tools, ensure those tools handle quoted strings correctly.
-- **Test locally first.** Run your script manually before deploying to catch errors early.
+- **Test locally first.** Run your script manually before deploying to catch errors early. A script that sources `browser-curl.sh` needs the `QUOTIENT_CHROME_USER_AGENT`, `QUOTIENT_CHROME_PLATFORM`, `QUOTIENT_CHROME_SEC_CH_UA` and `QUOTIENT_CHROME_LANGUAGE` variables, which the runner sets for each check; when you run it by hand, set them yourself (for example from a request your own Chrome sends) or it stops with an error naming them.
 - **Don't announce the scorer.** Teams can see which requests are scoring traffic when a check sends what no real client sends, and serve those requests differently from everyone else. Plain `curl` sends `User-Agent: curl/8.x` and `Accept: */*`; Python `requests` sends `python-requests/x.y` with its own header order. Load web pages through `browser_curl` (below) or a client that matches the browser it claims to be, and give mail clients a realistic `EHLO` name (`smtplib.SMTP(..., local_hostname=...)`) instead of the container's address.
 
 ## Examples
 
 ### HTTP Check with curl
 
-`custom-checks/browser-curl.sh` defines `browser_curl`, which takes curl's options and adds the headers desktop Chrome sends to load a page, in Chrome's order, with a current Chrome `User-Agent`. Responses are decompressed, so a regex sees the page text. On `https`, curl's TLS handshake still differs from Chrome's.
+The runner image has `/app/lib/browser-curl.sh`, which defines `browser_curl`: it takes curl's options and adds the headers desktop Chrome sends to load a page, in Chrome's order, with the `User-Agent` of the Chrome release the web check claims. Responses are decompressed, so a regex sees the page text. What `browser_curl` writes to stdout is capped at `BROWSER_CURL_MAX_BYTES` (default 10 MiB); a longer response is cut there and `browser_curl` exits 23. Files written with `-o` are not capped. On `https`, curl's TLS handshake and HTTP/2 framing still differ from Chrome's.
 
 ```sh
 #!/bin/sh
 ADDRESS="$2"
 USERNAME="$4"
 PASSWORD="$5"
-. /app/checks/browser-curl.sh
+. /app/lib/browser-curl.sh
 
 response=$(browser_curl -s -o /dev/null -w "%{http_code}" -u "$USERNAME:$PASSWORD" "http://$ADDRESS/api/health")
 if [ "$response" = "200" ]; then
@@ -162,6 +162,18 @@ fi
 echo "FAILED: API returned $response"
 exit 1
 ```
+
+### HTTP Check in Python with curl_cffi
+
+The runner image has [curl_cffi](https://curl-cffi.readthedocs.io/) (pinned in `custom-checks/requirements.txt`) for Python checks that need Chrome's TLS handshake too. With `impersonate`, it sends the TLS ClientHello (JA3/JA4), HTTP/2 settings and default headers, `User-Agent` included, of the Chrome release it names:
+
+```python
+from curl_cffi import requests
+
+r = requests.get(f"https://{address}/", impersonate="chrome151", timeout=10)
+```
+
+curl_cffi's Chrome targets trail Chrome's releases, so the release such a check claims is older than the one the web check and `browser_curl` claim. Keep the target's own `User-Agent`: one with a newer version would no longer match the handshake.
 
 ### Database Check
 
