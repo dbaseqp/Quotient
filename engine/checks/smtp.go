@@ -5,23 +5,14 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"net"
 	"net/smtp"
 	"time"
 )
 
-// generateRandomContent creates random email content for variety.
-func generateRandomContent() (subject string, body string) {
-	// #nosec G404 -- non-crypto random for email content
-	subject = fmt.Sprintf("%016x", rand.Uint64())
-	// #nosec G404 -- non-crypto random for email content
-	body = fmt.Sprintf("%016x%016x%016x%016x", rand.Uint64(), rand.Uint64(), rand.Uint64(), rand.Uint64())
-	return
-}
-
 type Smtp struct {
 	Service
+	workstationNaming
 	Encrypted   bool
 	Domain      string
 	RequireAuth bool
@@ -40,12 +31,11 @@ func (a unencryptedAuth) Start(server *smtp.ServerInfo) (string, []byte, error) 
 
 func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		// Create a dialer
-		dialer := net.Dialer{
-			Timeout: time.Duration(c.Timeout) * time.Second,
-		}
+		// The socket announces Windows' window scale 8 (where tcp_rmem[2] or rmem_max is at least
+		// 8 MiB), matching the Windows workstation the EHLO name claims.
+		dialer := clientWindows.dialer(time.Duration(c.Timeout) * time.Second)
 
-		subject, body := generateRandomContent()
+		heloName := c.workstation(teamIdentifier)
 
 		// ***********************************************
 		// Set up custom auth for bypassing net/smtp protections
@@ -84,7 +74,7 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 		var conn net.Conn
 
 		if c.Encrypted {
-			conn, err = tls.DialWithDialer(&dialer, "tcp", fmt.Sprintf("%s:%d", c.Target, c.Port), &tlsConfig)
+			conn, err = tls.DialWithDialer(dialer, "tcp", fmt.Sprintf("%s:%d", c.Target, c.Port), &tlsConfig)
 		} else {
 			conn, err = dialer.DialContext(context.TODO(), "tcp", fmt.Sprintf("%s:%d", c.Target, c.Port))
 		}
@@ -110,6 +100,11 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 		}
 		// nolint:errcheck
 		defer sconn.Quit()
+
+		// Greet with the workstation name, falling back to HELO. net/smtp keeps the greeting's error
+		// and returns it from the next command; a name it rejects (a line break) leaves the next
+		// command to greet as "localhost".
+		_ = sconn.Hello(heloName)
 
 		// Login
 		if len(c.CredLists) > 0 {
@@ -157,7 +152,7 @@ func (c Smtp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			}
 		}()
 
-		message := fmt.Sprintf("Subject: %s\n\n%s\n\n", subject, body)
+		message := composeMessage(username, toUser)
 
 		// Write the message using Fprint to avoid treating the contents as a
 		// format string.

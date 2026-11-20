@@ -1,6 +1,8 @@
 package checks
 
 import (
+	"time"
+
 	"github.com/knadh/go-pop3"
 )
 
@@ -17,6 +19,7 @@ func (c Pop3) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			Host:       c.Target,
 			Port:       c.Port,
 			TLSEnabled: c.Encrypted,
+			Dialer:     clientLinux.dialer(3 * time.Second), // go-pop3's own connect timeout
 		})
 
 		// Create a new connection. POP3 connections are stateful and should end
@@ -44,7 +47,12 @@ func (c Pop3) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan 
 			if c.Domain != "" {
 				username = username + c.Domain
 			}
-			if err := conn.Auth(username, password); err != nil {
+			// USER and PASS without the NOOP that go-pop3's Auth sends after them.
+			err = conn.User(username)
+			if err == nil {
+				err = conn.Pass(password)
+			}
+			if err != nil {
 				checkResult.Error = "login failed"
 				checkResult.Debug = "creds " + username + ":" + password + ", error: " + err.Error()
 				response <- checkResult

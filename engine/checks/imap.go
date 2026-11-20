@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
-	"net"
 	"time"
 
 	"github.com/emersion/go-imap"
@@ -19,17 +18,15 @@ type Imap struct {
 
 func (c Imap) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		dialer := net.Dialer{
-			Timeout: time.Duration(c.Timeout) * time.Second,
-		}
+		dialer := clientLinux.dialer(time.Duration(c.Timeout) * time.Second)
 
 		var cl *client.Client
 		var err error
 
 		if c.Encrypted {
-			cl, err = client.DialWithDialerTLS(&dialer, fmt.Sprintf("%s:%d", c.Target, c.Port), &tls.Config{InsecureSkipVerify: true}) // #nosec G402 -- competition services may use self-signed certs
+			cl, err = client.DialWithDialerTLS(dialer, fmt.Sprintf("%s:%d", c.Target, c.Port), &tls.Config{InsecureSkipVerify: true}) // #nosec G402 -- competition services may use self-signed certs
 		} else {
-			cl, err = client.DialWithDialer(&dialer, fmt.Sprintf("%s:%d", c.Target, c.Port))
+			cl, err = client.DialWithDialer(dialer, fmt.Sprintf("%s:%d", c.Target, c.Port))
 		}
 		if err != nil {
 			checkResult.Error = "connection to server failed"

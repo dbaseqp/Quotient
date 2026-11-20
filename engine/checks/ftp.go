@@ -26,7 +26,7 @@ type FtpFile struct {
 
 func (c Ftp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan chan Result) {
 	definition := func(teamID uint, teamIdentifier string, checkResult Result, response chan Result) {
-		conn, err := ftp.Dial(c.Target+":"+strconv.Itoa(c.Port), ftp.DialWithTimeout(time.Duration(c.Timeout)*time.Second))
+		conn, err := ftp.Dial(c.Target+":"+strconv.Itoa(c.Port), ftp.DialWithDialer(*clientLinux.dialer(time.Duration(c.Timeout) * time.Second)))
 		if err != nil {
 			checkResult.Error = "ftp connection failed"
 			checkResult.Debug = err.Error()
@@ -38,8 +38,9 @@ func (c Ftp) Run(teamID uint, teamIdentifier string, roundID uint, resultsChan c
 
 		var username, password string
 		if len(c.CredLists) == 0 {
+			// Anonymous FTP asks for an e-mail address as the password; FileZilla sends this one.
 			username = "anonymous"
-			password = "anonymous"
+			password = "anonymous@example.com"
 		} else {
 			username, password, err = c.getCreds(teamID)
 			if err != nil {

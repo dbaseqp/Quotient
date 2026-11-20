@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,13 +10,22 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	_ "time/tzdata"
+	"unicode"
 
 	"github.com/dbaseqp/Quotient/engine/checks"
 
 	"github.com/BurntSushi/toml"
 )
+
+// processWorkstationSeed is the WorkstationSeed of configs that set none. It lasts for the
+// process, so config reloads keep the pools, but a restart gives every team new names.
+var processWorkstationSeed = sync.OnceValue(func() string {
+	slog.Warn("MiscSettings.WorkstationSeed is not set: the teams' workstation names change on every engine restart")
+	return rand.Text()
+})
 
 var (
 	supportedEvents = []string{"rvb", "koth"} // golang doesn't have constant arrays :/
@@ -119,6 +129,17 @@ type MiscConfig struct {
 	Port                int
 	LogoImage           string
 	LogFile             string
+	// WorkstationNames are templates of the names of the teams' own
+	// workstations ("_" is replaced by the team identifier), e.g.
+	// ["WS_-01", "LAB_-PC"]. Each team's pool of 4-6 names that checks claim
+	// to run on (SMTP EHLO, SMB workstation) mixes them with Windows-style
+	// DESKTOP-XXXXXXX names. Empty: Windows-style names only.
+	WorkstationNames []string
+	// WorkstationSeed is a secret, constant for the event, that seeds each
+	// team's workstation-name pool. Teams that learn it can compute their
+	// pools. Empty: checkConfig sets a random seed, one per engine process,
+	// so the names change on every restart.
+	WorkstationSeed string
 
 	StartPaused bool
 
@@ -393,6 +414,14 @@ func checkConfig(conf *ConfigSettings) error {
 	if conf.MiscSettings.Jitter >= conf.MiscSettings.Delay {
 		errResult = errors.Join(errResult, errors.New("jitter must be smaller than delay"))
 	}
+	for _, name := range conf.MiscSettings.WorkstationNames {
+		if name == "" || strings.ContainsFunc(name, unicode.IsSpace) {
+			errResult = errors.Join(errResult, fmt.Errorf("workstation name template %q must be non-empty and contain no spaces", name))
+		}
+	}
+	if conf.MiscSettings.WorkstationSeed == "" {
+		conf.MiscSettings.WorkstationSeed = processWorkstationSeed()
+	}
 
 	if conf.MiscSettings.Timeout == 0 {
 		conf.MiscSettings.Timeout = conf.MiscSettings.Delay / 2
@@ -518,6 +547,9 @@ func checkConfig(conf *ConfigSettings) error {
 			for _, check := range checks {
 				if setter, ok := check.(interface{ SetAttemptDefaults(int, int) }); ok {
 					setter.SetAttemptDefaults(conf.MiscSettings.Attempts, conf.MiscSettings.AttemptDelay)
+				}
+				if setter, ok := check.(interface{ SetWorkstationNaming(string, []string) }); ok {
+					setter.SetWorkstationNaming(conf.MiscSettings.WorkstationSeed, conf.MiscSettings.WorkstationNames)
 				}
 				if err := check.Verify(
 					conf.Box[i].Name,
