@@ -10,7 +10,7 @@ import (
 )
 
 // Every run claims ChromeMajor on Linux, the OS whose network stack sends
-// the check's packets, with the web check's Accept-Language.
+// the check's packets, with chromeAcceptLanguage.
 func TestChromeEnvClaimsLinux(t *testing.T) {
 	env := map[string]string{}
 	for _, kv := range ChromeEnv() {

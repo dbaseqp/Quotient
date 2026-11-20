@@ -161,7 +161,7 @@ func helperPath(t *testing.T) string {
 	return helper
 }
 
-// chromeEnv is one check run's checks.ChromeEnv, by name.
+// chromeEnv is checks.ChromeEnv, by name.
 func chromeEnv(t *testing.T) map[string]string {
 	t.Helper()
 	env := map[string]string{}
@@ -172,18 +172,19 @@ func chromeEnv(t *testing.T) map[string]string {
 	return env
 }
 
-// shEnv runs script with browser-curl.sh sourced and the given Chrome
-// environment, as the runner runs custom checks, and returns stdout and the
-// exit code.
-func shEnv(t *testing.T, env map[string]string, script string) (string, int) {
+// shRun runs script with browser-curl.sh sourced and env added to the
+// environment, as the runner runs custom checks, and returns stdout, stderr
+// and the exit code.
+func shRun(t *testing.T, env map[string]string, script string) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command("sh", "-c", ". "+helperPath(t)+"\n"+script)
 	cmd.Env = os.Environ()
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
-	var out bytes.Buffer
+	var out, errOut bytes.Buffer
 	cmd.Stdout = &out
+	cmd.Stderr = &errOut
 	err := cmd.Run()
 	code := 0
 	if ee, ok := err.(*exec.ExitError); ok {
@@ -191,10 +192,17 @@ func shEnv(t *testing.T, env map[string]string, script string) (string, int) {
 	} else {
 		require.NoError(t, err)
 	}
-	return out.String(), code
+	return out.String(), errOut.String(), code
 }
 
-// sh is shEnv with a fresh ChromeEnv.
+// shEnv is shRun without stderr.
+func shEnv(t *testing.T, env map[string]string, script string) (string, int) {
+	t.Helper()
+	out, _, code := shRun(t, env, script)
+	return out, code
+}
+
+// sh is shEnv with checks.ChromeEnv.
 func sh(t *testing.T, script string) (string, int) {
 	t.Helper()
 	return shEnv(t, chromeEnv(t), script)
@@ -322,7 +330,7 @@ func TestBrowserCurlCheckHeadersWinInClusters(t *testing.T) {
 // Option values that look like URLs (a Referer, POST data) are not the
 // request's URL: a plain-http page gets no client hints and no br/zstd, and
 // --url's value is the URL. A path or user name that says localhost does not
-// make the host trustworthy; a *.localhost host does.
+// make the host trustworthy; a *.localhost host does, as does LOCALHOST.
 func TestBrowserCurlTrustworthinessFromTheURLOnly(t *testing.T) {
 	s := startRawServer(t, false)
 	resolve := fmt.Sprintf("--resolve team.example:%d:127.0.0.1 ", s.port())
@@ -346,12 +354,14 @@ func TestBrowserCurlTrustworthinessFromTheURLOnly(t *testing.T) {
 		assert.Equal(t, "gzip, deflate", r.Headers["accept-encoding"], c)
 	}
 
-	_, code := sh(t, fmt.Sprintf("browser_curl -s --resolve team.localhost:%d:127.0.0.1 http://team.localhost:%d/", s.port(), s.port()))
-	require.Equal(t, 0, code)
-	assert.Contains(t, s.take(t)[0].Names, "sec-ch-ua", "*.localhost is trustworthy")
+	for _, host := range []string{"team.localhost", "LOCALHOST"} {
+		_, code := sh(t, fmt.Sprintf("browser_curl -s --resolve %s:%d:127.0.0.1 http://%s:%d/", host, s.port(), host, s.port()))
+		require.Equal(t, 0, code, host)
+		assert.Contains(t, s.take(t)[0].Names, "sec-ch-ua", "%s is trustworthy", host)
+	}
 
 	tlsServer := startRawServer(t, true)
-	_, code = sh(t, fmt.Sprintf("browser_curl -sk -e http://ref.example/ --url https://127.0.0.1:%d/", tlsServer.port()))
+	_, code := sh(t, fmt.Sprintf("browser_curl -sk -e http://ref.example/ --url https://127.0.0.1:%d/", tlsServer.port()))
 	require.Equal(t, 0, code)
 	assert.Contains(t, tlsServer.take(t)[0].Names, "sec-ch-ua")
 }
@@ -385,15 +395,10 @@ func TestBrowserCurlOptionValuesFromCurlHelp(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(fake, "curl"), []byte("#!/bin/sh\n[ \"$1\" = --version ] && echo 'Features: gzip'\nexit 0\n"), 0o755)) // #nosec G306 -- test stub must be executable
 	env := chromeEnv(t)
 	env["PATH"] = fake + string(os.PathListSeparator) + os.Getenv("PATH")
-	cmd := exec.Command("sh", "-c", ". "+helperPath(t)+"\necho sourced")
-	cmd.Env = os.Environ()
-	for k, v := range env {
-		cmd.Env = append(cmd.Env, k+"="+v)
-	}
-	combined, err := cmd.CombinedOutput()
-	require.Error(t, err, "sourcing must fail")
-	assert.Contains(t, string(combined), "curl --help all lists no options")
-	assert.NotContains(t, string(combined), "sourced")
+	out, stderr, code := shRun(t, env, "echo sourced")
+	assert.NotEqual(t, 0, code, "sourcing must fail")
+	assert.Contains(t, stderr, "curl --help all lists no options")
+	assert.Empty(t, out)
 }
 
 // A Referer set by the check claims a followed link; browser_curl does not
@@ -439,7 +444,7 @@ func TestBrowserCurlPrintsPrefix(t *testing.T) {
 	assert.Equal(t, 10<<20, len(out))
 
 	// Just past the cap prints the prefix even when curl finished first; at
-	// the cap the page is whole.
+	// the cap the page is whole; a cap dd cannot use fails.
 	s := startRawServer(t, false)
 	out, code = sh(t, fmt.Sprintf("BROWSER_CURL_MAX_BYTES=9; browser_curl -s http://127.0.0.1:%d/", s.port()))
 	assert.Equal(t, 0, code)
@@ -447,6 +452,9 @@ func TestBrowserCurlPrintsPrefix(t *testing.T) {
 	out, code = sh(t, fmt.Sprintf("BROWSER_CURL_MAX_BYTES=10; browser_curl -s http://127.0.0.1:%d/", s.port()))
 	assert.Equal(t, 0, code)
 	assert.Equal(t, "hello GET ", out)
+	out, code = sh(t, fmt.Sprintf("BROWSER_CURL_MAX_BYTES=abc; browser_curl -s http://127.0.0.1:%d/", s.port()))
+	assert.NotEqual(t, 0, code)
+	assert.Equal(t, "", out)
 }
 
 // Under set -e a failing browser_curl stops the check with curl's status;

@@ -144,7 +144,7 @@ docker-compose up -d runner
 
 ### HTTP Check with curl
 
-The runner image has `/app/lib/browser-curl.sh`, which defines `browser_curl`: it takes curl's options and adds the headers desktop Chrome sends to load a page, in Chrome's order, with the `User-Agent` of the Chrome release the web check claims, on Linux, the OS whose network stack sends the check's packets. Responses are decompressed, so a regex sees the page text. `browser_curl` prints at most the first 10 MiB of the body (`BROWSER_CURL_MAX_BYTES`), like the web check's prefix: a longer response is cut there and `browser_curl` exits 0, so `regex` must match within that prefix. Files written with `-o` are not cut. On `https`, curl's TLS handshake and HTTP/2 framing still differ from Chrome's.
+The runner image has `/app/lib/browser-curl.sh`, which defines `browser_curl`: it takes curl's options and adds the headers desktop Chrome sends to load a page, in Chrome's order, with the `User-Agent` of the Chrome release in `checks.ChromeMajor`, on Linux, the OS whose network stack sends the check's packets. Responses are decompressed, so a regex sees the page text. `browser_curl` prints at most the first 10 MiB (`BROWSER_CURL_MAX_BYTES`) of the body and exits 0 when it cut the body, so a regex scores on that prefix. Files written with `-o` are not cut. On `https`, curl's TLS handshake and HTTP/2 framing still differ from Chrome's.
 
 ```sh
 #!/bin/sh

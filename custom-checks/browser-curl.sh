@@ -7,15 +7,16 @@
 #
 # browser_curl passes all of its arguments to curl unchanged and adds Chrome's
 # navigation headers in Chrome's HTTP/1.1 order. Client hints, Sec-Fetch-* and
-# br/zstd are only sent to https and loopback URLs, as Chrome does. A header
+# br/zstd are only sent to potentially trustworthy origins (https, localhost,
+# *.localhost and loopback addresses), as Chrome does. A header
 # the check sets itself (-H 'Accept: ...', -H 'Accept;', -A) replaces Chrome's;
 # with a Referer (-e or -H) Sec-Fetch-Site and Sec-Fetch-User are left out.
 # Responses are decompressed (--compressed), so a regex sees plain text.
 #
-# browser_curl prints at most the first BROWSER_CURL_MAX_BYTES (default
-# 10 MiB) of the body, like the web check's prefix, and exits 0 when it cut
-# the body there, so a regex scores on that prefix. Files written with -o are
-# not cut. Otherwise browser_curl exits with curl's status.
+# browser_curl prints at most the first 10 MiB (BROWSER_CURL_MAX_BYTES) of the
+# body and exits 0 when it cut the body, so a regex scores on that prefix.
+# Files written with -o are not cut. Otherwise browser_curl exits with curl's
+# status.
 #
 # Limits: on https, curl's TLS ClientHello is OpenSSL's, not Chrome's, so a
 # TLS (JA3/JA4) fingerprint still shows curl. When an https server offers
@@ -24,7 +25,7 @@
 # (Authorization for -u, Content-Type and Content-Length for -d) keep curl's
 # positions.
 
-# The Quotient runner picks the Chrome each check run claims (ChromeEnv).
+# The Quotient runner sets the Chrome that browser_curl claims (ChromeEnv).
 _bc_missing='browser-curl.sh: the Quotient runner sets QUOTIENT_CHROME_USER_AGENT, QUOTIENT_CHROME_PLATFORM, QUOTIENT_CHROME_SEC_CH_UA and QUOTIENT_CHROME_LANGUAGE for each check; set them to run a check by hand'
 : "${QUOTIENT_CHROME_USER_AGENT:?$_bc_missing}" "${QUOTIENT_CHROME_PLATFORM:?$_bc_missing}" \
 	"${QUOTIENT_CHROME_SEC_CH_UA:?$_bc_missing}" "${QUOTIENT_CHROME_LANGUAGE:?$_bc_missing}"
@@ -68,6 +69,7 @@ _bc_url() {
 		_bc_host=${_bc_host%%[/?#]*}
 		_bc_host=${_bc_host##*@}
 		case $_bc_host in \[*\]) ;; *:*) _bc_host=${_bc_host%:*} ;; esac
+		_bc_host=$(printf '%s' "$_bc_host" | tr 'A-Z' 'a-z')
 		case $_bc_host in
 		localhost | *.localhost | \[::1\]) _bc_trusted=yes ;;
 		*[!0-9.]* | *..* | *. | *.*.*.*.*) _bc_trusted=no ;;
@@ -147,19 +149,26 @@ browser_curl() {
 	# dd copies the first $_bc_max bytes to stdout (fd 4). It reads exactly
 	# that many from the pipe, where busybox head -c reads ahead, so a byte
 	# left in the pipe means the body was longer; head then exits and stops
-	# curl. curl's status and "over" come back on fd 3, without temp files.
+	# curl. curl's status and "over" (or "dd" when dd failed) come back on
+	# fd 3.
 	_bc_max=${BROWSER_CURL_MAX_BYTES:-10485760}
 	{
 		_bc_status=$(
 			{
-				{ command curl "$@" 3>&- 4>&- && echo 0 >&3 || echo $? >&3; } |
+				{ command curl "$@" && echo 0 >&3 || echo $? >&3; } |
 					{
-						dd bs=65536 iflag=fullblock,count_bytes count="$_bc_max" status=none >&4 3>&- 4>&-
-						if [ "$(($(head -c 1 | wc -c)))" -gt 0 ]; then echo over >&3; fi
+						if dd bs=65536 iflag=fullblock,count_bytes count="$_bc_max" status=none >&4; then
+							if [ "$(($(head -c 1 | wc -c)))" -gt 0 ]; then echo over >&3; fi
+						else
+							echo dd >&3
+						fi
 					}
 			} 3>&1
 		)
 	} 4>&1
-	case $_bc_status in *over*) return 0 ;; esac
+	case $_bc_status in
+	*dd*) return 23 ;;
+	*over*) return 0 ;;
+	esac
 	return "$_bc_status"
 }
